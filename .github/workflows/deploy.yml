@@ -24,6 +24,9 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run build
+        env:
+          # wss://... address of the online server (Settings > Secrets and variables > Actions > Variables)
+          VITE_ONLINE_URL: ${{ vars.ONLINE_URL }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

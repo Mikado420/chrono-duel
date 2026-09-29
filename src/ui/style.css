@@ -142,3 +142,22 @@ label.line { display: grid; gap: 6px; font-weight: 700; }
 .dots { display: flex; gap: 6px; justify-content: center; }
 .dots i { width: 8px; height: 8px; border-radius: 4px; background: var(--line); }
 .dots i.on { background: var(--brass); width: 22px; }
+
+/* ---- online */
+.text { width: 100%; background: var(--ink2); border: 1.5px solid var(--line); border-radius: 10px; color: var(--ivory); padding: 12px 14px; font: 700 18px var(--f-display); min-height: 52px; }
+.code-in { flex: 1; min-width: 0; font: 700 22px var(--f-num); letter-spacing: .3em; text-transform: uppercase; text-align: center; }
+.or { text-align: center; color: var(--mute); font-size: 13px; letter-spacing: .3em; }
+.invite { border: 1px solid var(--brass-deep); background: rgba(224, 178, 92, .1); border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 1.6; }
+.lobby .code { display: flex; justify-content: center; gap: 8px; margin: 4px 0; }
+.lobby .code span { width: clamp(40px, 13vw, 58px); height: clamp(52px, 17vw, 72px); display: grid; place-items: center; font: 700 clamp(28px, 9vw, 40px) var(--f-num); color: var(--brass); background: var(--ink2); border: 1.5px solid var(--brass-deep); border-radius: 12px; box-shadow: inset 0 -6px 14px rgba(0, 0, 0, .35); }
+.note { text-align: center; font-size: 14px; color: var(--you); }
+.note.warn { color: var(--brass); }
+.foe-line { display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--mute); font-size: 15px; }
+.foe-line i { width: 10px; height: 10px; border-radius: 50%; background: var(--mute); animation: pulse 1.4s infinite; }
+.foe-line.in { color: var(--ivory); }
+.foe-line.in i { background: var(--you); animation: none; }
+.wait { align-items: center; text-align: center; }
+.wait h2 { font-size: 20px; }
+.spinner { width: 44px; height: 44px; border-radius: 50%; border: 4px solid var(--line); border-top-color: var(--brass); animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 50% { opacity: .25; } }

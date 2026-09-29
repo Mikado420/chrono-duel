@@ -7,6 +7,8 @@ import { BattleScene, type BattleConfig, type BattleResult } from './render/batt
 import { Fx } from './render/fx';
 import { COLORS, DESIGN } from './render/theme';
 import { Tweener } from './render/tween';
+import { codeFromHash } from './net/config';
+import { OnlineFlow } from './net/flow';
 import { registerServiceWorker } from './pwa';
 import { Screens } from './ui/screens';
 import { store } from './ui/storage';
@@ -75,19 +77,22 @@ async function boot() {
     fx.layer.removeChildren();
   };
   const onResult = (r: BattleResult) => {
-    if (r.winner === 0) store.record.win++;
-    else if (r.winner === 1) store.record.lose++;
-    else store.record.draw++;
-    store.saveRecord();
+    const online = !!lastCfg?.net;
+    const rec = online ? store.onlineRecord : store.record;
+    if (r.winner === 0) rec.win++;
+    else if (r.winner === 1) rec.lose++;
+    else rec.draw++;
+    if (online) store.saveOnlineRecord(); else store.saveRecord();
     // the final board stays visible behind the result screen until the player moves on
-    screens.result(r, () => { screens.clear(); if (lastCfg) run(lastCfg); }, endBattle);
+    if (online) screens.resultOnline(r, endBattle);
+    else screens.result(r, () => { screens.clear(); if (lastCfg) run(lastCfg); }, endBattle);
   };
   const run = (cfg: BattleConfig) => {
     endBattle();
     lastCfg = cfg;
     battle = new BattleScene(tw, fx, app.ticker, cfg, onResult, () => {
       const speed = tw.speed;
-      tw.speed = 0; // pause animations and the AI while the menu is open
+      if (!cfg.net) tw.speed = 0; // pause animations and the AI while the menu is open (a live match cannot wait)
       const resume = () => { tw.speed = store.settings.speed || speed; };
       screens.battleMenu(resume, () => { resume(); battle?.surrender(); });
     }, log);
@@ -101,16 +106,28 @@ async function boot() {
     shake.addChild(battle);
     shake.addChild(fx.layer);
   };
-  const screens = new Screens({
+  const flow: OnlineFlow = new OnlineFlow({
+    showLobby: () => { endBattle(); screens.lobby(); },
+    showConnecting: (msg) => screens.connecting(msg),
+    showError: (msg) => { endBattle(); screens.error(msg, () => screens.onlineMenu()); },
+    startBattle: (link) => { screens.clear(); run({ myDeck: [], myDeckName: '', aiDeck: [], aiDeckName: link.foeName, level: 'normal', net: link }); },
+    hasBattle: () => battle !== null,
+  });
+  const screens: Screens = new Screens({
     root,
+    flow: () => flow,
     startBattle: (deck: DeckDef, ai: DeckDef, level) => run({ myDeck: deck.cards, myDeckName: deck.name, aiDeck: ai.cards, aiDeckName: ai.name, level }),
     applySettings,
   });
 
-  if (location.hash === '#debug') (window as unknown as { __cd: unknown }).__cd = { battle: () => battle?.debug() };
+  if (location.hash === '#debug' || /[?&]debug\b/.test(location.search)) (window as unknown as { __cd: unknown }).__cd = { battle: () => battle?.debug() };
   window.addEventListener('pointerdown', () => audio.unlock(), { once: true });
   document.getElementById('loading')?.remove();
-  screens.title();
+  const invite = codeFromHash(location.hash);
+  if (invite) {
+    history.replaceState(null, '', location.pathname + location.search);
+    screens.onlineMenu(invite);
+  } else if (!flow.resume()) screens.title();
 }
 
 registerServiceWorker();

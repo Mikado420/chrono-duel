@@ -2,9 +2,10 @@ import { Container, FederatedPointerEvent, Graphics, type Sprite, type Ticker } 
 import { chooseAction, type AiLevel } from '../core/ai';
 import { cardDef } from '../core/cards';
 import {
-  actor, apply, attackTarget, createGame, other, resvRange,
+  actor, apply, attackTarget, createGame, legalActions, other, resvRange,
   type Action, type GameEvent, type GameState, type PlayerIndex, type Target,
 } from '../core/engine';
+import type { NetLink, NetResult, ServerMsg } from '../core/net';
 import { RULES } from '../core/rules';
 import { audio } from './audio';
 import { Dial } from './dial';
@@ -21,8 +22,10 @@ export interface BattleConfig {
   aiDeckName: string;
   level: AiLevel;
   seed?: number;
+  /** Online match: the opponent is a person and the server owns the game state. */
+  net?: NetLink;
 }
-export interface BattleResult { winner: PlayerIndex | -1; reason: 'ko' | 'time' | 'surrender'; myHp: number; foeHp: number; actions: number }
+export interface BattleResult { winner: PlayerIndex | -1; reason: 'ko' | 'time' | 'surrender' | 'timeout' | 'disconnect'; myHp: number; foeHp: number; actions: number }
 
 const LANE_X = [150, 360, 570];
 /** Vertical layout in design units. Tall phones get extra height, which is shared out by `applyLayout`. */
@@ -64,11 +67,27 @@ export class BattleScene extends Container {
   private actionBar = new Container();
   private destroyed_ = false;
   private vignette = new Graphics();
+  // ---- online play
+  private inbox: ServerMsg[] = [];
+  private pumping = false;
+  private ready = false;
+  private netResult: NetResult | null = null;
+  private finished = false;
+  private unsubs: (() => void)[] = [];
+  private timerC = new Container();
+  private timerBg = new Graphics();
+  private timerTxt = label('', 20, COLORS.ivory, { weight: '700', align: 'center' });
+  private timerEnd: number | null = null;
+  private foeAway: number | null = null;
+  private linkDown = false;
+  private timerShown = '';
+
+  private get foe(): string { return this.cfg.net?.foeName ?? 'AI'; }
 
   constructor(private tw: Tweener, private fx: Fx, private ticker: Ticker, private cfg: BattleConfig, private onEnd: (r: BattleResult) => void, private onMenu: () => void, private onLog: (text: string, side: PlayerIndex | -1) => void = () => {}) {
     super();
     this.dial = new Dial(tw);
-    this.huds = [new Hud(0, 'あなた'), new Hud(1, `AI ・ ${cfg.aiDeckName}`)];
+    this.huds = [new Hud(0, 'あなた'), new Hud(1, cfg.net ? cfg.net.foeName : `AI ・ ${cfg.aiDeckName}`)];
     this.huds[1].x = 16; this.huds[1].y = 44;
     this.huds[0].x = 16;
     this.drawBtn = new Button('ドロー', 124, 66, 'plain', `${RULES.COST_DRAW}刻`, () => this.tryAction({ t: 'draw' }));
@@ -85,18 +104,29 @@ export class BattleScene extends Container {
     this.on('pointerup', (e) => this.onUp(e));
     this.on('pointerupoutside', (e) => this.onUp(e));
     this.on('pointertap', (e) => this.onBackgroundTap(e));
+    this.timerTxt.anchor.set(0.5);
+    this.timerC.addChild(this.timerBg, this.timerTxt);
+    this.timerC.x = 360; this.timerC.y = 26; this.timerC.visible = false;
+    this.addChild(this.timerC);
     ticker.add(this.tickFn);
-    void this.start();
+    if (cfg.net) {
+      const net = cfg.net;
+      this.unsubs.push(net.subscribe((m) => this.onNet(m)), net.onStatus((st) => { this.linkDown = st !== 'open'; if (st === 'open') this.toast('再接続しました'); this.drawTimer(true); }));
+      void this.startOnline(net);
+    } else void this.start();
   }
 
   private tickFn = (t: Ticker) => {
     this.dial.tick(t.deltaMS);
     for (const v of this.unitViews.values()) v.tick(t.deltaMS);
     this.huds[0].tick(t.deltaMS); this.huds[1].tick(t.deltaMS);
+    if (this.cfg.net) this.drawTimer(false);
   };
 
   override destroy() {
     this.destroyed_ = true;
+    this.unsubs.forEach((f) => f());
+    this.unsubs = [];
     this.ticker.remove(this.tickFn);
     super.destroy({ children: true });
   }
@@ -150,7 +180,12 @@ export class BattleScene extends Container {
     const { state } = createGame([this.cfg.myDeck, this.cfg.aiDeck], seed, first);
     this.s = state;
     this.syncAll(false);
-    // deal animation for the opening hand
+    await this.dealIntro(first);
+    await this.loop();
+  }
+
+  /** Opening hand animation and the "who starts" banner. */
+  private async dealIntro(first: PlayerIndex) {
     for (const v of this.handViews.values()) { v.alpha = 0; }
     await this.tw.wait(200);
     let i = 0;
@@ -162,8 +197,7 @@ export class BattleScene extends Container {
       await this.tw.wait(110 + i++ * 10);
     }
     await this.tw.wait(350);
-    await this.fx.banner(first === 0 ? 'あなたが先手' : 'AIが先手', '時計が遅れている方が行動します', first === 0 ? COLORS.you : COLORS.foe, 360, 640);
-    await this.loop();
+    await this.fx.banner(first === 0 ? 'あなたが先手' : `${this.foe}が先手`, '時計が遅れている方が行動します', first === 0 ? COLORS.you : COLORS.foe, 360, 640);
   }
 
   // ------------------------------------------------------------------ turn loop
@@ -192,21 +226,119 @@ export class BattleScene extends Container {
     this.closeModal();
     this.busy = true;
     this.refreshControls();
+    if (this.cfg.net) {
+      // the server decides; the answer arrives as an `events` message and is played by `pump`
+      this.cfg.net.send({ t: 'act', n: this.s.actions, a });
+      return;
+    }
     const ev = apply(this.s, a);
     await this.play(ev);
     await this.loop();
   }
 
   private async finish() {
+    if (this.finished) return;
+    this.finished = true;
     this.busy = true;
     this.refreshControls();
-    const o = this.s.over!;
+    const o = this.netResult ?? this.s.over!;
     await this.tw.wait(500);
+    if (this.destroyed_) return;
     this.onEnd({ winner: o.winner, reason: o.reason, myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions });
   }
+  // ------------------------------------------------------------------ online play
+  private async startOnline(net: NetLink) {
+    const g = net.init;
+    this.s = g.state;
+    this.setFoe(g.foe, true);
+    this.setTimer(g.left);
+    this.syncAll(false);
+    if (g.result) { this.netResult = g.result; this.ready = true; await this.finish(); return; } // rejoined a match that already ended
+    this.busy = true;
+    this.refreshControls();
+    if (g.fresh) await this.dealIntro(g.first);
+    if (this.destroyed_) return;
+    this.ready = true;
+    this.busy = actor(this.s) !== 0;
+    this.refreshControls();
+    void this.pump();
+  }
+
+  private onNet(m: ServerMsg) {
+    switch (m.t) {
+      case 'events': case 'over': this.inbox.push(m); void this.pump(); break;
+      case 'game': if (!m.fresh) { this.inbox.push(m); void this.pump(); } break;
+      case 'timer': this.setTimer(m.left); break;
+      case 'foe': this.setFoe(m.foe, false); break;
+      case 'error':
+        this.toast(m.msg);
+        if (!this.pumping && !this.inbox.length && !this.finished) { this.flyFrom = null; this.busy = actor(this.s) !== 0; this.syncAll(false); }
+        break;
+      default: break;
+    }
+  }
+
+  /** Plays what the server sends, one message at a time, and hands control back when it is our move. */
+  private async pump() {
+    if (this.pumping || !this.ready || this.destroyed_) return;
+    this.pumping = true;
+    try {
+      while (this.inbox.length && !this.destroyed_) {
+        const m = this.inbox.shift()!;
+        if (m.t === 'events') {
+          if (m.auto) { this.drag = null; this.unitDrag = null; this.closeModal(); if (this.mode.k !== 'idle') this.setMode({ k: 'idle' }); }
+          this.busy = true;
+          this.refreshControls();
+          this.s = m.state;
+          this.setTimer(m.left);
+          if (m.auto) { const who = m.events[0]?.e === 'act' ? m.events[0].pi : 0; this.toast(who === 0 ? '時間切れ：待機しました' : `${this.foe}が時間切れ`); }
+          await this.play(m.events);
+        } else if (m.t === 'game') {
+          this.s = m.state;
+          this.setTimer(m.left);
+          this.setFoe(m.foe, true);
+          this.syncAll(false);
+        } else if (m.t === 'over') this.netResult = m.result;
+      }
+      if (this.netResult) await this.finish();
+      else if (!this.destroyed_) { this.busy = actor(this.s) !== 0; this.refreshControls(); }
+    } finally { this.pumping = false; }
+  }
+
+  private setTimer(left: number | null) { this.timerEnd = left === null ? null : performance.now() + left; this.drawTimer(true); }
+  private setFoe(p: { online: boolean; left: number | null } | null, silent: boolean) {
+    const away = p && !p.online ? performance.now() + (p.left ?? 0) : null;
+    if (!silent && away !== null && this.foeAway === null) this.toast(`${this.foe}の接続が切れました。戻るのを待ちます`);
+    if (!silent && away === null && this.foeAway !== null && p) this.toast(`${this.foe}が戻りました`);
+    this.foeAway = away;
+    this.drawTimer(true);
+  }
+  /** The chip at the top: whose time is running, or why it is not. */
+  private drawTimer(force: boolean) {
+    let text = '', color: number = COLORS.ivory;
+    if (this.finished || this.netResult || !this.ready || !this.s) text = '';
+    else if (this.linkDown) { text = '接続を再試行中…'; color = COLORS.brass; }
+    else if (this.foeAway !== null) { text = `${this.foe}の再接続を待っています ${Math.max(0, Math.ceil((this.foeAway - performance.now()) / 1000))}秒`; color = COLORS.brass; }
+    else if (this.timerEnd !== null) {
+      const sec = Math.max(0, Math.ceil((this.timerEnd - performance.now()) / 1000));
+      const mine = actor(this.s) === 0;
+      text = `${mine ? 'あなた' : this.foe}　残り ${sec} 秒`;
+      color = sec <= 10 ? COLORS.doom : mine ? COLORS.you : COLORS.foe;
+    }
+    if (!force && text === this.timerShown) return;
+    this.timerShown = text;
+    this.timerC.visible = text !== '';
+    if (!text) return;
+    this.timerTxt.text = text;
+    this.timerTxt.style.fill = color;
+    const w = this.timerTxt.width + 40, h = this.timerTxt.height + 12;
+    this.timerBg.clear().roundRect(-w / 2, -h / 2, w, h, h / 2).fill({ color: COLORS.ink, alpha: 0.85 }).roundRect(-w / 2, -h / 2, w, h, h / 2).stroke({ color, width: 2, alpha: 0.9 });
+  }
+
   /** Test hook (only exposed with #debug in the URL). */
-  debug() { return { s: this.s, busy: this.busy, mode: this.mode.k, act: (a: Action) => this.tryAction(a), auto: () => chooseAction(this.s, 0, 'normal') }; }
+  debug() { return { s: this.s, busy: this.busy, mode: this.mode.k, act: (a: Action) => this.tryAction(a), auto: () => (this.cfg.net ? legalActions(this.s, 0).filter((x) => x.t !== 'wait' && x.t !== 'draw')[0] ?? { t: 'wait' } : chooseAction(this.s, 0, 'normal')), finished: this.finished }; }
   surrender() {
+    if (this.cfg.net) { this.cfg.net.send({ t: 'surrender' }); return; }
     if (this.s.over) return;
     this.busy = true;
     this.onEnd({ winner: 1, reason: 'surrender', myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions });
@@ -324,22 +456,22 @@ export class BattleScene extends Container {
     this.huds[0].setActive(who === 0); this.huds[1].setActive(who === 1);
     const [y, f] = this.s.players;
     if (this.s.over) this.dial.setStatus('決着', '', 'neutral');
-    else if (actor(this.s) === 1) this.dial.setStatus('AIの番', `AI ${f.time}刻 ・ あなた ${y.time}刻`, 'foe');
+    else if (actor(this.s) === 1) this.dial.setStatus(`${this.foe}の番`, `${this.foe} ${f.time}刻 ・ あなた ${y.time}刻`, 'foe');
     else if (this.mode.k === 'idle' && !this.drag) this.dial.setStatus('あなたの番', this.clockLine(), 'you');
     for (const v of this.handViews.values()) v.alpha = mine || this.busy ? 1 : 0.8;
   }
   private clockLine() {
     const [y, f] = this.s.players;
     const lead = f.time - y.time;
-    if (lead > 0) return `あなた ${y.time}刻 ・ AI ${f.time}刻（あと${lead}刻は連続で動ける）`;
-    return `あなた ${y.time}刻 ・ AI ${f.time}刻（同刻）`;
+    if (lead > 0) return `あなた ${y.time}刻 ・ ${this.foe} ${f.time}刻（あと${lead}刻は連続で動ける）`;
+    return `あなた ${y.time}刻 ・ ${this.foe} ${f.time}刻（同刻）`;
   }
   /** Preview of where your hand lands if you spend `cost`. */
   private forecast(cost: number) {
     const [y, f] = this.s.players;
     const t = y.time + cost;
     this.dial.showGhost(Math.min(t, RULES.END));
-    const next = t < f.time ? 'まだあなたの番' : t === f.time ? '同刻 → AIの番' : `AIの番（AIが${t - f.time}刻先行を取り返すまで）`;
+    const next = t < f.time ? 'まだあなたの番' : t === f.time ? `同刻 → ${this.foe}の番` : `${this.foe}の番（${this.foe}が${t - f.time}刻先行を取り返すまで）`;
     this.dial.setStatus(`${cost}刻 使う`, `使用後 ${t}刻 → ${next}`, 'you');
   }
   private clearForecast() { this.dial.showGhost(null); this.refreshControls(); }
@@ -542,8 +674,8 @@ export class BattleScene extends Container {
   private onPinTap(uid: number) {
     const info = this.dial.pinInfo(uid);
     if (!info) return;
-    if (info.card) this.inspectCard(info.card, [`${info.pi === 0 ? 'あなた' : 'AI'}の予約：両者の時計が${info.T}刻に達すると発動`]);
-    else this.toast(`AIの予約：${info.T}刻に発動（中身は不明）`);
+    if (info.card) this.inspectCard(info.card, [`${info.pi === 0 ? 'あなた' : this.foe}の予約：両者の時計が${info.T}刻に達すると発動`]);
+    else this.toast(`${this.foe}の予約：${info.T}刻に発動（中身は不明）`);
   }
   private handPos(uid: number) { const v = this.handViews.get(uid); return v ? { x: v.x, y: v.y } : null; }
 
@@ -551,7 +683,7 @@ export class BattleScene extends Container {
     const u = this.s.players[0].field[lane]!;
     const t = attackTarget(this.s, 0, lane);
     const doom = this.s.doom;
-    if (!t) return `AIの拠点に${u.atk + doom}ダメージ${doom ? '（終焉+' + doom + '）' : ''}（1刻）`;
+    if (!t) return `${this.foe}の拠点に${u.atk + doom}ダメージ${doom ? '（終焉+' + doom + '）' : ''}（1刻）`;
     const v = this.s.players[1].field[t.lane]!;
     const kill = u.atk >= v.hp, die = v.atk >= u.hp;
     const over = u.pierce && u.atk > v.hp ? `・貫通${u.atk - v.hp + doom}` : '';
@@ -619,7 +751,7 @@ export class BattleScene extends Container {
     const d = cardDef(v.card);
     const mine = !this.busy && actor(this.s) === 0;
     this.forecast(d.cost);
-    if (!mine) { this.inspectCard(v.card, ['AIの番の間は見るだけです']); return; }
+    if (!mine) { this.inspectCard(v.card, [`${this.foe}の番の間は見るだけです`]); return; }
     if (d.kind === 'unit') {
       const empty = this.emptyLanes();
       this.inspectCard(v.card, [empty.length ? 'ドラッグしてレーンに置いても召喚できます' : '空いているレーンがありません'], [
@@ -695,12 +827,12 @@ export class BattleScene extends Container {
   }
 
   private logEvent(e: GameEvent) {
-    const nm = (pi: PlayerIndex) => (pi === 0 ? 'あなた' : 'AI');
+    const nm = (pi: PlayerIndex) => (pi === 0 ? 'あなた' : this.foe);
     const cn = (id: string) => `「${cardDef(id).name}」`;
     switch (e.e) {
       case 'summon': return this.onLog(`${nm(e.pi)}：${cn(e.unit.card)}を召喚`, e.pi);
       case 'cast': return this.onLog(`${nm(e.pi)}：${cn(e.card)}を使用`, e.pi);
-      case 'reserve': return this.onLog(e.pi === 0 ? `あなた：${cn(e.card)}を${e.T}刻に予約` : `AI：${e.T}刻に予約`, e.pi);
+      case 'reserve': return this.onLog(e.pi === 0 ? `あなた：${cn(e.card)}を${e.T}刻に予約` : `${this.foe}：${e.T}刻に予約`, e.pi);
       case 'trigger': return this.onLog(`${e.T}刻 ${nm(e.pi)}の予約${cn(e.card)}が発動`, e.pi);
       case 'attack': { const u = this.s.players[e.pi].field[e.lane]; return this.onLog(`${nm(e.pi)}：${u ? cn(u.card) : 'ユニット'}が${e.target ? '攻撃' : '拠点を攻撃'}`, e.pi); }
       case 'dmgBase': return this.onLog(`${nm(e.pi)}の拠点に${e.amount}ダメージ（残り${Math.max(0, e.hp)}）`, other(e.pi));
@@ -730,16 +862,16 @@ export class BattleScene extends Container {
           b?.destroy();
         }
         if (a.t === 'draw' || a.t === 'wait') {
-          const who = e.pi === 0 ? 'あなた' : 'AI';
+          const who = e.pi === 0 ? 'あなた' : this.foe;
           void fx.floatText(this.dial.handTip(e.pi).x, this.dial.handTip(e.pi).y + 40, a.t === 'draw' ? 'ドロー' : '待機', e.pi === 0 ? COLORS.you : COLORS.foe, 24, 30, 700);
-          if (e.pi === 1) this.dial.setStatus(`AI：${a.t === 'draw' ? 'ドロー' : '待機'}`, `${who}の時計が進む`, 'foe');
+          if (e.pi === 1) this.dial.setStatus(`${this.foe}：${a.t === 'draw' ? 'ドロー' : '待機'}`, `${who}の時計が進む`, 'foe');
         }
         break;
       }
       case 'time': {
         this.dial.showGhost(null);
         await this.dial.setHand(e.pi, e.to, true, () => audio.play('tick'));
-        if (e.pi === 1) this.dial.setStatus('AIの番', `AI ${e.to}刻 ・ あなた ${this.s.players[0].time}刻`, 'foe');
+        if (e.pi === 1) this.dial.setStatus(`${this.foe}の番`, `${this.foe} ${e.to}刻 ・ あなた ${this.s.players[0].time}刻`, 'foe');
         break;
       }
       case 'clock': {
@@ -776,8 +908,8 @@ export class BattleScene extends Container {
         this.huds[e.pi].setInfo(this.s.players[e.pi].deck.length, e.pi === 1 ? this.foeHandLayer.children.length : null, this.s.players[e.pi].resv.length);
         break;
       }
-      case 'burn': this.toast(`${e.pi === 0 ? 'あなた' : 'AI'}：手札が一杯で「${cardDef(e.card).name}」を失った`); await tw.wait(500); break;
-      case 'deckout': this.toast(`${e.pi === 0 ? 'あなた' : 'AI'}：山札がありません`); await tw.wait(400); break;
+      case 'burn': this.toast(`${e.pi === 0 ? 'あなた' : this.foe}：手札が一杯で「${cardDef(e.card).name}」を失った`); await tw.wait(500); break;
+      case 'deckout': this.toast(`${e.pi === 0 ? 'あなた' : this.foe}：山札がありません`); await tw.wait(400); break;
       case 'summon': {
         const to = { x: LANE_X[e.lane], y: ROW_Y[e.pi] };
         if (e.pi === 1) {
@@ -822,7 +954,7 @@ export class BattleScene extends Container {
         s.destroy();
         this.dial.addPin(e.uid, e.pi, e.T, e.pi === 0 ? e.card : null).on('pointertap', (ev) => { ev.stopPropagation(); this.onPinTap(e.uid); });
         void fx.ring(pinTo.x, pinTo.y, e.pi === 0 ? COLORS.you : COLORS.foe, 6, 60, 400, 4);
-        if (e.pi === 1) this.dial.setStatus('AIが予約した', `${e.T}刻に何かが起きる`, 'foe');
+        if (e.pi === 1) this.dial.setStatus(`${this.foe}が予約した`, `${e.T}刻に何かが起きる`, 'foe');
         this.flyFrom = null;
         await tw.wait(e.pi === 1 ? 600 : 150);
         break;
@@ -832,7 +964,7 @@ export class BattleScene extends Container {
         audio.play('reveal');
         void fx.ring(at.x, at.y, COLORS.brass, 6, 110, 600, 8);
         void this.dial.removePin(e.uid, 'fire');
-        await fx.banner('予約発動', `${e.pi === 0 ? 'あなた' : 'AI'}の予約 ・ ${e.T}刻`, e.pi === 0 ? COLORS.you : COLORS.foe, 360, 640);
+        await fx.banner('予約発動', `${e.pi === 0 ? 'あなた' : this.foe}の予約 ・ ${e.T}刻`, e.pi === 0 ? COLORS.you : COLORS.foe, 360, 640);
         const s = makeBack(); s.scale.set(0.1);
         await this.fly(s, at, { x: 360, y: 600 }, 0.1, 0.72, 300);
         await tw.run(140, (k) => s.scale.x = 0.72 * (1 - k));
@@ -935,7 +1067,7 @@ export class BattleScene extends Container {
         audio.play('reveal');
         const p = this.s.players[e.pi];
         for (const uid of e.uids) { const r = p.resv.find((x) => x.uid === uid); if (r) this.dial.revealPin(uid, r.card); }
-        this.toast(e.uids.length ? `AIの予約を${e.uids.length}枚公開` : '公開する予約はなかった');
+        this.toast(e.uids.length ? `${e.pi === 0 ? 'あなた' : this.foe}の予約を${e.uids.length}枚公開` : '公開する予約はなかった');
         await tw.wait(500);
         break;
       }

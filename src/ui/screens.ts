@@ -1,6 +1,9 @@
 import { CARD_LIST, cardDef } from '../core/cards';
 import { maxCopies, PRESET_DECKS, validateDeck, type DeckDef } from '../core/decks';
+import { NET, normalizeCode } from '../core/net';
 import { RULES } from '../core/rules';
+import { inviteLink } from '../net/config';
+import type { OnlineFlow } from '../net/flow';
 import { audio } from '../render/audio';
 import type { BattleResult } from '../render/battle';
 import { cardFace } from '../render/cardArt';
@@ -32,15 +35,23 @@ export interface ScreenHost {
   root: HTMLElement;
   startBattle(deck: DeckDef, ai: DeckDef, level: 'normal' | 'hard'): void;
   applySettings(): void;
+  flow(): OnlineFlow;
 }
 
 export class Screens {
   constructor(private host: ScreenHost) {}
+  private cleanup: (() => void) | null = null;
   private mount(el: HTMLElement) {
+    this.cleanup?.(); this.cleanup = null;
     this.host.root.replaceChildren(el);
     return el;
   }
-  clear() { this.host.root.replaceChildren(); }
+  /** A screen that redraws itself whenever `subscribe` fires (lobby status, rematch votes). */
+  private live(build: () => HTMLElement, subscribe: (fn: () => void) => () => void) {
+    this.mount(build());
+    this.cleanup = subscribe(() => this.host.root.replaceChildren(build()));
+  }
+  clear() { this.cleanup?.(); this.cleanup = null; this.host.root.replaceChildren(); }
 
   // ---------------------------------------------------------------- title
   title() {
@@ -53,7 +64,8 @@ export class Screens {
         h('span', { class: 'tag' }, 'ターンはない。時間を奪い合え。'),
       ),
       h('div', { class: 'menu' },
-        h('button', { class: 'btn primary', onclick: click(() => this.setup()) }, '対戦する'),
+        h('button', { class: 'btn primary', onclick: click(() => this.setup()) }, 'AIと対戦'),
+        h('button', { class: 'btn primary', onclick: click(() => this.onlineMenu()) }, '友達とオンライン対戦'),
         h('button', { class: 'btn', onclick: click(() => this.decks()) }, 'デッキ編集'),
         h('button', { class: 'btn', onclick: click(() => this.rules(() => this.title())) }, '遊び方'),
         h('button', { class: 'btn', onclick: click(() => this.settings(() => this.title())) }, '設定'),
@@ -294,21 +306,138 @@ export class Screens {
     render();
   }
 
-  result(r: BattleResult, again: () => void, leave: () => void) {
+  private resultView(r: BattleResult, foeLabel: string, buttons: (HTMLElement | null)[], note?: string) {
     const kind = r.winner === 0 ? 'win' : r.winner === 1 ? 'lose' : 'draw';
-    const title = kind === 'win' ? '勝利' : kind === 'lose' ? '敗北' : '引き分け';
-    const why = r.reason === 'ko' ? (kind === 'win' ? '相手の拠点を破壊した' : '拠点を破壊された') : r.reason === 'surrender' ? '降参した' : `${RULES.END}刻に到達 ・ 体力の差で決着`;
-    this.mount(h('div', { class: `screen dim result ${kind}` },
+    const win = kind === 'win';
+    const title = win ? '勝利' : kind === 'lose' ? '敗北' : '引き分け';
+    const why = {
+      ko: win ? '相手の拠点を破壊した' : '拠点を破壊された',
+      time: `${RULES.END}刻に到達 ・ 体力の差で決着`,
+      surrender: win ? `${foeLabel}が降参した` : '降参した',
+      timeout: win ? `${foeLabel}が時間切れを重ねた` : '時間切れを重ねた',
+      disconnect: win ? `${foeLabel}が戻ってこなかった` : '接続が戻らなかった',
+    }[r.reason];
+    return h('div', { class: `screen dim result ${kind}` },
       h('h1', {}, title),
       h('div', { class: 'why' }, why),
       h('div', { class: 'stats' },
         h('div', {}, h('b', {}, String(Math.max(0, r.myHp))), h('span', {}, 'あなたの体力')),
-        h('div', {}, h('b', {}, String(Math.max(0, r.foeHp))), h('span', {}, 'AIの体力')),
+        h('div', {}, h('b', {}, String(Math.max(0, r.foeHp))), h('span', {}, `${foeLabel}の体力`)),
         h('div', {}, h('b', {}, String(r.actions)), h('span', {}, '総行動数'))),
-      h('div', { class: 'menu' },
-        h('button', { class: 'btn primary', onclick: again }, 'もう一度'),
-        h('button', { class: 'btn', onclick: () => { leave(); this.setup(); } }, 'デッキを変えて対戦'),
-        h('button', { class: 'btn', onclick: () => { leave(); this.title(); } }, 'タイトルへ')),
-    ));
+      note ? h('div', { class: 'why' }, note) : null,
+      h('div', { class: 'menu' }, ...buttons));
+  }
+
+  result(r: BattleResult, again: () => void, leave: () => void) {
+    this.mount(this.resultView(r, 'AI', [
+      h('button', { class: 'btn primary', onclick: again }, 'もう一度'),
+      h('button', { class: 'btn', onclick: () => { leave(); this.setup(); } }, 'デッキを変えて対戦'),
+      h('button', { class: 'btn', onclick: () => { leave(); this.title(); } }, 'タイトルへ'),
+    ]));
+  }
+
+  // ---------------------------------------------------------------- online
+  onlineMenu(invite?: string) {
+    const flow = this.host.flow();
+    if (!flow.available) {
+      this.mount(h('div', { class: 'screen dim' }, h('div', { class: 'panel' },
+        h('div', { class: 'head' }, h('h2', {}, 'オンライン対戦'), h('button', { class: 'btn small', onclick: () => this.title() }, '戻る')),
+        h('p', {}, 'オンライン対戦は現在準備中です。公開までもうしばらくお待ちください。'))));
+      return;
+    }
+    const decks = store.allDecks();
+    let mine = decks.find((d) => d.id === store.settings.lastDeck && d.valid) ?? decks.find((d) => d.valid) ?? decks[0];
+    let name = store.settings.name;
+    let code = invite ?? '';
+    const go = (join: boolean) => {
+      store.settings.lastDeck = mine.id; store.settings.name = name.trim(); store.saveSettings();
+      audio.play('summon');
+      if (join) flow.join(normalizeCode(code)!, name, mine.cards); else flow.create(name, mine.cards);
+    };
+    const render = () => {
+      const deckOpts = decks.map((d) => h('button', {
+        class: 'opt', 'aria-pressed': String(d.id === mine.id), disabled: !d.valid,
+        onclick: () => { mine = d; audio.play('select'); render(); },
+      }, h('div', {}, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, d.blurb ?? `${d.cards.length}枚・自作デッキ`)), !d.valid ? h('span', { class: 'badge' }, '未完成') : null));
+      const joinBtn = h('button', { class: 'btn primary', disabled: !normalizeCode(code), onclick: () => go(true) }, '入室');
+      const r = store.onlineRecord;
+      this.mount(h('div', { class: 'screen dim' },
+        h('div', { class: 'panel' },
+          h('div', { class: 'head' }, h('h2', {}, 'オンライン対戦'), h('button', { class: 'btn small', onclick: () => this.title() }, '戻る')),
+          invite ? h('div', { class: 'invite' }, '友達から招待されています。名前とデッキを選んで「入室」を押してください。') : null,
+          h('h3', {}, 'あなたの名前'),
+          h('input', { class: 'text', id: 'pname', value: name, maxlength: String(NET.NAME_MAX), placeholder: 'プレイヤー', autocomplete: 'nickname', 'aria-label': '名前', oninput: (e: Event) => { name = (e.target as HTMLInputElement).value; } }),
+          h('h3', {}, 'デッキ'), h('div', { class: 'opt-list' }, ...deckOpts),
+          h('h3', {}, 'あいことばで入る'),
+          h('div', { class: 'row' },
+            h('input', {
+              class: 'text code-in', id: 'pcode', value: code, maxlength: String(NET.CODE_LEN + 2), placeholder: 'ABCDE', autocomplete: 'off', autocapitalize: 'characters', 'aria-label': 'あいことば',
+              oninput: (e: Event) => { const el = e.target as HTMLInputElement; code = el.value.toUpperCase(); el.value = code; joinBtn.disabled = !normalizeCode(code); },
+            }),
+            joinBtn),
+          h('div', { class: 'or' }, 'または'),
+          h('button', { class: `btn${invite ? '' : ' primary'}`, id: 'create', onclick: () => go(false) }, '部屋を作って友達を招待'),
+          h('div', { class: 'record' }, `オンライン戦績　${r.win}勝 ${r.lose}敗${r.draw ? ` ${r.draw}分` : ''}`),
+        )));
+    };
+    render();
+  }
+
+  connecting(msg: string) {
+    const flow = this.host.flow();
+    this.mount(h('div', { class: 'screen dim title' }, h('div', { class: 'panel wait' },
+      h('div', { class: 'spinner', 'aria-hidden': 'true' }),
+      h('h2', {}, msg),
+      h('button', { class: 'btn small', onclick: () => { flow.leave(); this.onlineMenu(); } }, 'やめる'))));
+  }
+
+  error(msg: string, back: () => void) {
+    this.mount(h('div', { class: 'screen dim title' }, h('div', { class: 'panel' },
+      h('h2', {}, 'つながりませんでした'),
+      h('p', {}, msg),
+      h('button', { class: 'btn primary', onclick: back }, '戻る'))));
+  }
+
+  lobby() {
+    const flow = this.host.flow();
+    let note = '';
+    const copy = async (text: string) => {
+      try { await navigator.clipboard.writeText(text); note = 'コピーしました'; }
+      catch { note = '長押しでコピーしてください'; }
+      this.host.root.replaceChildren(build());
+    };
+    const build = () => {
+      const foe = flow.foe;
+      const link = inviteLink(flow.code);
+      return h('div', { class: 'screen dim title' }, h('div', { class: 'panel lobby' },
+        h('h2', {}, foe ? `${foe.name} が入室しました` : '友達を招待しよう'),
+        h('p', {}, 'あいことばを伝えるか、招待リンクを送ってください。相手が入ると自動で始まります。'),
+        h('div', { class: 'code', 'aria-label': `あいことば ${flow.code}` }, ...[...flow.code].map((c) => h('span', {}, c))),
+        h('div', { class: 'row wrap' },
+          h('button', { class: 'btn small primary', onclick: () => copy(link) }, '招待リンクをコピー'),
+          h('button', { class: 'btn small', onclick: () => copy(flow.code) }, 'あいことばをコピー'),
+          typeof navigator.share === 'function' ? h('button', { class: 'btn small', onclick: () => { void navigator.share({ title: 'クロノ・デュエル', text: 'クロノ・デュエルで勝負しよう！', url: link }).catch(() => undefined); } }, '共有') : null),
+        note ? h('div', { class: 'note' }, note) : null,
+        h('div', { class: `foe-line${foe ? ' in' : ''}` }, h('i', {}), foe ? `${foe.name}（${foe.online ? '接続中' : '接続が切れています'}）` : '相手を待っています…'),
+        flow.linkStatus === 'reconnecting' ? h('div', { class: 'note warn' }, '接続を再試行中…') : null,
+        h('button', { class: 'btn', onclick: () => { flow.leave(); this.onlineMenu(); } }, '部屋を閉じる')));
+    };
+    this.live(build, (fn) => flow.onChange(fn));
+  }
+
+  resultOnline(r: BattleResult, leave: () => void) {
+    const flow = this.host.flow();
+    const build = () => {
+      const foe = flow.foe, rm = flow.rematch;
+      const here = !!foe && foe.online;
+      const label = rm.me ? '相手の返事を待っています…' : rm.foe ? '再戦する（相手が待っています）' : '再戦する';
+      const note = !foe ? '相手は部屋を出ました' : !foe.online ? '相手の接続が切れています' : rm.foe && !rm.me ? '相手が再戦を希望しています' : '';
+      return this.resultView(r, foe?.name ?? '相手', [
+        h('button', { class: 'btn primary', disabled: rm.me || !here, onclick: () => { audio.play('select'); flow.requestRematch(); } }, label),
+        h('button', { class: 'btn', onclick: () => { flow.leave(); leave(); this.onlineMenu(); } }, '部屋を出る'),
+        h('button', { class: 'btn', onclick: () => { flow.leave(); leave(); this.title(); } }, 'タイトルへ'),
+      ], note);
+    };
+    this.live(build, (fn) => flow.onChange(fn));
   }
 }

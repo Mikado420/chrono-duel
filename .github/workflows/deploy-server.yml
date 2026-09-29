@@ -1,0 +1,42 @@
+name: Deploy online server
+
+# Publishes the Cloudflare Worker in server/. Needs the repository secret CLOUDFLARE_API_TOKEN
+# (a token with "Edit Cloudflare Workers" permission). Without it this workflow does nothing.
+on:
+  push:
+    branches: [main]
+    paths:
+      - server/**
+      - src/core/**
+      - src/server/**
+      - .github/workflows/deploy-server.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      # only needed when the token can see more than one Cloudflare account
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for token
+        id: token
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then echo "have=true" >> "$GITHUB_OUTPUT"; else echo "CLOUDFLARE_API_TOKEN is not set; skipping." ; fi
+      - uses: actions/setup-node@v4
+        if: steps.token.outputs.have == 'true'
+        with:
+          node-version: 22
+      - name: Install
+        if: steps.token.outputs.have == 'true'
+        working-directory: server
+        run: npm install
+      - name: Deploy
+        if: steps.token.outputs.have == 'true'
+        working-directory: server
+        run: npx wrangler deploy

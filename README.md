@@ -6,6 +6,7 @@
 - ブラウザで動作（スマホ縦画面／PC）、1戦およそ10〜15分
 - AI対戦（ふつう／つよい）、デッキ編集、はじめての人向けガイド付き
 - PWA対応：ホーム画面に追加して全画面で遊べ、オフラインでも起動します
+- オンライン対戦：あいことば／招待リンクで友達と対戦（サーバーが状態を持つ方式）
 
 ## ルール概要
 
@@ -29,6 +30,8 @@ npm run dev        # 開発サーバー
 npm run build      # 型チェック + 本番ビルド（dist/）
 npm run sim        # AI同士の対戦でバランスを検証
 npm run sim -- 800 hard normal   # 試合数とAIの強さを指定
+npm run test:net   # オンライン部屋ロジックのテスト（偽の接続で2人ぶん）
+npm run dev:server # オンライン用のローカルサーバー（ws://localhost:8787）
 ```
 
 ### バランス検証（v0.2、AI同士1,600戦）
@@ -59,7 +62,10 @@ src/
     fx.ts      パーティクル・揺れ・演出
     audio.ts   合成効果音（音声ファイルなし）
   ui/        タイトル・デッキ編集などのDOM画面
-  sim/       バランス検証用シミュレーター
+  sim/       バランス検証用シミュレーター、オンライン部屋のテスト
+  server/    部屋ロジック（Room）。Workers とローカルサーバーと試験で共有
+  net/       オンラインの接続・部屋の流れ（クライアント側）
+server/      Cloudflare Workers（Durable Objects）の入れ物、ローカル用サーバー
 ```
 
 エンジンは行動ごとにイベント列（`GameEvent[]`）を返し、描画側はそれを順番に演出として再生します。ルール変更は `core/` だけで完結し、描画は自動で追従します。
@@ -70,6 +76,33 @@ src/
 - サービスワーカーは本番ビルドでのみ登録されます。ビルド時に `vite.config.ts` が `sw.js` にビルドIDを埋め込むため、デプロイのたびにキャッシュが更新されます。
 - アイコンを作り直すときは `npm i -D sharp` のあと `node scripts/make-icons.mjs` を実行します。
 - 更新は「ページを開くたびにネットワーク優先」で取得し、オフライン時のみキャッシュを使います。
+
+## オンライン対戦
+
+サーバーが正しい状態を1つだけ持ち（`src/server/room.ts`）、各プレイヤーには「見てよい部分だけ」を送ります。相手の手札・山札の並び・公開されていない予約の中身は、通信にも載りません（`src/core/net.ts` の `viewState` / `viewEvent`）。クライアントは行動の希望を送り、サーバーがエンジンの合法手と照合して結果を返します。
+
+- **1手45秒：** 過ぎると自動で「待機」。3回続けて過ぎると投了扱いです（前の演出ぶんの猶予つき）。
+- **切断：** 60秒以内に戻れば続きから再開できます（ページを再読み込みしても、端末に保存した席で復帰）。その間は時計が止まります。
+- **再戦：** 双方が押すと、先手・後手を入れ替えて始まります。
+
+### ローカルで試す
+
+```
+npm run dev:server          # ws://localhost:8787
+npm run dev                 # 別のターミナルで
+```
+
+`http://localhost:5173/?server=ws://localhost:8787` を2つのブラウザ（片方はシークレットウィンドウなど）で開き、片方で部屋を作って、もう片方であいことばを入れます。
+
+### 公開する（Cloudflare Workers）
+
+1. Cloudflare のアカウントを作り、**API トークン**（テンプレート「Edit Cloudflare Workers」）を作る。
+2. GitHub のリポジトリで **Settings → Secrets and variables → Actions → Secrets** に `CLOUDFLARE_API_TOKEN` を登録（Cloudflare のアカウントが複数あるときは `CLOUDFLARE_ACCOUNT_ID` も）。Workers を初めて使うアカウントでは、先にダッシュボードの **Workers & Pages** を一度開いて workers.dev のサブドメインを決めておきます。
+3. **Actions → Deploy online server → Run workflow**。成功すると `https://chrono-duel-online.<あなたのサブドメイン>.workers.dev` が使えます。（手元から出す場合は `cd server && npm install && npx wrangler login && npx wrangler deploy`）
+4. 同じ画面の **Variables** に `ONLINE_URL` を登録。値は `wss://chrono-duel-online.<あなたのサブドメイン>.workers.dev`。
+5. **Actions → Deploy to GitHub Pages → Run workflow** でクライアントを作り直す。
+
+`server/wrangler.toml` の `ALLOWED_ORIGINS` に、遊ばせるサイトの Origin だけを入れています（独自ドメインで公開するときは追記）。料金や無料枠は Cloudflare の最新の案内を確認してください。
 
 ## 公開（GitHub Pages）
 
