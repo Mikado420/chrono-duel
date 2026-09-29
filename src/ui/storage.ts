@@ -1,0 +1,35 @@
+import type { DeckDef } from '../core/decks';
+import { PRESET_DECKS, validateDeck } from '../core/decks';
+
+/** localStorage wrapper that never throws (private mode, blocked storage). */
+function read<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch { return fallback; }
+}
+function write(key: string, v: unknown) {
+  try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* storage unavailable: keep in memory only */ }
+}
+
+export interface Settings { volume: number; muted: boolean; speed: number; reduced: boolean; level: 'normal' | 'hard'; lastDeck: string; guided: boolean }
+const DEFAULT_SETTINGS: Settings = { volume: 0.7, muted: false, speed: 1, reduced: false, level: 'normal', lastDeck: 'balance', guided: false };
+
+export const store = {
+  settings: { ...DEFAULT_SETTINGS, ...read<Partial<Settings>>('cd.settings', {}) } as Settings,
+  saveSettings() { write('cd.settings', this.settings); },
+
+  customDecks: read<DeckDef[]>('cd.decks', []).filter((d) => d && Array.isArray(d.cards)),
+  saveDecks() { write('cd.decks', this.customDecks); },
+
+  record: read<{ win: number; lose: number; draw: number }>('cd.record', { win: 0, lose: 0, draw: 0 }),
+  saveRecord() { write('cd.record', this.record); },
+
+  allDecks(): (DeckDef & { preset: boolean; valid: boolean })[] {
+    return [
+      ...PRESET_DECKS.map((d) => ({ ...d, preset: true, valid: true })),
+      ...this.customDecks.map((d) => ({ ...d, preset: false, valid: validateDeck(d.cards).ok })),
+    ];
+  },
+  deckById(id: string) { return this.allDecks().find((d) => d.id === id); },
+};

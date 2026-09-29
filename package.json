@@ -1,0 +1,23 @@
+{
+  "name": "chrono-duel",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "description": "時間を支払って行動する対戦カードゲーム",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "sim": "tsx src/sim/simulate.ts"
+  },
+  "dependencies": {
+    "pixi.js": "8.6.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "~5.6.3",
+    "vite": "^6.0.7"
+  }
+}
