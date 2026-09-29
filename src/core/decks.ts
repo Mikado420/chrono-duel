@@ -30,7 +30,7 @@ export function validateDeck(cards: string[]): DeckIssue {
   if (cards.length !== RULES.DECK_SIZE) problems.push(`デッキは${RULES.DECK_SIZE}枚ちょうどにしてください（現在${cards.length}枚）`);
   const counts: Record<string, number> = {};
   for (const c of cards) {
-    if (!CARDS[c]) { problems.push(`不明なカード: ${c}`); continue; }
+    if (!CARDS[c] || CARDS[c].token) { problems.push(`不明なカード: ${c}`); continue; }
     counts[c] = (counts[c] ?? 0) + 1;
   }
   for (const [c, n] of Object.entries(counts)) {

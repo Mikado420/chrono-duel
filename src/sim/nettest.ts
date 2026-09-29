@@ -199,4 +199,33 @@ const truth = () => (room as unknown as { game: GameState }).game;
   assert.equal(guest.last('game')?.fresh, true, 'join with a host waiting starts the game');
   console.log('create/join ok');
 }
+// ---------------------------------------------------------------- 第1弾 cards over the wire: charge values must round-trip, echoes stay public
+{
+  const { PACK_TEST_DECKS } = await import('./packDecks');
+  const rand = mulberry32(3);
+  let charged = 0, echoesSeen = 0, games = 0;
+  for (; games < 12 && (charged === 0 || echoesSeen === 0); games++) {
+  room = new Room('PQRST', env);
+  const a = new Client(R, 'a', PACK_TEST_DECKS[1].cards), b = new Client(R, 'b', PACK_TEST_DECKS[0].cards);
+  a.hello(); b.hello();
+  let steps = 0;
+  while (!a.result && steps++ < 400) {
+    const ps = [a, b];
+    const i = ps.findIndex((p) => legalActions(p.view!, 0).length > 0);
+    const p = ps[i];
+    const legal = legalActions(p.view!, 0);
+    const pool = legal.filter((x) => x.t !== 'wait' && x.t !== 'draw');
+    const src = pool.length && rand() < 0.9 ? pool : legal;
+    const act = src[Math.floor(rand() * src.length)];
+    if ('x' in act && act.x) charged++;
+    const before = truth().actions;
+    p.send({ t: 'act', n: p.view!.actions, a: act });
+    assert.equal(truth().actions, before + 1, `legal action ${JSON.stringify(act)} was accepted`);
+    for (const q of ps) { secrets(q.view!); echoesSeen += q.view!.players[1].resv.filter((r) => r.echo && r.card !== '?').length; }
+  }
+  assert.ok(a.result, 'pack game ended');
+  }
+  assert.ok(charged > 0 && echoesSeen > 0, 'charge and echoes were exercised');
+  console.log(`pack cards ok: ${games} games, ${charged} charged plays accepted, opponent echoes visible`);
+}
 console.log('all net tests passed');

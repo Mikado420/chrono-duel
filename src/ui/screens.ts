@@ -1,4 +1,4 @@
-import { CARD_LIST, cardDef } from '../core/cards';
+import { CARD_LIST, RARITY_NAMES, SET_NAMES, cardDef, keywordsOf, KEYWORD_HELP, setOf, type CardSet } from '../core/cards';
 import { maxCopies, PRESET_DECKS, validateDeck, type DeckDef } from '../core/decks';
 import { NET, normalizeCode } from '../core/net';
 import { RULES } from '../core/rules';
@@ -6,7 +6,8 @@ import { inviteLink } from '../net/config';
 import type { OnlineFlow } from '../net/flow';
 import { audio } from '../render/audio';
 import type { BattleResult } from '../render/battle';
-import { cardFace } from '../render/cardArt';
+import { cardFace, packArt } from '../render/cardArt';
+import { DAILY_BONUS, DUPE_COINS, LAST_SLOT, MIN_ACTIONS, PACKS, PITY, canOpen, ownedCount, setProgress, type Reward } from '../meta/economy';
 import { pwa } from '../pwa';
 import { store } from './storage';
 
@@ -24,6 +25,19 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<s
   return el;
 }
 
+const packImgCache = new Map<string, string>();
+function packImg(name: string, sub: string): string {
+  let u = packImgCache.get(name);
+  if (!u) { u = packArt(name, sub).toDataURL('image/webp', 0.92); packImgCache.set(name, u); }
+  return u;
+}
+/** Coin and ticket counter shown at the top of menus. */
+function purse() {
+  const w = store.wallet;
+  return h('div', { class: 'purse' },
+    h('span', { class: 'coin', 'aria-label': `コイン ${w.coins}` }, h('i', {}), String(w.coins)),
+    w.tickets ? h('span', { class: 'ticket', 'aria-label': `パックチケット ${w.tickets}枚` }, h('i', {}), `×${w.tickets}`) : null);
+}
 const imgCache = new Map<string, string>();
 function cardImg(id: string): string {
   let u = imgCache.get(id);
@@ -33,6 +47,7 @@ function cardImg(id: string): string {
 
 export interface ScreenHost {
   root: HTMLElement;
+  openPack(id: string): void;
   startBattle(deck: DeckDef, ai: DeckDef, level: 'normal' | 'hard'): void;
   applySettings(): void;
   flow(): OnlineFlow;
@@ -63,9 +78,13 @@ export class Screens {
         h('h1', {}, 'クロノ・デュエル'),
         h('span', { class: 'tag' }, 'ターンはない。時間を奪い合え。'),
       ),
+      purse(),
       h('div', { class: 'menu' },
         h('button', { class: 'btn primary', onclick: click(() => this.setup()) }, 'AIと対戦'),
         h('button', { class: 'btn primary', onclick: click(() => this.onlineMenu()) }, '友達とオンライン対戦'),
+        h('button', { class: 'btn shop-btn', onclick: click(() => this.shop()) }, 'ショップ',
+          PACKS.some((p) => canOpen(store.wallet, p)) ? h('span', { class: 'dot', 'aria-label': '開封できるパックがあります' }) : null,
+          h('span', { class: 'new-set' }, '第1弾')),
         h('button', { class: 'btn', onclick: click(() => this.decks()) }, 'デッキ編集'),
         h('button', { class: 'btn', onclick: click(() => this.rules(() => this.title())) }, '遊び方'),
         h('button', { class: 'btn', onclick: click(() => this.settings(() => this.title())) }, '設定'),
@@ -84,7 +103,7 @@ export class Screens {
       const deckOpts = decks.map((d) => h('button', {
         class: 'opt', 'aria-pressed': String(d.id === mine.id), disabled: !d.valid,
         onclick: () => { mine = d; audio.play('select'); render(); },
-      }, h('div', {}, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, d.blurb ?? `${d.cards.length}枚・自作デッキ`)), !d.valid ? h('span', { class: 'badge' }, '未完成') : null));
+      }, h('div', {}, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, d.blurb ?? `${d.cards.length}枚・自作デッキ`)), !d.valid ? h('span', { class: 'badge' }, d.missing.length ? '未所持あり' : '未完成') : null));
       const aiOpts = [h('button', { class: 'opt', 'aria-pressed': String(ai === 'random'), onclick: () => { ai = 'random'; render(); } }, h('div', {}, h('div', { class: 'nm' }, 'おまかせ'), h('div', { class: 'ds' }, '4種のデッキから選ばれます'))),
         ...PRESET_DECKS.map((d) => h('button', { class: 'opt', 'aria-pressed': String(ai !== 'random' && ai.id === d.id), onclick: () => { ai = d; render(); } }, h('div', {}, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, d.blurb ?? ''))))];
       const lv = (v: 'normal' | 'hard', t: string) => h('button', { 'aria-pressed': String(level === v), onclick: () => { level = v; render(); } }, t);
@@ -118,7 +137,7 @@ export class Screens {
         h('div', { class: 'opt-list' }, ...list.map((d) => h('div', { class: 'opt' },
           h('div', { style: 'min-width:0' }, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, d.preset ? '基本デッキ' : `自作デッキ・${d.cards.length}枚`)),
           h('span', { class: 'spacer' }),
-          !d.valid ? h('span', { class: 'badge' }, '未完成') : null,
+          !d.valid ? h('span', { class: 'badge' }, d.missing.length ? '未所持あり' : '未完成') : null,
           h('button', { class: 'btn small', onclick: () => this.editor(d.preset ? { id: `c${Date.now()}`, name: `${d.name}（改）`, cards: d.cards.slice() } : { id: d.id, name: d.name, cards: d.cards.slice() }) }, d.preset ? '複製して編集' : '編集'),
         ))),
         h('button', { class: 'btn primary', onclick: () => this.editor({ id: `c${Date.now()}`, name: '新しいデッキ', cards: [] }) }, '新しいデッキを作る'),
@@ -129,17 +148,28 @@ export class Screens {
     const cards = deck.cards.slice();
     let name = deck.name;
     let filter: 'all' | 'unit' | 'spell' = 'all';
+    let setF: 'all' | CardSet = 'all';
+    const fresh = new Set(store.wallet.fresh);
+    if (fresh.size) { store.wallet.fresh = []; store.saveWallet(); }
+    const own = (id: string) => ownedCount(store.wallet, id);
     let tab: 'pool' | 'deck' = 'pool';
     let confirmDelete = false;
     const exists = store.customDecks.some((d) => d.id === deck.id);
     const count = (id: string) => cards.filter((c) => c === id).length;
-    const add = (id: string) => { if (count(id) >= maxCopies(id) || cards.length >= RULES.DECK_SIZE) { audio.play('deny'); return; } cards.push(id); audio.play('draw'); render(); };
+    let flash = '';
+    const add = (id: string) => {
+      if (count(id) >= own(id)) { audio.play('deny'); flash = own(id) === 0 ? `「${cardDef(id).name}」は持っていません。ショップのパックで手に入ります` : `「${cardDef(id).name}」は${own(id)}枚しか持っていません`; render(); return; }
+      if (count(id) >= maxCopies(id) || cards.length >= RULES.DECK_SIZE) { audio.play('deny'); return; }
+      flash = ''; cards.push(id); audio.play('draw'); render();
+    };
     const remove = (id: string) => { const i = cards.lastIndexOf(id); if (i >= 0) { cards.splice(i, 1); audio.play('select'); render(); } };
     const zoom = (id: string) => {
       const d = cardDef(id);
       const z = h('div', { class: 'zoom', onclick: (e: Event) => { if (e.target === z) z.remove(); } },
         h('div', { class: 'box' },
           h('img', { src: cardImg(id), alt: d.name }),
+          ...keywordsOf(d).filter((k) => KEYWORD_HELP[k]).map((k) => h('p', { class: 'kw' }, h('b', {}, k), `：${KEYWORD_HELP[k]}`)),
+          setOf(d) !== 'base' ? h('p', { class: 'kw' }, `${SET_NAMES[setOf(d)]} ・ ${RARITY_NAMES[d.rarity]} ・ 所持 ${own(id)}枚`) : null,
           h('div', { class: 'row' },
             h('button', { class: 'btn', onclick: () => { remove(id); z.remove(); } }, '1枚抜く'),
             h('button', { class: 'btn primary', onclick: () => { add(id); z.remove(); } }, '1枚入れる'),
@@ -149,7 +179,9 @@ export class Screens {
     };
     const render = () => {
       const v = validateDeck(cards);
-      const pool = CARD_LIST.filter((c) => filter === 'all' || c.kind === filter).sort((a, b) => a.cost - b.cost || a.kind.localeCompare(b.kind));
+      const pool = CARD_LIST.filter((c) => (filter === 'all' || c.kind === filter) && (setF === 'all' || setOf(c) === setF))
+        .sort((a, b) => Number(own(b.id) > 0) - Number(own(a.id) > 0) || a.cost - b.cost || a.kind.localeCompare(b.kind));
+      const sbtn = (f: typeof setF, t: string) => h('button', { 'aria-pressed': String(setF === f), onclick: () => { setF = f; render(); } }, t);
       const grouped = [...new Set(cards)].map((id) => cardDef(id)).sort((a, b) => a.cost - b.cost);
       const curve = Array.from({ length: 8 }, (_, i) => cards.filter((c) => Math.min(7, cardDef(c).cost) === i + 1 || (i === 0 && cardDef(c).cost === 0)).length);
       const maxC = Math.max(1, ...curve);
@@ -171,12 +203,17 @@ export class Screens {
           h('div', { class: 'panel pool' },
             h('div', { class: 'head' }, h('h2', {}, 'カード一覧'), h('button', { class: 'btn small', onclick: () => this.decks() }, '戻る')),
             h('div', { class: 'filters seg' }, fbtn('all', 'すべて'), fbtn('unit', 'ユニット'), fbtn('spell', '術')),
+            h('div', { class: 'filters seg' }, sbtn('all', '全セット'), sbtn('base', '基本'), sbtn('echo', '第1弾')),
+            flash ? h('div', { class: 'note warn' }, flash) : null,
             h('p', { style: 'font-size:13px;color:var(--mute)' }, 'タップで1枚追加。長押し（右クリック）で拡大表示。'),
             h('div', { class: 'grid' }, ...pool.map((c) => {
               const n = count(c.id);
-              const t = h('button', { class: `tile${n >= maxCopies(c.id) ? ' maxed' : ''}`, 'aria-label': `${c.name}を追加`, onclick: () => add(c.id), oncontextmenu: (e: Event) => { e.preventDefault(); zoom(c.id); } },
+              const o = own(c.id);
+              const t = h('button', { class: `tile${n >= Math.min(o, maxCopies(c.id)) ? ' maxed' : ''}${o === 0 ? ' locked' : ''}`, 'aria-label': o ? `${c.name}を追加` : `${c.name}（未所持）`, onclick: () => add(c.id), oncontextmenu: (e: Event) => { e.preventDefault(); zoom(c.id); } },
                 h('img', { src: cardImg(c.id), alt: c.name, loading: 'lazy' }),
-                n ? h('span', { class: 'cnt' }, String(n)) : null);
+                n ? h('span', { class: 'cnt' }, String(n)) : null,
+                setOf(c) !== 'base' ? h('span', { class: 'own' }, o ? `所持 ${o}` : '未所持') : null,
+                fresh.has(c.id) ? h('span', { class: 'new' }, 'NEW') : null);
               let timer = 0;
               t.addEventListener('touchstart', () => { timer = window.setTimeout(() => zoom(c.id), 450); }, { passive: true });
               t.addEventListener('touchend', () => clearTimeout(timer));
@@ -192,6 +229,7 @@ export class Screens {
               h('span', { class: 'c' }, String(c.cost)), h('span', { class: 'n', onclick: () => zoom(c.id) }, c.name), h('span', { class: 'x' }, `×${count(c.id)}`),
               h('button', { 'aria-label': `${c.name}を1枚抜く`, onclick: () => remove(c.id) }, '−')))),
             !v.ok && cards.length ? h('div', { class: 'problems' }, ...v.problems.map((p) => h('div', {}, p))) : null,
+            (() => { const miss = [...new Set(cards)].filter((c) => count(c) > own(c)); return miss.length ? h('div', { class: 'problems' }, ...miss.map((c) => h('div', {}, `「${cardDef(c).name}」が足りません（所持${own(c)}枚）`))) : null; })(),
             h('button', { class: 'btn primary', onclick: save }, '保存'),
             exists ? (confirmDelete
               ? h('div', { class: 'confirm' }, h('div', {}, 'このデッキを削除しますか？'), h('div', { class: 'row' }, h('button', { class: 'btn small', onclick: () => { confirmDelete = false; render(); } }, 'やめる'), h('button', { class: 'btn small danger', onclick: () => { store.customDecks = store.customDecks.filter((d) => d.id !== deck.id); store.saveDecks(); this.decks(); } }, '削除する')))
@@ -226,6 +264,11 @@ export class Screens {
             h('li', { html: '<span class="key">挑発</span>：隣の空いたレーンへの攻撃も受け止める。<span class="key">貫通</span>：倒した相手の体力を超えた分が拠点に届く。' }))),
         h('section', {}, h('h3', {}, '未来予約'),
           h('p', { html: `術カードは、時計の上に重ねて離すと<span class="key">未来の時刻に予約</span>できます（各${RULES.MAX_RESV}枚まで）。支払いは今すぐですが、発動するときは<span class="key">効果が強化</span>されます。両者の時計がその時刻に達した瞬間に発動します。相手には時刻しか見えません。` })),
+        h('section', {}, h('h3', {}, '第1弾「残響の刻」のキーワード'),
+          h('ul', {}, ...['残響', '共鳴', '急襲', '充填'].map((k) => h('li', { html: `<span class="key">${k}</span>：${KEYWORD_HELP[k]}` }))),
+          h('p', { html: `残響は時計に丸いピンで表示され、相手にも中身が見えます（同時に${RULES.MAX_ECHO}つまで）。「破約の刃」や「刻壊し」で消すこともできます。` })),
+        h('section', {}, h('h3', {}, 'コインとパック'),
+          h('p', {}, '対戦するとコインがもらえ、ショップで第1弾のパックと交換できます。基本カードは最初から全て使えます。コインはゲーム内で遊んで得るもので、現金では買えません。')),
         h('section', {}, h('h3', {}, '終焉の刻'),
           h('p', { html: `両者の時計が${RULES.DOOM_AT}刻に達すると、拠点へのダメージが+1されます。その後${RULES.DOOM_STEP}刻ごとにさらに+1。終盤ほど一撃が重くなります。` })),
         h('section', {}, h('h3', {}, '操作'),
@@ -306,7 +349,28 @@ export class Screens {
     render();
   }
 
-  private resultView(r: BattleResult, foeLabel: string, buttons: (HTMLElement | null)[], note?: string) {
+  /** Coins earned, counted up so the reward registers. */
+  private rewardView(rw?: Reward) {
+    if (!rw) return null;
+    if (!rw.total) return h('div', { class: 'reward none' }, `コインは短すぎる対戦（自分の行動${MIN_ACTIONS}回未満）や降参では得られません`);
+    const total = h('b', {}, '+0');
+    const box = h('div', { class: 'reward' },
+      h('div', { class: 'lines' }, ...rw.lines.map((l) => h('div', {}, h('span', {}, l.label), h('span', {}, `+${l.coins}`)))),
+      h('div', { class: 'total' }, h('i', { class: 'coin-ic' }), total, h('span', {}, ` コイン（所持 ${store.wallet.coins}）`)));
+    const t0 = performance.now(), dur = 900;
+    const stepFn = () => {
+      const k = Math.min(1, (performance.now() - t0) / dur);
+      total.textContent = `+${Math.round(rw.total * (1 - Math.pow(1 - k, 3)))}`;
+      if (k < 1 && box.isConnected) requestAnimationFrame(stepFn); else audio.play('coin');
+    };
+    requestAnimationFrame(stepFn);
+    return box;
+  }
+  private shopLink(leave: () => void) {
+    return PACKS.some((p) => canOpen(store.wallet, p)) ? h('button', { class: 'btn shop-btn', onclick: () => { leave(); this.shop(); } }, 'パックを開封する', h('span', { class: 'dot' })) : null;
+  }
+
+  private resultView(r: BattleResult, foeLabel: string, buttons: (HTMLElement | null)[], note?: string, rw?: Reward) {
     const kind = r.winner === 0 ? 'win' : r.winner === 1 ? 'lose' : 'draw';
     const win = kind === 'win';
     const title = win ? '勝利' : kind === 'lose' ? '敗北' : '引き分け';
@@ -325,15 +389,17 @@ export class Screens {
         h('div', {}, h('b', {}, String(Math.max(0, r.foeHp))), h('span', {}, `${foeLabel}の体力`)),
         h('div', {}, h('b', {}, String(r.actions)), h('span', {}, '総行動数'))),
       note ? h('div', { class: 'why' }, note) : null,
+      this.rewardView(rw),
       h('div', { class: 'menu' }, ...buttons));
   }
 
-  result(r: BattleResult, again: () => void, leave: () => void) {
+  result(r: BattleResult, again: () => void, leave: () => void, rw?: Reward) {
     this.mount(this.resultView(r, 'AI', [
       h('button', { class: 'btn primary', onclick: again }, 'もう一度'),
+      this.shopLink(leave),
       h('button', { class: 'btn', onclick: () => { leave(); this.setup(); } }, 'デッキを変えて対戦'),
       h('button', { class: 'btn', onclick: () => { leave(); this.title(); } }, 'タイトルへ'),
-    ]));
+    ], undefined, rw));
   }
 
   // ---------------------------------------------------------------- online
@@ -358,7 +424,7 @@ export class Screens {
       const deckOpts = decks.map((d) => h('button', {
         class: 'opt', 'aria-pressed': String(d.id === mine.id), disabled: !d.valid,
         onclick: () => { mine = d; audio.play('select'); render(); },
-      }, h('div', {}, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, d.blurb ?? `${d.cards.length}枚・自作デッキ`)), !d.valid ? h('span', { class: 'badge' }, '未完成') : null));
+      }, h('div', {}, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, d.blurb ?? `${d.cards.length}枚・自作デッキ`)), !d.valid ? h('span', { class: 'badge' }, d.missing.length ? '未所持あり' : '未完成') : null));
       const joinBtn = h('button', { class: 'btn primary', disabled: !normalizeCode(code), onclick: () => go(true) }, '入室');
       const r = store.onlineRecord;
       this.mount(h('div', { class: 'screen dim' },
@@ -425,7 +491,7 @@ export class Screens {
     this.live(build, (fn) => flow.onChange(fn));
   }
 
-  resultOnline(r: BattleResult, leave: () => void) {
+  resultOnline(r: BattleResult, leave: () => void, rw?: Reward) {
     const flow = this.host.flow();
     const build = () => {
       const foe = flow.foe, rm = flow.rematch;
@@ -436,8 +502,57 @@ export class Screens {
         h('button', { class: 'btn primary', disabled: rm.me || !here, onclick: () => { audio.play('select'); flow.requestRematch(); } }, label),
         h('button', { class: 'btn', onclick: () => { flow.leave(); leave(); this.onlineMenu(); } }, '部屋を出る'),
         h('button', { class: 'btn', onclick: () => { flow.leave(); leave(); this.title(); } }, 'タイトルへ'),
-      ], note);
+      ], note, rw);
     };
     this.live(build, (fn) => flow.onChange(fn));
+  }
+
+  // ---------------------------------------------------------------- shop
+  shop() {
+    let showOdds = false;
+    let showList = false;
+    const pack = PACKS[0];
+    const render = () => {
+      const w = store.wallet;
+      const pay = canOpen(w, pack);
+      const prog = setProgress(w, pack.set);
+      const left = PITY - w.pity;
+      const cards = CARD_LIST.filter((c) => setOf(c) === pack.set).sort((a, b) => 'CREL'.indexOf(b.rarity) - 'CREL'.indexOf(a.rarity) || a.cost - b.cost);
+      const slot = (r: string, pr: number) => h('tr', {}, h('td', {}, RARITY_NAMES[r as 'C']), h('td', {}, `${Math.round(pr * 1000) / 10}%`), h('td', {}, `${cards.filter((c) => c.rarity === r).length}種`));
+      this.mount(h('div', { class: 'screen dim' },
+        h('div', { class: 'panel shop' },
+          h('div', { class: 'head' }, h('h2', {}, 'ショップ'), purse(), h('button', { class: 'btn small', onclick: () => this.title() }, '戻る')),
+          h('div', { class: 'pack-show' },
+            h('div', { class: 'pack-img' }, h('img', { src: packImg(pack.name, pack.sub), alt: `${pack.name} パック` }), h('i', { class: 'sheen' })),
+            h('div', { class: 'pack-info' },
+              h('div', { class: 'set' }, SET_NAMES[pack.set]),
+              h('h3', {}, `${pack.name} パック`),
+              h('p', {}, '残響・共鳴・急襲・充填。時間の使い方を広げる新カード22種。1パック5枚入り、うち1枚は希少以上。'),
+              h('div', { class: 'progress', 'aria-label': `収集 ${prog.have}/${prog.total}` }, h('i', { style: `width:${(prog.have / prog.total) * 100}%` })),
+              h('div', { class: 'small' }, `収集 ${prog.kinds}/${prog.kindsTotal}種 ・ ${prog.have}/${prog.total}枚`),
+              h('div', { class: 'small pity' }, left <= 1 ? '次のパックで伝説が確定！' : `あと${left}パック以内に伝説が1枚確定`),
+              h('button', { class: 'btn primary open', disabled: !pay, onclick: () => { audio.play('summon'); this.host.openPack(pack.id); } },
+                pay === 'ticket' ? `開封する（チケット 残り${w.tickets}）` : `開封する（${pack.price} コイン）`),
+              !pay ? h('div', { class: 'small warn' }, `コインが足りません（あと${pack.price - w.coins}）。対戦で集めましょう。`) : null,
+            )),
+          h('h3', {}, 'コインの集め方'),
+          h('ul', { class: 'earn' },
+            h('li', {}, 'AI（ふつう）に勝利 40 ・ AI（つよい）に勝利 60 ・ オンラインで勝利 50'),
+            h('li', {}, '負けても参加で 15〜20、引き分け 25〜35'),
+            h('li', {}, `その日はじめての勝利で +${DAILY_BONUS}`),
+            h('li', {}, `上限枚数を超えて出たカードはコインに（通常${DUPE_COINS.C}・希少${DUPE_COINS.R}・秘宝${DUPE_COINS.E}・伝説${DUPE_COINS.L}）`)),
+          h('button', { class: 'btn small toggle', 'aria-expanded': String(showOdds), onclick: () => { showOdds = !showOdds; render(); } }, `提供割合 ${showOdds ? '▲' : '▼'}`),
+          showOdds ? h('div', { class: 'odds' },
+            h('p', {}, '1パック5枚：1〜3枚目は通常、4枚目は希少、5枚目は下の割合で決まります。同じレア度の中では各カードが等しい確率で出ます（伝説は未所持のカードを優先）。'),
+            h('table', {}, h('tr', {}, h('th', {}, '5枚目'), h('th', {}, '確率'), h('th', {}, '収録')), ...LAST_SLOT.map(([r, pr]) => slot(r, pr))),
+            h('p', {}, `天井：伝説が出ないまま${PITY}パック目を開けると、5枚目は必ず伝説になります。ゲーム内コインは遊んで得るもので、現金では購入できません。`)) : null,
+          h('button', { class: 'btn small toggle', 'aria-expanded': String(showList), onclick: () => { showList = !showList; render(); } }, `収録カード一覧 ${showList ? '▲' : '▼'}`),
+          showList ? h('div', { class: 'grid' }, ...cards.map((c) => {
+            const o = ownedCount(w, c.id);
+            return h('div', { class: `tile${o ? '' : ' locked'}` }, h('img', { src: cardImg(c.id), alt: c.name, loading: 'lazy' }), h('span', { class: 'own' }, o ? `所持 ${o}` : '未所持'));
+          })) : null,
+        )));
+    };
+    render();
   }
 }

@@ -86,6 +86,15 @@ function intentBonus(s: GameState, pi: PlayerIndex, a: Action): number {
     case 'insight': b = 3; break;
     case 'rewind': b = s.players[pi].hp < 10 ? 3 : 1.5; break;
     case 'haste': b = 0; break;
+    case 'eShot': b = 1.5 + enemies * 0.3; break;
+    case 'ePray': b = s.players[pi].hp < 10 ? 2.5 : 1; break;
+    case 'eSlash': b = 1.5 + enemies * 0.8; break;
+    case 'ePeek': b = 2; break;
+    case 'eBreak': b = 1.2 + op.resv.length * 1.5; break;
+    case 'eDraw': b = 2.5; break;
+    case 'eReverse': b = 3.5; break;
+    case 'eStorm': b = 1 + enemies * 1.3; break;
+    case 'eEternal': b = 3.5 + (a.T >= RULES.DOOM_AT ? 1.5 : 0); break;
   }
   return b - wait * 0.12;
 }

@@ -1,4 +1,4 @@
-import { CARDS, cardDef, type CardDef } from './cards';
+import { CARDS, cardDef, type CardDef, type EchoEffect } from './cards';
 import { RULES } from './rules';
 
 export type PlayerIndex = 0 | 1;
@@ -16,7 +16,11 @@ export interface Unit {
   taunt: boolean;
   pierce: boolean;
 }
-export interface Reservation { uid: number; card: string; T: number; revealed: boolean }
+/**
+ * A spell waiting on the clock. `echo` marks an echo (残響): a public, weaker repeat that does not use a
+ * reservation slot and runs `echo` instead of the card's own effect.
+ */
+export interface Reservation { uid: number; card: string; T: number; revealed: boolean; echo?: EchoEffect }
 export interface PlayerState {
   hp: number;
   time: number;
@@ -37,9 +41,10 @@ export interface GameState {
   actions: number;
 }
 
+/** `x` is the extra time paid for 充填 (charge) cards; omitted for every other card. */
 export type Action =
-  | { t: 'play'; hand: number; lane: number }
-  | { t: 'cast'; hand: number }
+  | { t: 'play'; hand: number; lane: number; x?: number }
+  | { t: 'cast'; hand: number; x?: number }
   | { t: 'reserve'; hand: number; T: number }
   | { t: 'attack'; lane: number }
   | { t: 'draw' }
@@ -56,7 +61,9 @@ export type GameEvent =
   | { e: 'summon'; pi: PlayerIndex; lane: number; unit: Unit; fromHand: number }
   | { e: 'cast'; pi: PlayerIndex; card: string; fromHand: number }
   | { e: 'reserve'; pi: PlayerIndex; uid: number; card: string; T: number; fromHand: number }
-  | { e: 'trigger'; pi: PlayerIndex; uid: number; card: string; T: number }
+  | { e: 'trigger'; pi: PlayerIndex; uid: number; card: string; T: number; echo?: boolean }
+  | { e: 'echo'; pi: PlayerIndex; uid: number; card: string; T: number }
+  | { e: 'moveResv'; pi: PlayerIndex; uid: number; T: number }
   | { e: 'attack'; pi: PlayerIndex; lane: number; target: Target }
   | { e: 'dmgUnit'; pi: PlayerIndex; lane: number; amount: number; hp: number }
   | { e: 'dmgBase'; pi: PlayerIndex; amount: number; hp: number; doom: boolean }
@@ -133,6 +140,17 @@ export function attackTarget(s: GameState, pi: PlayerIndex, lane: number): Targe
   return null;
 }
 
+/** Reservations that use a slot (echoes do not). */
+export const resvCount = (p: PlayerState) => p.resv.reduce((n, r) => n + (r.echo ? 0 : 1), 0);
+
+/** Whether 急襲 (rush) is active for `pi`: their clock is at least 2 behind. */
+export const rushActive = (s: GameState, pi: PlayerIndex) => s.players[other(pi)].time - s.players[pi].time >= 2;
+/** What a card costs `pi` right now, before any 充填 (charge). */
+export function cardCost(s: GameState, pi: PlayerIndex, id: string): number {
+  const d = cardDef(id);
+  return d.rush && rushActive(s, pi) ? Math.max(1, d.cost - d.rush) : d.cost;
+}
+
 export function resvRange(s: GameState, pi: PlayerIndex, cost: number): [number, number] | null {
   const p = s.players[pi];
   const lo = p.time + cost + RULES.RESV_MIN_GAP;
@@ -146,11 +164,12 @@ export function legalActions(s: GameState, pi: PlayerIndex): Action[] {
   const out: Action[] = [];
   p.hand.forEach((h) => {
     const d = cardDef(h.card);
+    const xs = d.charge ? Array.from({ length: d.charge + 1 }, (_, i) => i) : [undefined];
     if (d.kind === 'unit') {
-      p.field.forEach((u, l) => { if (!u) out.push({ t: 'play', hand: h.uid, lane: l }); });
+      p.field.forEach((u, l) => { if (!u) for (const x of xs) out.push(x === undefined ? { t: 'play', hand: h.uid, lane: l } : { t: 'play', hand: h.uid, lane: l, x }); });
     } else {
-      out.push({ t: 'cast', hand: h.uid });
-      const r = p.resv.length < RULES.MAX_RESV ? resvRange(s, pi, d.cost) : null;
+      for (const x of xs) out.push(x === undefined ? { t: 'cast', hand: h.uid } : { t: 'cast', hand: h.uid, x });
+      const r = resvCount(p) < RULES.MAX_RESV ? resvRange(s, pi, cardCost(s, pi, h.card)) : null;
       if (r) for (let T = r[0]; T <= r[1]; T++) out.push({ t: 'reserve', hand: h.uid, T });
     }
   });
@@ -164,7 +183,7 @@ export function timeCost(s: GameState, pi: PlayerIndex, a: Action): number {
   switch (a.t) {
     case 'play': case 'cast': case 'reserve': {
       const h = s.players[pi].hand.find((x) => x.uid === a.hand);
-      return h ? cardDef(h.card).cost : 0;
+      return h ? cardCost(s, pi, h.card) + (a.t !== 'reserve' ? a.x ?? 0 : 0) : 0;
     }
     case 'attack': return RULES.COST_ATTACK;
     case 'draw': return RULES.COST_DRAW;
@@ -247,8 +266,87 @@ function shiftClock(s: GameState, pi: PlayerIndex, delta: number, ev: GameEvent[
   ev.push({ e: 'clock', pi, delta, to: p.time });
 }
 
+/** 残響: queue the card's echoes, `base` ticks being the moment it resolved. */
+function scheduleEchoes(s: GameState, pi: PlayerIndex, d: CardDef, base: number, ev: GameEvent[]) {
+  for (const e of d.echo ?? []) {
+    if (s.players[pi].resv.filter((r) => r.echo).length >= RULES.MAX_ECHO) { ev.push({ e: 'fizzle', pi, card: d.id }); continue; }
+    const uid = s.nextUid++;
+    const T = base + e.delay;
+    s.players[pi].resv.push({ uid, card: d.id, T, revealed: true, echo: e.effect });
+    ev.push({ e: 'echo', pi, uid, card: d.id, T });
+  }
+}
+function shot(s: GameState, qi: PlayerIndex, unitDmg: number, baseDmg: number, ev: GameEvent[]) {
+  const l = topEnemy(s, qi);
+  if (l < 0) damageBase(s, qi, baseDmg, ev);
+  else { damageUnit(s, qi, l, unitDmg, ev); reap(s, ev); }
+}
+function storm(s: GameState, pi: PlayerIndex, qi: PlayerIndex, n: number, card: string, ev: GameEvent[]) {
+  let any = false;
+  for (let l = 0; l < RULES.LANES; l++) if (s.players[qi].field[l]) { damageUnit(s, qi, l, n, ev); any = true; }
+  if (!any) ev.push({ e: 'fizzle', pi, card });
+  reap(s, ev);
+}
+function breakNearest(s: GameState, qi: PlayerIndex, ev: GameEvent[]): boolean {
+  const r = s.players[qi].resv;
+  if (!r.length) return false;
+  r.sort((a, b) => a.T - b.T);
+  const x = r.shift()!;
+  ev.push({ e: 'breakResv', pi: qi, uid: x.uid, card: x.card });
+  return true;
+}
+function revealAll(s: GameState, qi: PlayerIndex, ev: GameEvent[]) {
+  const r = s.players[qi].resv;
+  r.forEach((x) => (x.revealed = true));
+  ev.push({ e: 'reveal', pi: qi, uids: r.map((x) => x.uid) });
+}
+function heal(s: GameState, pi: PlayerIndex, n: number, ev: GameEvent[]) {
+  const p = s.players[pi];
+  p.hp = Math.min(RULES.BASE_HP, p.hp + n);
+  ev.push({ e: 'heal', pi, amount: n, hp: p.hp });
+}
+
+/** The weaker repeat carried by an echo. */
+function runEcho(s: GameState, pi: PlayerIndex, card: string, fx: EchoEffect, ev: GameEvent[]) {
+  const qi = other(pi);
+  const p = s.players[pi];
+  switch (fx) {
+    case 'ping1': damageBase(s, qi, 1, ev); break;
+    case 'ping2': damageBase(s, qi, 2, ev); break;
+    case 'shot1': shot(s, qi, 1, 1, ev); break;
+    case 'heal2': heal(s, pi, 2, ev); break;
+    case 'draw1': drawCard(s, pi, ev); break;
+    case 'storm1': storm(s, pi, qi, 1, card, ev); break;
+    case 'rally': {
+      let any = false;
+      p.field.forEach((u, l) => { if (u) { u.atk++; any = true; ev.push({ e: 'buff', pi, lane: l, atk: u.atk, hp: u.hp }); } });
+      if (!any) ev.push({ e: 'fizzle', pi, card });
+      break;
+    }
+    case 'image': {
+      const lane = p.field.findIndex((u) => !u);
+      if (lane < 0) { ev.push({ e: 'fizzle', pi, card }); break; }
+      summonUnit(s, pi, 'e_image', lane, -1, 0, ev);
+      break;
+    }
+  }
+}
+
+/** 共鳴: units that react whenever one of their owner's reservations or echoes fires. */
+function resonate(s: GameState, pi: PlayerIndex, ev: GameEvent[]) {
+  const p = s.players[pi];
+  p.field.forEach((u, l) => {
+    if (!u) return;
+    switch (cardDef(u.card).hook) {
+      case 'resonateAtk': u.atk++; ev.push({ e: 'buff', pi, lane: l, atk: u.atk, hp: u.hp }); break;
+      case 'resonatePing': shot(s, other(pi), 1, 0, ev); break;
+      case 'resonateRewind': if (p.time > 0) shiftClock(s, pi, -1, ev); break;
+    }
+  });
+}
+
 // ---------------------------------------------------------------- effects
-function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, ev: GameEvent[]) {
+function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, ev: GameEvent[], x = 0) {
   const qi = other(pi);
   const p = s.players[pi];
   const b = boosted ? 1 : 0;
@@ -290,6 +388,21 @@ function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, e
     }
     case 'insight': for (let i = 0; i < (boosted ? 3 : 2); i++) drawCard(s, pi, ev); break;
     case 'stop': shiftClock(s, qi, boosted ? 4 : 3, ev); break;
+    // 第1弾
+    case 'eShot': shot(s, qi, 2 + b, 1, ev); break;
+    case 'ePray': heal(s, pi, boosted ? 3 : 2, ev); break;
+    case 'eSlash': shot(s, qi, boosted ? 4 : 2 + x, boosted ? 2 : 1, ev); break;
+    case 'ePeek': revealAll(s, qi, ev); for (let i = 0; i < (boosted ? 2 : 1); i++) drawCard(s, pi, ev); break;
+    case 'eBreak': {
+      let n = 0;
+      for (let i = 0; i < (boosted ? 2 : 1); i++) if (breakNearest(s, qi, ev)) n++;
+      if (!n) ev.push({ e: 'fizzle', pi, card: d.id });
+      break;
+    }
+    case 'eDraw': for (let i = 0; i < (boosted ? 2 : 1); i++) drawCard(s, pi, ev); break;
+    case 'eReverse': shiftClock(s, qi, boosted ? 3 : 2, ev); break;
+    case 'eStorm': storm(s, pi, qi, boosted ? 2 : 1, d.id, ev); break;
+    case 'eEternal': damageBase(s, qi, boosted ? 3 : 2, ev); break;
   }
 }
 
@@ -299,28 +412,46 @@ function runUnitHook(s: GameState, pi: PlayerIndex, lane: number, ev: GameEvent[
   switch (cardDef(u.card).hook) {
     case 'draw1': drawCard(s, pi, ev); break;
     case 'delayOpp1': shiftClock(s, qi, 1, ev); break;
-    case 'revealResv': {
-      const r = s.players[qi].resv;
-      r.forEach((x) => (x.revealed = true));
-      ev.push({ e: 'reveal', pi: qi, uids: r.map((x) => x.uid) });
-      break;
-    }
-    case 'breakResv': {
-      const r = s.players[qi].resv;
-      if (!r.length) break;
-      r.sort((a, b) => a.T - b.T);
-      const x = r.shift()!;
-      ev.push({ e: 'breakResv', pi: qi, uid: x.uid, card: x.card });
-      break;
-    }
+    case 'revealResv': revealAll(s, qi, ev); break;
+    case 'breakResv': breakNearest(s, qi, ev); break;
     case 'dawnBurst':
       for (let l = 0; l < RULES.LANES; l++) if (s.players[qi].field[l]) damageUnit(s, qi, l, 2, ev);
       reap(s, ev);
       break;
+    case 'storm1': storm(s, pi, qi, 1, u.card, ev); break;
+    case 'hasten2': {
+      const w = worldTime(s);
+      for (const r of s.players[pi].resv) {
+        const T = Math.max(w, r.T - 2);
+        if (T !== r.T) { r.T = T; ev.push({ e: 'moveResv', pi, uid: r.uid, T }); }
+      }
+      break;
+    }
   }
 }
 
+/** Puts a unit on the board. `x` is the 充填 paid; `fromHand` is -1 for units made by effects. */
+function summonUnit(s: GameState, pi: PlayerIndex, card: string, lane: number, fromHand: number, x: number, ev: GameEvent[]) {
+  const p = s.players[pi];
+  const d = cardDef(card);
+  const kw = d.keywords ?? [];
+  const unit: Unit = {
+    uid: s.nextUid++, card, atk: d.atk! + x, hp: d.hp! + x, maxHp: d.hp! + x, reload: d.reload!,
+    readyAt: p.time + (kw.includes('swift') ? 0 : 1), taunt: kw.includes('taunt') || (card === 'e_colossus' && x >= 2), pierce: kw.includes('pierce'),
+  };
+  p.field[lane] = unit;
+  ev.push({ e: 'summon', pi, lane, unit: { ...unit }, fromHand });
+  runUnitHook(s, pi, lane, ev);
+  scheduleEchoes(s, pi, d, p.time, ev);
+}
+
 // ---------------------------------------------------------------- apply
+function chargeOf(d: CardDef, x: number | undefined): number {
+  if (!d.charge) { if (x) throw new Error('not a charge card'); return 0; }
+  const v = x ?? 0;
+  if (!Number.isInteger(v) || v < 0 || v > d.charge) throw new Error('bad charge');
+  return v;
+}
 function takeHand(p: PlayerState, uid: number): { idx: number; card: string } {
   const idx = p.hand.findIndex((h) => h.uid === uid);
   if (idx < 0) throw new Error('card not in hand');
@@ -337,37 +468,43 @@ export function apply(s: GameState, a: Action): GameEvent[] {
   s.actions++;
   switch (a.t) {
     case 'play': {
-      if (p.field[a.lane]) throw new Error('lane occupied');
-      const { idx, card } = takeHand(p, a.hand);
-      const d = cardDef(card);
+      if (a.lane < 0 || a.lane >= RULES.LANES || p.field[a.lane]) throw new Error('lane occupied');
+      const h = p.hand.find((q) => q.uid === a.hand);
+      if (!h) throw new Error('card not in hand');
+      const d = cardDef(h.card);
       if (d.kind !== 'unit') throw new Error('not a unit');
-      advance(s, pi, d.cost, ev);
-      const kw = d.keywords ?? [];
-      const unit: Unit = {
-        uid: s.nextUid++, card, atk: d.atk!, hp: d.hp!, maxHp: d.hp!, reload: d.reload!,
-        readyAt: p.time + (kw.includes('swift') ? 0 : 1), taunt: kw.includes('taunt'), pierce: kw.includes('pierce'),
-      };
-      p.field[a.lane] = unit;
-      ev.push({ e: 'summon', pi, lane: a.lane, unit: { ...unit }, fromHand: idx });
-      runUnitHook(s, pi, a.lane, ev);
+      const x = chargeOf(d, a.x);
+      const cost = cardCost(s, pi, h.card) + x;
+      const { idx, card } = takeHand(p, a.hand);
+      advance(s, pi, cost, ev);
+      summonUnit(s, pi, card, a.lane, idx, x, ev);
       break;
     }
     case 'cast': {
+      const h = p.hand.find((q) => q.uid === a.hand);
+      if (!h) throw new Error('card not in hand');
+      const d = cardDef(h.card);
+      if (d.kind !== 'spell') throw new Error('not a spell');
+      const x = chargeOf(d, a.x);
+      const cost = cardCost(s, pi, h.card) + x;
       const { idx, card } = takeHand(p, a.hand);
-      const d = cardDef(card);
-      advance(s, pi, d.cost, ev);
+      advance(s, pi, cost, ev);
       ev.push({ e: 'cast', pi, card, fromHand: idx });
-      runSpell(s, pi, d, false, ev);
+      runSpell(s, pi, d, false, ev, x);
+      scheduleEchoes(s, pi, d, p.time, ev);
       break;
     }
     case 'reserve': {
-      if (p.resv.length >= RULES.MAX_RESV) throw new Error('too many reservations');
+      if (resvCount(p) >= RULES.MAX_RESV) throw new Error('too many reservations');
       const h = p.hand.find((x) => x.uid === a.hand);
-      const d = cardDef(h!.card);
-      const r = resvRange(s, pi, d.cost);
+      if (!h) throw new Error('card not in hand');
+      const d = cardDef(h.card);
+      if (d.kind !== 'spell') throw new Error('not a spell');
+      const cost = cardCost(s, pi, h.card);
+      const r = resvRange(s, pi, cost);
       if (!r || a.T < r[0] || a.T > r[1]) throw new Error('bad reservation time');
       const { idx, card } = takeHand(p, a.hand);
-      advance(s, pi, d.cost, ev);
+      advance(s, pi, cost, ev);
       const uid = s.nextUid++;
       p.resv.push({ uid, card, T: a.T, revealed: false });
       ev.push({ e: 'reserve', pi, uid, card, T: a.T, fromHand: idx });
@@ -409,7 +546,7 @@ export function apply(s: GameState, a: Action): GameEvent[] {
 
 /** Fires reservations whose time has come, turns on doom, and checks for the end. */
 function settle(s: GameState, ev: GameEvent[]) {
-  for (let guard = 0; guard < 10; guard++) {
+  for (let guard = 0; guard < 20; guard++) {
     if (checkKo(s, ev)) return;
     const w = worldTime(s);
     const lvl = w >= RULES.DOOM_AT ? 1 + Math.floor((w - RULES.DOOM_AT) / RULES.DOOM_STEP) : 0;
@@ -422,8 +559,17 @@ function settle(s: GameState, ev: GameEvent[]) {
     if (!due.length) break;
     due.sort((a, b) => a.r.T - b.r.T || a.pi - b.pi);
     for (const { pi, r } of due) {
-      ev.push({ e: 'trigger', pi, uid: r.uid, card: r.card, T: r.T });
-      runSpell(s, pi, cardDef(r.card), true, ev);
+      if (r.echo) {
+        ev.push({ e: 'trigger', pi, uid: r.uid, card: r.card, T: r.T, echo: true });
+        runEcho(s, pi, r.card, r.echo, ev);
+      } else {
+        ev.push({ e: 'trigger', pi, uid: r.uid, card: r.card, T: r.T });
+        const d = cardDef(r.card);
+        runSpell(s, pi, d, true, ev);
+        scheduleEchoes(s, pi, d, r.T, ev);
+      }
+      if (checkKo(s, ev)) return;
+      resonate(s, pi, ev);
       if (checkKo(s, ev)) return;
     }
     // clock shifts from triggered spells can release more reservations; loop again

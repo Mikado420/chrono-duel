@@ -1,5 +1,6 @@
 /** Synthesized sound effects (no audio files, no licensing). Starts silent until the first user gesture. */
-type Sfx = 'tick' | 'bell' | 'summon' | 'hit' | 'heavyHit' | 'base' | 'destroy' | 'cast' | 'reserve' | 'reveal' | 'draw' | 'select' | 'deny' | 'heal' | 'doom' | 'win' | 'lose' | 'clock';
+type Sfx = 'tick' | 'bell' | 'summon' | 'hit' | 'heavyHit' | 'base' | 'destroy' | 'cast' | 'reserve' | 'reveal' | 'draw' | 'select' | 'deny' | 'heal' | 'doom' | 'win' | 'lose' | 'clock' | 'echo'
+  | 'tear' | 'burst' | 'flip' | 'rareR' | 'rareE' | 'rareL' | 'coin' | 'charge';
 
 class Audio {
   private ctx: AudioContext | null = null;
@@ -66,6 +67,19 @@ class Audio {
       case 'heal': [660, 880, 1100].forEach((f, i) => this.tone(f, 0.3, 'sine', 0.07, i * 0.07)); break;
       case 'doom': this.tone(55, 1.6, 'sawtooth', 0.25, 0, 40); this.tone(58, 1.6, 'sawtooth', 0.2); this.noise(1.2, 0.3, 200); break;
       case 'win': [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.9, 'triangle', 0.12, i * 0.12)); break;
+      case 'echo': [880, 1320].forEach((f, i) => { this.tone(f, 0.5, 'sine', 0.05, i * 0.09); this.tone(f, 0.4, 'sine', 0.025, 0.22 + i * 0.09); }); break;
+      case 'tear': this.noise(0.45, 0.5, 2400, 0, 0.6); this.noise(0.3, 0.3, 5200, 0.12, 1.2); break;
+      case 'burst': this.tone(110, 0.9, 'sawtooth', 0.12, 0, 55); this.noise(0.8, 0.45, 900, 0, 0.5); [523, 784, 1047].forEach((f, i) => this.tone(f, 1.2, 'triangle', 0.06, 0.08 + i * 0.05)); break;
+      case 'flip': this.noise(0.09, 0.35, 3600, 0, 1.4); this.tone(1400, 0.05, 'sine', 0.03); break;
+      case 'rareR': [784, 1175].forEach((f, i) => this.tone(f, 0.6, 'sine', 0.08, i * 0.06)); break;
+      case 'rareE': [587, 880, 1175, 1480].forEach((f, i) => this.tone(f, 0.9, 'triangle', 0.08, i * 0.07)); this.noise(0.5, 0.15, 6000, 0.2, 2); break;
+      case 'rareL':
+        this.tone(65, 1.6, 'sawtooth', 0.14, 0, 130);
+        [523.25, 659.25, 783.99, 1046.5, 1318.5, 1567.98].forEach((f, i) => this.tone(f, 2.2 - i * 0.2, 'triangle', 0.1, 0.1 + i * 0.09));
+        [2093, 2637].forEach((f, i) => this.tone(f, 1.6, 'sine', 0.05, 0.7 + i * 0.12));
+        break;
+      case 'coin': this.tone(1568, 0.08, 'square', 0.04); this.tone(2093, 0.25, 'square', 0.04, 0.07); break;
+      case 'charge': this.tone(220, 0.5, 'sawtooth', 0.06, 0, 880); break;
       case 'lose': [392, 349, 311, 262].forEach((f, i) => this.tone(f, 0.9, 'triangle', 0.1, i * 0.18)); break;
     }
   }

@@ -7,6 +7,8 @@ import { BattleScene, type BattleConfig, type BattleResult } from './render/batt
 import { Fx } from './render/fx';
 import { COLORS, DESIGN } from './render/theme';
 import { Tweener } from './render/tween';
+import { PackOpenScene } from './render/packOpen';
+import { applyReward, canOpen, localDate, openPack, packById, reward, type Reward } from './meta/economy';
 import { codeFromHash } from './net/config';
 import { OnlineFlow } from './net/flow';
 import { registerServiceWorker } from './pwa';
@@ -51,6 +53,7 @@ async function boot() {
   resize();
 
   let lastCfg: BattleConfig | null = null;
+  let closePackRef: (() => void) | null = null;
   const root = document.getElementById('ui')!;
 
   const applySettings = () => {
@@ -71,6 +74,7 @@ async function boot() {
     while (logEl.children.length > 40) logEl.lastChild?.remove();
   };
   const endBattle = () => {
+    closePackRef?.();
     document.body.classList.remove('in-battle');
     logEl.replaceChildren(logEl.firstElementChild!);
     if (battle) { shake.removeChild(battle); battle.destroy(); battle = null; }
@@ -83,9 +87,36 @@ async function boot() {
     else if (r.winner === 1) rec.lose++;
     else rec.draw++;
     if (online) store.saveOnlineRecord(); else store.saveRecord();
+    // coins for playing
+    const today = localDate();
+    const rw: Reward = reward(store.wallet, { mode: online ? 'online' : 'ai', level: lastCfg?.level ?? 'normal', winner: r.winner, reason: r.reason, myActions: r.myActions, today });
+    applyReward(store.wallet, rw, today);
+    store.saveWallet();
     // the final board stays visible behind the result screen until the player moves on
-    if (online) screens.resultOnline(r, endBattle);
-    else screens.result(r, () => { screens.clear(); if (lastCfg) run(lastCfg); }, endBattle);
+    if (online) screens.resultOnline(r, endBattle, rw);
+    else screens.result(r, () => { screens.clear(); if (lastCfg) run(lastCfg); }, endBattle, rw);
+  };
+
+  // ---- booster packs
+  let packScene: PackOpenScene | null = null;
+  const closePack = () => { if (packScene) { shake.removeChild(packScene); packScene.destroy(); packScene = null; } fx.layer.removeChildren(); };
+  const openPackScene = (packId: string) => {
+    const pack = packById(packId);
+    if (!canOpen(store.wallet, pack)) return;
+    closePack();
+    screens.clear();
+    const o = openPack(store.wallet, pack);
+    store.saveWallet();
+    packScene = new PackOpenScene(tw, fx, app.ticker, o, {
+      again: () => {
+        const pay = canOpen(store.wallet, pack);
+        return { label: pay === 'ticket' ? 'チケット1枚' : pay ? `${pack.price} コイン` : `コイン不足（${store.wallet.coins}/${pack.price}）`, enabled: !!pay };
+      },
+      onAgain: () => openPackScene(packId),
+      onClose: () => { closePack(); screens.shop(); },
+    }, extra);
+    shake.addChild(packScene);
+    shake.addChild(fx.layer);
   };
   const run = (cfg: BattleConfig) => {
     endBattle();
@@ -113,14 +144,16 @@ async function boot() {
     startBattle: (link) => { screens.clear(); run({ myDeck: [], myDeckName: '', aiDeck: [], aiDeckName: link.foeName, level: 'normal', net: link }); },
     hasBattle: () => battle !== null,
   });
+  closePackRef = closePack;
   const screens: Screens = new Screens({
+    openPack: (id: string) => openPackScene(id),
     root,
     flow: () => flow,
     startBattle: (deck: DeckDef, ai: DeckDef, level) => run({ myDeck: deck.cards, myDeckName: deck.name, aiDeck: ai.cards, aiDeckName: ai.name, level }),
     applySettings,
   });
 
-  if (location.hash === '#debug' || /[?&]debug\b/.test(location.search)) (window as unknown as { __cd: unknown }).__cd = { battle: () => battle?.debug() };
+  if (location.hash === '#debug' || /[?&]debug\b/.test(location.search)) (window as unknown as { __cd: unknown }).__cd = { battle: () => battle?.debug(), app, screens };
   window.addEventListener('pointerdown', () => audio.unlock(), { once: true });
   document.getElementById('loading')?.remove();
   const invite = codeFromHash(location.hash);

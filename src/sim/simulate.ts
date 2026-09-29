@@ -1,6 +1,7 @@
 /* Balance simulator: `npm run sim -- [games] [levelA] [levelB]` */
 import { chooseAction, type AiLevel } from '../core/ai';
-import { PRESET_DECKS } from '../core/decks';
+import { PRESET_DECKS, validateDeck } from '../core/decks';
+import { PACK_TEST_DECKS } from './packDecks';
 import { actor, apply, createGame, mulberry32, type GameEvent, type PlayerIndex } from '../core/engine';
 
 import { RULES } from '../core/rules';
@@ -29,6 +30,7 @@ function play(deckA: string[], deckB: string[], seed: number, st: Stat): PlayerI
       if (e.e === 'cast') st.cardUse[e.card] = (st.cardUse[e.card] ?? 0) + 1;
       if (e.e === 'reserve') { st.resv++; st.cardUse['予約:' + e.card] = (st.cardUse['予約:' + e.card] ?? 0) + 1; }
       if (e.e === 'trigger') st.triggers++;
+      if (e.e === 'echo') played[e.pi].add(e.card);
     }
   }
   st.games++;
@@ -47,13 +49,15 @@ function play(deckA: string[], deckB: string[], seed: number, st: Stat): PlayerI
 const cardWin: Record<string, [number, number]> = {};
 const all = blank();
 const matrix: Record<string, Record<string, number>> = {};
+const DECKS = process.env.PACK === 'only' ? PACK_TEST_DECKS : process.env.PACK ? [...PRESET_DECKS, ...PACK_TEST_DECKS] : PRESET_DECKS;
+for (const d of DECKS) { const v = validateDeck(d.cards); if (!v.ok) throw new Error(`${d.id}: ${v.problems.join(', ')}`); }
 const t0 = Date.now();
 let seed = 1;
-for (const A of PRESET_DECKS) {
+for (const A of DECKS) {
   matrix[A.name] = {};
-  for (const B of PRESET_DECKS) {
+  for (const B of DECKS) {
     let aw = 0, n = 0;
-    for (let i = 0; i < N / PRESET_DECKS.length ** 2; i++) {
+    for (let i = 0; i < N / DECKS.length ** 2; i++) {
       const w = play(A.cards, B.cards, seed++, all);
       n++;
       if (w === 0) aw++;

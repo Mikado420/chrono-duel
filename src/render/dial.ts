@@ -9,7 +9,7 @@ import { label } from './ui';
 
 const TAU = Math.PI * 2;
 
-interface Pin { c: Container; pi: PlayerIndex; T: number; card: string | null; face: Container }
+interface Pin { c: Container; pi: PlayerIndex; T: number; card: string | null; face: Container; echo: boolean; stem: Graphics }
 
 /**
  * The shared clock. Two hands (yours and the opponent's) point at each side's time.
@@ -214,30 +214,59 @@ export class Dial extends Container {
   }
 
   // ---------------------------------------------------------- pins
-  pinPoint(T: number, pi: PlayerIndex) {
-    const same = [...this.pins.values()].filter((p) => p.T === T);
-    const off = same.length && same.some((p) => p.pi !== pi) ? (pi === 0 ? -0.6 : 0.6) : 0;
+  /** Where a pin for time T goes. Pins sharing a time fan out so none hides another. */
+  pinPoint(T: number, pi: PlayerIndex, echo = false, skip?: number) {
+    const same = [...this.pins.entries()].filter(([u, p]) => p.T === T && u !== skip).length;
+    const off = same === 0 ? 0 : (same % 2 ? 1 : -1) * Math.ceil(same / 2) * 0.62 * (pi === 0 ? -1 : 1);
+    void echo;
     return this.point(T + off, this.R + 46);
   }
-  addPin(uid: number, pi: PlayerIndex, T: number, card: string | null) {
+  addPin(uid: number, pi: PlayerIndex, T: number, card: string | null, echo = false) {
     const c = new Container();
-    const p = this.pinPoint(T, pi);
+    const p = this.pinPoint(T, pi, echo);
     c.x = p.x; c.y = p.y;
-    const color = pi === 0 ? COLORS.you : COLORS.foe;
     const stem = new Graphics();
-    const inner = this.point(T, this.R + 20);
-    stem.moveTo(inner.x - p.x, inner.y - p.y).lineTo(0, 0).stroke({ color, width: 2, alpha: 0.8 });
     const face = new Container();
-    this.drawPinFace(face, pi, card);
+    this.drawPinFace(face, pi, card, echo);
     c.addChild(stem, face);
     c.eventMode = 'static'; c.cursor = 'pointer';
     this.addChild(c);
-    this.pins.set(uid, { c, pi, T, card, face });
+    const pin = { c, pi, T, card, face, echo, stem };
+    this.pins.set(uid, pin);
+    this.drawStem(pin);
     return c;
   }
-  private drawPinFace(face: Container, pi: PlayerIndex, card: string | null) {
+  private drawStem(p: Pin) {
+    const inner = this.point(p.T, this.R + 20);
+    const color = p.pi === 0 ? COLORS.you : COLORS.foe;
+    p.stem.clear().moveTo(inner.x - p.c.x, inner.y - p.c.y).lineTo(0, 0).stroke({ color, width: p.echo ? 1.5 : 2, alpha: p.echo ? 0.55 : 0.8 });
+  }
+  /** Slides a pin to a new time (残響術士 pulls the future closer). */
+  async movePin(uid: number, T: number) {
+    const p = this.pins.get(uid);
+    if (!p) return;
+    const to = this.pinPoint(T, p.pi, p.echo, uid);
+    const fx = p.c.x, fy = p.c.y;
+    p.T = T;
+    await this.tw.run(420, (k) => { p.c.x = fx + (to.x - fx) * k; p.c.y = fy + (to.y - fy) * k; this.drawStem(p); });
+  }
+  private drawPinFace(face: Container, pi: PlayerIndex, card: string | null, echo = false) {
     face.removeChildren().forEach((ch) => ch.destroy());
     const color = pi === 0 ? COLORS.you : COLORS.foe;
+    if (echo) {
+      // echoes: round, smaller, with a ripple, and always face up
+      const g = new Graphics().circle(0, 0, 16).fill(COLORS.ink).circle(0, 0, 16).stroke({ color, width: 2.5 });
+      g.arc(0, 0, 21, -0.9, 0.9).stroke({ color, width: 1.5, alpha: 0.7 }).arc(0, 0, 21, Math.PI - 0.9, Math.PI + 0.9).stroke({ color, width: 1.5, alpha: 0.7 });
+      face.addChild(g);
+      if (card) {
+        const s = new Sprite(Texture.from(cardArt(card, 80, 80)));
+        s.anchor.set(0.5); s.width = 26; s.height = 26;
+        const m = new Graphics().circle(0, 0, 13).fill(0xffffff);
+        s.mask = m; s.alpha = 0.85;
+        face.addChild(m, s);
+      }
+      return;
+    }
     const g = new Graphics().poly([0, -22, 20, 0, 0, 22, -20, 0]).fill(COLORS.ink).poly([0, -22, 20, 0, 0, 22, -20, 0]).stroke({ color, width: 3 });
     face.addChild(g);
     if (card) {
@@ -258,7 +287,7 @@ export class Dial extends Container {
     const p = this.pins.get(uid);
     if (!p) return;
     p.card = card;
-    this.drawPinFace(p.face, p.pi, card);
+    this.drawPinFace(p.face, p.pi, card, p.echo);
     void this.tw.run(360, (k) => p.face.scale.set(1 + Math.sin(k * Math.PI) * 0.6));
   }
   async removePin(uid: number, mode: 'fire' | 'break') {
@@ -274,6 +303,6 @@ export class Dial extends Container {
   describePin(uid: number) {
     const p = this.pins.get(uid);
     if (!p) return '';
-    return p.card ? `${cardDef(p.card).name}（${p.T}刻）` : `相手の予約（${p.T}刻）`;
+    return p.card ? `${cardDef(p.card).name}${p.echo ? 'の残響' : ''}（${p.T}刻）` : `相手の予約（${p.T}刻）`;
   }
 }

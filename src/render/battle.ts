@@ -1,8 +1,8 @@
 import { Container, FederatedPointerEvent, Graphics, type Sprite, type Ticker } from 'pixi.js';
 import { chooseAction, type AiLevel } from '../core/ai';
-import { cardDef } from '../core/cards';
+import { KEYWORD_HELP, cardDef, keywordsOf } from '../core/cards';
 import {
-  actor, apply, attackTarget, createGame, legalActions, other, resvRange,
+  actor, apply, attackTarget, cardCost, createGame, legalActions, other, resvCount, resvRange,
   type Action, type GameEvent, type GameState, type PlayerIndex, type Target,
 } from '../core/engine';
 import type { NetLink, NetResult, ServerMsg } from '../core/net';
@@ -25,7 +25,7 @@ export interface BattleConfig {
   /** Online match: the opponent is a person and the server owns the game state. */
   net?: NetLink;
 }
-export interface BattleResult { winner: PlayerIndex | -1; reason: 'ko' | 'time' | 'surrender' | 'timeout' | 'disconnect'; myHp: number; foeHp: number; actions: number }
+export interface BattleResult { winner: PlayerIndex | -1; reason: 'ko' | 'time' | 'surrender' | 'timeout' | 'disconnect'; myHp: number; foeHp: number; actions: number; myActions: number }
 
 const LANE_X = [150, 360, 570];
 /** Vertical layout in design units. Tall phones get extra height, which is shared out by `applyLayout`. */
@@ -38,7 +38,9 @@ type Mode =
   | { k: 'idle' }
   | { k: 'lane'; uid: number }
   | { k: 'resv'; uid: number; T: number }
-  | { k: 'attack'; lane: number };
+  | { k: 'attack'; lane: number }
+  /** 充填: choosing how much extra time to pay. `lane` is set for units. */
+  | { k: 'charge'; uid: number; x: number; lane: number | null };
 
 /** The match screen: board, hands, clock, and the event-driven animation player. */
 export class BattleScene extends Container {
@@ -81,6 +83,8 @@ export class BattleScene extends Container {
   private foeAway: number | null = null;
   private linkDown = false;
   private timerShown = '';
+  /** Actions the player took (rewards need a real match, not an instant surrender). */
+  private myActs = 0;
 
   private get foe(): string { return this.cfg.net?.foeName ?? 'AI'; }
 
@@ -244,7 +248,7 @@ export class BattleScene extends Container {
     const o = this.netResult ?? this.s.over!;
     await this.tw.wait(500);
     if (this.destroyed_) return;
-    this.onEnd({ winner: o.winner, reason: o.reason, myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions });
+    this.onEnd({ winner: o.winner, reason: o.reason, myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs });
   }
   // ------------------------------------------------------------------ online play
   private async startOnline(net: NetLink) {
@@ -336,12 +340,12 @@ export class BattleScene extends Container {
   }
 
   /** Test hook (only exposed with #debug in the URL). */
-  debug() { return { s: this.s, busy: this.busy, mode: this.mode.k, act: (a: Action) => this.tryAction(a), auto: () => (this.cfg.net ? legalActions(this.s, 0).filter((x) => x.t !== 'wait' && x.t !== 'draw')[0] ?? { t: 'wait' } : chooseAction(this.s, 0, 'normal')), finished: this.finished }; }
+  debug() { return { s: this.s, busy: this.busy, mode: this.mode.k, use: (uid: number, lane: number | null) => this.use(uid, lane), act: (a: Action) => this.tryAction(a), auto: () => (this.cfg.net ? legalActions(this.s, 0).filter((x) => x.t !== 'wait' && x.t !== 'draw')[0] ?? { t: 'wait' } : chooseAction(this.s, 0, 'normal')), finished: this.finished }; }
   surrender() {
     if (this.cfg.net) { this.cfg.net.send({ t: 'surrender' }); return; }
     if (this.s.over) return;
     this.busy = true;
-    this.onEnd({ winner: 1, reason: 'surrender', myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions });
+    this.onEnd({ winner: 1, reason: 'surrender', myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs });
   }
 
   // ------------------------------------------------------------------ sync
@@ -359,9 +363,11 @@ export class BattleScene extends Container {
     hand.forEach((h, i) => {
       const v = this.handViews.get(h.uid)!;
       const p = pos(i);
-      const selected = (this.mode.k === 'lane' || this.mode.k === 'resv') && this.mode.uid === h.uid;
+      const selected = (this.mode.k === 'lane' || this.mode.k === 'resv' || this.mode.k === 'charge') && this.mode.uid === h.uid;
       v.homeX = p.x; v.homeY = p.y - (selected ? 46 : 0); v.homeR = selected ? 0 : p.r; v.homeS = selected ? 0.66 : 0.6;
       v.highlight(selected);
+      const c = cardCost(this.s, 0, h.card);
+      v.setCost(c !== cardDef(h.card).cost ? c : null);
       this.handLayer.setChildIndex(v, Math.min(i, this.handLayer.children.length - 1));
       if (this.drag?.view === v) return;
       if (animate) { void this.tw.to(v, { x: v.homeX, y: v.homeY, rotation: v.homeR }, 260); void this.tw.to(v.scale, { x: v.homeS, y: v.homeS }, 260); }
@@ -416,7 +422,7 @@ export class BattleScene extends Container {
         v.setReady(u.readyAt, p.time, u.reload);
       });
       this.huds[pi].setHp(p.hp);
-      this.huds[pi].setInfo(p.deck.length, pi === 1 ? p.hand.length : null, p.resv.length);
+      this.huds[pi].setInfo(p.deck.length, pi === 1 ? p.hand.length : null, resvCount(p), p.resv.length - resvCount(p));
       void this.dial.setHand(pi, p.time, false);
       // pins
       const want = new Set(p.resv.map((r) => r.uid));
@@ -424,8 +430,11 @@ export class BattleScene extends Container {
       for (const r of p.resv) {
         const info = this.dial.pinInfo(r.uid);
         const show = pi === 0 || r.revealed ? r.card : null;
-        if (!info) this.dial.addPin(r.uid, pi, r.T, show).on('pointertap', (e) => { e.stopPropagation(); this.onPinTap(r.uid); });
-        else if (show && !info.card) this.dial.revealPin(r.uid, show);
+        if (!info) this.dial.addPin(r.uid, pi, r.T, show, !!r.echo).on('pointertap', (e) => { e.stopPropagation(); this.onPinTap(r.uid); });
+        else {
+          if (show && !info.card) this.dial.revealPin(r.uid, show);
+          if (info.T !== r.T) void this.dial.movePin(r.uid, r.T);
+        }
       }
     }
     for (const [uid, v] of this.unitViews) if (!alive.has(uid)) { v.destroy({ children: true }); this.unitViews.delete(uid); }
@@ -491,14 +500,14 @@ export class BattleScene extends Container {
     if (m.k === 'idle') { this.clearForecast(); this.layoutHand(); return; }
     if (m.k === 'lane') {
       const h = this.s.players[0].hand.find((x) => x.uid === m.uid)!;
-      this.forecast(cardDef(h.card).cost);
+      this.forecast(cardCost(this.s, 0, h.card));
       this.showLaneHi(this.emptyLanes());
       this.bar([['やめる', 'plain', () => this.setMode({ k: 'idle' })]], '召喚するレーンをタップ');
     }
     if (m.k === 'resv') {
       const h = this.s.players[0].hand.find((x) => x.uid === m.uid)!;
       const d = cardDef(h.card);
-      this.forecast(d.cost);
+      this.forecast(cardCost(this.s, 0, d.id));
       this.dial.showCursor(m.T, true);
       this.bar([
         ['−', 'plain', () => this.nudgeResv(-1)],
@@ -506,6 +515,21 @@ export class BattleScene extends Container {
         [`${m.T}刻に予約`, 'primary', () => this.tryAction({ t: 'reserve', hand: m.uid, T: m.T })],
         ['＋', 'plain', () => this.nudgeResv(1)],
       ], '時計をタップ／ドラッグして発動時刻を選ぶ');
+    }
+    if (m.k === 'charge') {
+      const h = this.s.players[0].hand.find((x) => x.uid === m.uid)!;
+      const d = cardDef(h.card);
+      const cost = cardCost(this.s, 0, h.card) + m.x;
+      this.forecast(cost);
+      if (m.lane !== null) this.showLaneHi([m.lane], COLORS.you);
+      const act: Action = d.kind === 'unit' ? { t: 'play', hand: m.uid, lane: m.lane!, x: m.x } : { t: 'cast', hand: m.uid, x: m.x };
+      const nudge = (k: number) => { const x = Math.max(0, Math.min(d.charge!, m.x + k)); if (x !== m.x) { audio.play('tick'); this.setMode({ ...m, x }); } };
+      this.bar([
+        ['−', 'plain', () => nudge(-1)],
+        ['やめる', 'plain', () => { this.flyFrom = null; this.setMode({ k: 'idle' }); }],
+        [`${d.kind === 'unit' ? '召喚' : '使う'}（${cost}刻）`, 'primary', () => void this.tryAction(act)],
+        ['＋', 'plain', () => nudge(1)],
+      ], this.chargeHint(h.card, m.x));
     }
     if (m.k === 'attack') {
       const v = this.viewAt(0, m.lane);
@@ -537,7 +561,7 @@ export class BattleScene extends Container {
   private nudgeResv(d: number) {
     if (this.mode.k !== 'resv') return;
     const h = this.s.players[0].hand.find((x) => x.uid === (this.mode as { uid: number }).uid)!;
-    const r = resvRange(this.s, 0, cardDef(h.card).cost)!;
+    const r = resvRange(this.s, 0, cardCost(this.s, 0, h.card))!;
     const T = Math.max(r[0], Math.min(r[1], this.mode.T + d));
     this.setMode({ k: 'resv', uid: this.mode.uid, T });
   }
@@ -582,7 +606,7 @@ export class BattleScene extends Container {
         void this.tw.to(d.view.scale, { x: 0.5, y: 0.5 }, 120);
         d.view.rotation = 0;
         const def = cardDef(d.view.card);
-        this.forecast(def.cost);
+        this.forecast(cardCost(this.s, 0, def.id));
         if (def.kind === 'unit') this.showLaneHi(this.emptyLanes());
       }
       if (d.moved) {
@@ -593,15 +617,15 @@ export class BattleScene extends Container {
           this.showLaneHi(this.emptyLanes(), COLORS.brass);
           if (l >= 0 && !this.s.players[0].field[l]) this.showLaneHi([l], COLORS.you);
         } else {
-          const r = this.s.players[0].resv.length < RULES.MAX_RESV ? resvRange(this.s, 0, def.cost) : null;
+          const r = resvCount(this.s.players[0]) < RULES.MAX_RESV ? resvRange(this.s, 0, cardCost(this.s, 0, def.id)) : null;
           if (this.dial.hit(p.x, p.y)) {
             const T = this.dial.tFromPoint(p.x, p.y);
             this.dial.showCursor(r ? Math.max(r[0], Math.min(r[1], T)) : T, !!r);
-            this.dial.setStatus('予約', r ? `離すと ${Math.max(r[0], Math.min(r[1], T))}刻に予約（${def.cost}刻）` : '予約できません（上限か時刻が足りない）', 'you');
+            this.dial.setStatus('予約', r ? `離すと ${Math.max(r[0], Math.min(r[1], T))}刻に予約（${cardCost(this.s, 0, def.id)}刻）` : '予約できません（上限か時刻が足りない）', 'you');
           } else {
             this.dial.showCursor(null);
-            if (p.y < L.youHud - 30) this.dial.setStatus('今すぐ使う', `離すと発動（${def.cost}刻）・時計に重ねると予約`, 'you');
-            else this.forecast(def.cost);
+            if (p.y < L.youHud - 30) this.dial.setStatus('今すぐ使う', `離すと発動（${cardCost(this.s, 0, def.id)}刻）・時計に重ねると予約`, 'you');
+            else this.forecast(cardCost(this.s, 0, def.id));
           }
         }
       }
@@ -624,14 +648,14 @@ export class BattleScene extends Container {
       const def = cardDef(d.view.card);
       if (def.kind === 'unit') {
         const l = this.laneAt(p.x, p.y);
-        if (l >= 0 && !this.s.players[0].field[l]) { this.flyFrom = { x: d.view.x, y: d.view.y }; void this.tryAction({ t: 'play', hand: d.view.uid, lane: l }); return; }
+        if (l >= 0 && !this.s.players[0].field[l]) { this.flyFrom = { x: d.view.x, y: d.view.y }; this.use(d.view.uid, l); return; }
       } else {
-        const r = this.s.players[0].resv.length < RULES.MAX_RESV ? resvRange(this.s, 0, def.cost) : null;
+        const r = resvCount(this.s.players[0]) < RULES.MAX_RESV ? resvRange(this.s, 0, cardCost(this.s, 0, def.id)) : null;
         if (this.dial.hit(p.x, p.y)) {
           if (r) { const T = Math.max(r[0], Math.min(r[1], this.dial.tFromPoint(p.x, p.y))); this.flyFrom = { x: d.view.x, y: d.view.y }; void this.tryAction({ t: 'reserve', hand: d.view.uid, T }); return; }
           audio.play('deny');
-          this.toast(this.s.players[0].resv.length >= RULES.MAX_RESV ? `予約は${RULES.MAX_RESV}枚までです` : '予約するには時間が足りません');
-        } else if (p.y < L.youHud - 30) { this.flyFrom = { x: d.view.x, y: d.view.y }; void this.tryAction({ t: 'cast', hand: d.view.uid }); return; }
+          this.toast(resvCount(this.s.players[0]) >= RULES.MAX_RESV ? `予約は${RULES.MAX_RESV}枚までです` : '予約するには時間が足りません');
+        } else if (p.y < L.youHud - 30) { this.flyFrom = { x: d.view.x, y: d.view.y }; this.use(d.view.uid, null); return; }
       }
       this.dial.showCursor(null);
       this.laneHi.clear();
@@ -657,9 +681,10 @@ export class BattleScene extends Container {
     const p = this.local(e);
     if (this.mode.k === 'lane') {
       const l = this.laneAt(p.x, p.y);
-      if (l >= 0 && !this.s.players[0].field[l]) { const uid = this.mode.uid; this.flyFrom = this.handPos(uid); void this.tryAction({ t: 'play', hand: uid, lane: l }); }
+      if (l >= 0 && !this.s.players[0].field[l]) { const uid = this.mode.uid; this.flyFrom = this.handPos(uid); this.use(uid, l); }
       return;
     }
+    if (this.mode.k === 'charge') { if (Math.abs(p.y - L.bar) < 70) return; this.setMode({ k: 'idle' }); return; }
     if (this.mode.k === 'resv') { if (this.dial.hit(p.x, p.y)) this.pickResvAt(p.x, p.y); return; }
     if (this.mode.k === 'attack' && Math.abs(p.y - L.bar) < 70) return;
     if (this.mode.k !== 'idle') this.setMode({ k: 'idle' });
@@ -667,15 +692,32 @@ export class BattleScene extends Container {
   private pickResvAt(x: number, y: number) {
     if (this.mode.k !== 'resv') return;
     const h = this.s.players[0].hand.find((q) => q.uid === (this.mode as { uid: number }).uid)!;
-    const r = resvRange(this.s, 0, cardDef(h.card).cost)!;
+    const r = resvRange(this.s, 0, cardCost(this.s, 0, h.card))!;
     const T = Math.max(r[0], Math.min(r[1], this.dial.tFromPoint(x, y)));
     if (T !== this.mode.T) { audio.play('tick'); this.setMode({ k: 'resv', uid: this.mode.uid, T }); }
   }
   private onPinTap(uid: number) {
     const info = this.dial.pinInfo(uid);
     if (!info) return;
-    if (info.card) this.inspectCard(info.card, [`${info.pi === 0 ? 'あなた' : this.foe}の予約：両者の時計が${info.T}刻に達すると発動`]);
+    if (info.card && info.echo) this.inspectCard(info.card, [`${info.pi === 0 ? 'あなた' : this.foe}の残響：両者の時計が${info.T}刻に達すると、弱い効果がもう一度起きる`]);
+    else if (info.card) this.inspectCard(info.card, [`${info.pi === 0 ? 'あなた' : this.foe}の予約：両者の時計が${info.T}刻に達すると発動`]);
     else this.toast(`${this.foe}の予約：${info.T}刻に発動（中身は不明）`);
+  }
+  /** Use a card right away. 充填 cards first ask how much extra time to pay. */
+  private use(uid: number, lane: number | null) {
+    const h = this.s.players[0].hand.find((x) => x.uid === uid);
+    if (!h) return;
+    const d = cardDef(h.card);
+    this.flyFrom ??= this.handPos(uid);
+    if (d.charge) { this.setMode({ k: 'charge', uid, x: 0, lane }); return; }
+    void this.tryAction(d.kind === 'unit' ? { t: 'play', hand: uid, lane: lane! } : { t: 'cast', hand: uid });
+  }
+  private chargeHint(card: string, x: number): string {
+    const d = cardDef(card);
+    const head = `充填 ${x}/${d.charge}`;
+    if (d.kind === 'unit') return `${head}：攻撃${d.atk! + x}・体力${d.hp! + x}${card === 'e_colossus' && x >= 2 ? '・挑発' : ''}`;
+    if (d.effect === 'eSlash') return `${head}：敵ユニットに${2 + x}ダメージ`;
+    return head;
   }
   private handPos(uid: number) { const v = this.handViews.get(uid); return v ? { x: v.x, y: v.y } : null; }
 
@@ -747,28 +789,34 @@ export class BattleScene extends Container {
       });
     });
   }
+  /** One line per keyword on the card, so new mechanics explain themselves. */
+  private keywordNotes(card: string): string[] {
+    return keywordsOf(cardDef(card)).filter((k) => KEYWORD_HELP[k]).map((k) => `${k}：${KEYWORD_HELP[k]}`);
+  }
   private inspectHand(v: HandCardView) {
     const d = cardDef(v.card);
     const mine = !this.busy && actor(this.s) === 0;
-    this.forecast(d.cost);
-    if (!mine) { this.inspectCard(v.card, [`${this.foe}の番の間は見るだけです`]); return; }
+    this.forecast(cardCost(this.s, 0, d.id));
+    const kn = this.keywordNotes(v.card);
+    const rushNote = d.rush && cardCost(this.s, 0, v.card) !== d.cost ? [`急襲が有効：いまは${cardCost(this.s, 0, v.card)}刻で使えます`] : [];
+    if (!mine) { this.inspectCard(v.card, [...kn, `${this.foe}の番の間は見るだけです`]); return; }
     if (d.kind === 'unit') {
       const empty = this.emptyLanes();
-      this.inspectCard(v.card, [empty.length ? 'ドラッグしてレーンに置いても召喚できます' : '空いているレーンがありません'], [
+      this.inspectCard(v.card, [...rushNote, ...kn, empty.length ? 'ドラッグしてレーンに置いても召喚できます' : '空いているレーンがありません'], [
         ['閉じる', 'plain', () => { this.closeModal(); this.clearForecast(); }],
-        [`召喚する（${d.cost}刻）`, 'primary', () => {
+        [`召喚する（${cardCost(this.s, 0, d.id)}刻）`, 'primary', () => {
           this.closeModal();
-          if (empty.length === 1) { this.flyFrom = this.handPos(v.uid); void this.tryAction({ t: 'play', hand: v.uid, lane: empty[0] }); }
+          if (empty.length === 1) { this.flyFrom = this.handPos(v.uid); this.use(v.uid, empty[0]); }
           else this.setMode({ k: 'lane', uid: v.uid });
         }, !empty.length],
       ]);
     } else {
-      const r = this.s.players[0].resv.length < RULES.MAX_RESV ? resvRange(this.s, 0, d.cost) : null;
-      const note = r ? 'ドラッグして盤面で離すと使用、時計に重ねると予約' : this.s.players[0].resv.length >= RULES.MAX_RESV ? `予約は${RULES.MAX_RESV}枚までです` : '予約できる時刻が残っていません';
-      this.inspectCard(v.card, [note], [
+      const r = resvCount(this.s.players[0]) < RULES.MAX_RESV ? resvRange(this.s, 0, cardCost(this.s, 0, d.id)) : null;
+      const note = r ? 'ドラッグして盤面で離すと使用、時計に重ねると予約' : resvCount(this.s.players[0]) >= RULES.MAX_RESV ? `予約は${RULES.MAX_RESV}枚までです` : '予約できる時刻が残っていません';
+      this.inspectCard(v.card, [...rushNote, ...kn, note], [
         ['閉じる', 'plain', () => { this.closeModal(); this.clearForecast(); }],
         [`予約する`, 'plain', () => { this.closeModal(); this.setMode({ k: 'resv', uid: v.uid, T: Math.min(r![1], r![0] + 2) }); }, !r],
-        [`今すぐ使う（${d.cost}刻）`, 'primary', () => { this.closeModal(); this.flyFrom = this.handPos(v.uid); void this.tryAction({ t: 'cast', hand: v.uid }); }],
+        [`今すぐ使う（${cardCost(this.s, 0, d.id)}刻）`, 'primary', () => { this.closeModal(); this.flyFrom = this.handPos(v.uid); this.use(v.uid, null); }],
       ]);
     }
   }
@@ -778,6 +826,7 @@ export class BattleScene extends Container {
     if (!u) return;
     const left = u.readyAt - this.s.players[pi].time;
     this.inspectCard(u.card, [
+      ...this.keywordNotes(u.card).filter((n) => !n.startsWith('急襲') && !n.startsWith('充填')),
       `現在 攻撃${u.atk} ・ 体力${u.hp}/${u.maxHp}`,
       left <= 0 ? '攻撃できます' : `あと${left}刻で攻撃可能（${u.readyAt}刻）`,
     ]);
@@ -833,7 +882,8 @@ export class BattleScene extends Container {
       case 'summon': return this.onLog(`${nm(e.pi)}：${cn(e.unit.card)}を召喚`, e.pi);
       case 'cast': return this.onLog(`${nm(e.pi)}：${cn(e.card)}を使用`, e.pi);
       case 'reserve': return this.onLog(e.pi === 0 ? `あなた：${cn(e.card)}を${e.T}刻に予約` : `${this.foe}：${e.T}刻に予約`, e.pi);
-      case 'trigger': return this.onLog(`${e.T}刻 ${nm(e.pi)}の予約${cn(e.card)}が発動`, e.pi);
+      case 'trigger': return this.onLog(e.echo ? `${e.T}刻 ${nm(e.pi)}の${cn(e.card)}が残響` : `${e.T}刻 ${nm(e.pi)}の予約${cn(e.card)}が発動`, e.pi);
+      case 'echo': return this.onLog(`${nm(e.pi)}：${cn(e.card)}の残響が${e.T}刻に響く`, e.pi);
       case 'attack': { const u = this.s.players[e.pi].field[e.lane]; return this.onLog(`${nm(e.pi)}：${u ? cn(u.card) : 'ユニット'}が${e.target ? '攻撃' : '拠点を攻撃'}`, e.pi); }
       case 'dmgBase': return this.onLog(`${nm(e.pi)}の拠点に${e.amount}ダメージ（残り${Math.max(0, e.hp)}）`, other(e.pi));
       case 'destroy': return this.onLog(`${nm(e.pi)}の${cn(e.unit.card)}が破壊された`, other(e.pi));
@@ -852,6 +902,7 @@ export class BattleScene extends Container {
     switch (e.e) {
       case 'act': {
         const a = e.action;
+        if (e.pi === 0) this.myActs++;
         if (e.pi === 0 && (a.t === 'play' || a.t === 'cast' || a.t === 'reserve')) {
           const v = this.handViews.get(a.hand);
           if (v) { this.flyFrom ??= { x: v.x, y: v.y }; v.destroy({ children: true }); this.handViews.delete(a.hand); this.layoutHand(); }
@@ -912,7 +963,7 @@ export class BattleScene extends Container {
       case 'deckout': this.toast(`${e.pi === 0 ? 'あなた' : this.foe}：山札がありません`); await tw.wait(400); break;
       case 'summon': {
         const to = { x: LANE_X[e.lane], y: ROW_Y[e.pi] };
-        if (e.pi === 1) {
+        if (e.pi === 1 && e.fromHand >= 0) {
           const s = await this.present(e.unit.card, this.flyFrom ?? FOE_HAND_POS, true);
           await this.fly(s, { x: s.x, y: s.y }, to, s.scale.x, 0.52, 260);
           s.destroy();
@@ -959,8 +1010,38 @@ export class BattleScene extends Container {
         await tw.wait(e.pi === 1 ? 600 : 150);
         break;
       }
+      case 'echo': {
+        const pin = this.dial.addPin(e.uid, e.pi, e.T, e.card, true);
+        pin.on('pointertap', (ev) => { ev.stopPropagation(); this.onPinTap(e.uid); });
+        const at = this.dial.pinAt(e.uid)!;
+        audio.play('echo');
+        void fx.ring(at.x, at.y, e.pi === 0 ? COLORS.you : COLORS.foe, 4, 46, 520, 3);
+        void fx.floatText(at.x, at.y - 18, '残響', 0x8ff0e0, 20, 26, 700);
+        await tw.wait(220);
+        break;
+      }
+      case 'moveResv': {
+        const at = this.dial.pinAt(e.uid);
+        if (at) void fx.ring(at.x, at.y, 0x8ff0e0, 4, 40, 400, 3);
+        audio.play('clock');
+        await this.dial.movePin(e.uid, e.T);
+        break;
+      }
       case 'trigger': {
         const at = this.dial.pinAt(e.uid) ?? this.dial.point(e.T, this.dial.R + 46);
+        if (e.echo) {
+          // echoes are frequent and public: a quick ripple instead of the full reservation reveal
+          audio.play('echo');
+          void this.dial.removePin(e.uid, 'fire');
+          for (let i = 0; i < 3; i++) void fx.ring(at.x, at.y, 0x8ff0e0, 6, 70 + i * 40, 520 + i * 120, 4);
+          const s = makeFace(e.card); s.alpha = 0.85;
+          await this.fly(s, at, { x: 360, y: 560 }, 0.08, 0.42, 240);
+          void fx.floatText(360, 430, '残響', 0x8ff0e0, 34, 30, 700);
+          await tw.wait(260);
+          await Promise.all([tw.to(s, { alpha: 0 }, 180), tw.to(s.scale, { x: 0.5, y: 0.5 }, 180)]);
+          s.destroy();
+          break;
+        }
         audio.play('reveal');
         void fx.ring(at.x, at.y, COLORS.brass, 6, 110, 600, 8);
         void this.dial.removePin(e.uid, 'fire');

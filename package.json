@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "sim": "tsx src/sim/simulate.ts",
     "test:net": "tsx src/sim/nettest.ts",
+    "test:econ": "tsx src/sim/econtest.ts",
     "dev:server": "tsx server/dev.ts"
   },
   "dependencies": {

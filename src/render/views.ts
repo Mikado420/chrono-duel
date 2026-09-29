@@ -57,7 +57,7 @@ export class UnitView extends Container {
     const name = label(d.name, 18, COLORS.ivory, { font: FONTS.display, weight: '700', align: 'center' });
     name.anchor.set(0.5); name.y = H / 2 - 70;
     if (name.width > W - 16) name.scale.set((W - 16) / name.width);
-    const kw = [u.taunt ? '挑発' : '', u.pierce ? '貫通' : ''].filter(Boolean).join('・');
+    const kw = [u.taunt ? '挑発' : '', u.pierce ? '貫通' : '', d.hook?.startsWith('resonate') ? '共鳴' : ''].filter(Boolean).join('・');
     const kwTxt = label(kw, 13, COLORS.brass, { weight: '700', align: 'center' });
     kwTxt.anchor.set(0.5); kwTxt.y = H / 2 - 48;
     const ag = gem(COLORS.atk); ag.x = -W / 2 + 26; ag.y = H / 2 - 22;
@@ -132,6 +132,7 @@ export class HandCardView extends Container {
   readonly card: string;
   private sprite: Sprite;
   private glow = new Graphics();
+  private costBadge = new Container();
   homeX = 0; homeY = 0; homeR = 0; homeS = 0.5;
   constructor(uid: number, card: string) {
     super();
@@ -140,12 +141,24 @@ export class HandCardView extends Container {
     this.sprite.anchor.set(0.5);
     this.glow.roundRect(-176, -244, 352, 488, 28).stroke({ color: COLORS.brass, width: 8 });
     this.glow.visible = false;
-    this.addChild(this.glow, this.sprite);
+    this.addChild(this.glow, this.sprite, this.costBadge);
     this.scale.set(0.5);
     this.eventMode = 'static';
     this.cursor = 'grab';
   }
   highlight(on: boolean) { this.glow.visible = on; }
+  /** Shows the cost actually paid right now when 急襲 lowers it (null hides the badge). */
+  setCost(cost: number | null) {
+    this.costBadge.removeChildren().forEach((c) => c.destroy());
+    if (cost === null) return;
+    const g = new Graphics().circle(0, 0, 34).fill(0x0f3a31).circle(0, 0, 34).stroke({ color: COLORS.you, width: 4 });
+    const t = label(String(cost), 38, 0xffffff, { font: FONTS.num, weight: '700', align: 'center' });
+    t.anchor.set(0.5); t.y = 1;
+    const tag = label('急襲', 16, COLORS.you, { weight: '700', align: 'center' });
+    tag.anchor.set(0.5); tag.y = 50;
+    this.costBadge.addChild(g, t, tag);
+    this.costBadge.x = -120; this.costBadge.y = -200;
+  }
 }
 
 /** Card back used for the opponent's hand and for flights. */
@@ -206,8 +219,8 @@ export class Hud extends Container {
     this.glow.clear().circle(0, 0, 44).stroke({ color: col, width: 6, alpha: a }).circle(0, 0, 52).stroke({ color: col, width: 3, alpha: a * 0.4 });
   }
   setHp(hp: number) { this.hp = hp; this.hpTxt.text = String(Math.max(0, hp)); this.hpTxt.style.fill = hp <= 5 ? 0xff8f7a : 0xffffff; this.drawBar(); }
-  setInfo(deck: number, hand: number | null, resv: number) {
-    this.info.text = `山札 ${deck}` + (hand !== null ? `　手札 ${hand}` : '') + `　予約 ${resv}/${RULES.MAX_RESV}`;
+  setInfo(deck: number, hand: number | null, resv: number, echoes = 0) {
+    this.info.text = `山札 ${deck}` + (hand !== null ? `　手札 ${hand}` : '') + `　予約 ${resv}/${RULES.MAX_RESV}` + (echoes ? `　残響 ${echoes}` : '');
   }
   get center() { return { x: this.x + this.medal.x, y: this.y }; }
   async hit(tw: Tweener) {

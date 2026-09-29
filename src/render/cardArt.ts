@@ -1,4 +1,4 @@
-import { cardDef, type CardDef } from '../core/cards';
+import { RARITY_NAMES, cardDef, setOf, type CardDef } from '../core/cards';
 import { CSS, FONTS } from './theme';
 
 /** Procedural card art and card faces drawn with Canvas2D, shared by the Pixi board and the DOM deck editor. */
@@ -24,6 +24,7 @@ const MOTIF_HUE: Record<CardDef['motif'], [string, string, string]> = {
   shield: ['#2f3238', '#0c0d10', '#d8dde6'],
   flame: ['#4a1f18', '#150705', '#ffab6b'],
   crown: ['#3e3016', '#130e04', '#ffd66e'],
+  wave: ['#16323f', '#050d14', '#8ff0e0'],
 };
 
 type Ctx = CanvasRenderingContext2D;
@@ -95,6 +96,16 @@ function motifPath(c: Ctx, m: CardDef['motif'], cx: number, cy: number, r: numbe
       c.moveTo(cx - r, cy + r * 0.6); c.lineTo(cx - r, cy - r * 0.4); c.lineTo(cx - r * 0.5, cy + r * 0.05); c.lineTo(cx, cy - r * 0.8); c.lineTo(cx + r * 0.5, cy + r * 0.05); c.lineTo(cx + r, cy - r * 0.4); c.lineTo(cx + r, cy + r * 0.6); c.closePath();
       for (const x of [-1, 0, 1]) { const px = cx + x * r * (x ? 1 : 0), py = cy + (x ? -r * 0.4 : -r * 0.8); c.moveTo(px + r * 0.1, py - r * 0.1); c.arc(px, py - r * 0.1, r * 0.1, 0, Math.PI * 2); }
       break;
+    case 'wave': {
+      // a struck point and the ripples it leaves behind
+      const ox = cx - r * 0.75;
+      c.moveTo(ox + r * 0.16, cy); c.arc(ox, cy, r * 0.16, 0, Math.PI * 2);
+      for (let k = 1; k <= 4; k++) {
+        const rr = r * (0.35 + k * 0.3), sp = 0.95 - k * 0.08;
+        c.moveTo(ox + Math.cos(-sp) * rr, cy + Math.sin(-sp) * rr); c.arc(ox, cy, rr, -sp, sp);
+      }
+      break;
+    }
   }
 }
 
@@ -131,6 +142,15 @@ export function cardArt(id: string, w = 300, h = 230): HTMLCanvasElement {
   c.globalAlpha = 1;
   // motif, glowing line art
   const r = Math.min(w, h) * (d.kind === 'unit' ? 0.3 : 0.27) * (d.rarity === 'L' ? 1.12 : 1);
+  if (setOf(d) === 'echo') {
+    // the set's signature: an after-image trailing the emblem
+    c.save(); c.lineJoin = 'round'; c.lineCap = 'round';
+    for (const [dx, al] of [[-w * 0.09, 0.28], [-w * 0.17, 0.14]] as const) {
+      motifPath(c, d.motif, cx + dx, cy, r, rng(hash(id) + 7));
+      c.globalAlpha = al; c.strokeStyle = glow; c.lineWidth = 2; c.stroke();
+    }
+    c.restore();
+  }
   c.save();
   c.shadowColor = glow; c.shadowBlur = 18;
   c.lineJoin = 'round'; c.lineCap = 'round';
@@ -168,7 +188,7 @@ function wrapText(c: Ctx, text: string, maxW: number): string[] {
   return lines;
 }
 
-const RARITY_EDGE: Record<string, [string, string]> = { C: ['#7d8b8f', '#3b4549'], R: ['#8fd9c8', '#2b6f63'], L: ['#ffe29a', '#a8741f'] };
+const RARITY_EDGE: Record<string, [string, string]> = { C: ['#7d8b8f', '#3b4549'], R: ['#8fd9c8', '#2b6f63'], E: ['#d9b8ff', '#5a2f94'], L: ['#ffe29a', '#a8741f'] };
 
 export const CARD_W = 340, CARD_H = 476;
 const faceCache = new Map<string, HTMLCanvasElement>();
@@ -190,7 +210,15 @@ export function cardFace(id: string): HTMLCanvasElement {
   c.fillStyle = bg; c.fill();
   // art window
   const ax = 18, ay = 64, aw = W - 36, ah = 190;
-  c.save(); rr(c, ax, ay, aw, ah, 10); c.clip(); c.drawImage(cardArt(id, aw, ah), ax, ay); c.restore();
+  c.save(); rr(c, ax, ay, aw, ah, 10); c.clip(); c.drawImage(cardArt(id, aw, ah), ax, ay);
+  if (d.rarity === 'L' || d.rarity === 'E') {
+    // foil: a soft prismatic sheen across the art
+    const fo = c.createLinearGradient(ax, ay, ax + aw, ay + ah);
+    const hues = d.rarity === 'L' ? ['255,120,120', '255,220,120', '140,255,190', '120,190,255', '220,140,255'] : ['190,140,255', '140,200,255', '230,160,255'];
+    hues.forEach((hu, i) => fo.addColorStop(i / (hues.length - 1), `rgba(${hu},0.16)`));
+    c.globalCompositeOperation = 'overlay'; c.fillStyle = fo; c.fillRect(ax, ay, aw, ah); c.globalCompositeOperation = 'source-over';
+  }
+  c.restore();
   rr(c, ax, ay, aw, ah, 10); c.strokeStyle = e1; c.globalAlpha = 0.7; c.lineWidth = 2; c.stroke(); c.globalAlpha = 1;
   // name
   c.fillStyle = CSS.ivory; c.font = `700 30px ${FONTS.display}`; c.textBaseline = 'middle';
@@ -207,7 +235,15 @@ export function cardFace(id: string): HTMLCanvasElement {
   const kind = d.kind === 'unit' ? 'ユニット' : '術';
   const kw = (d.keywords ?? []).map((k) => ({ taunt: '挑発', pierce: '貫通', swift: '速攻' })[k]).join('・');
   c.font = `500 17px ${FONTS.body}`; c.fillStyle = e1;
-  c.fillText(`${kind}${d.rarity === 'L' ? ' ・ 伝説' : d.rarity === 'R' ? ' ・ 希少' : ''}`, 22, 274);
+  c.fillText(`${kind}${d.rarity !== 'C' ? ` ・ ${RARITY_NAMES[d.rarity]}` : ''}`, 22, 274);
+  if (setOf(d) !== 'base') {
+    // set mark: a small ripple and the set's number
+    c.save(); c.translate(W - 34, 268); c.strokeStyle = e1; c.lineWidth = 1.6; c.globalAlpha = 0.9;
+    c.beginPath(); c.arc(-8, 0, 3, 0, Math.PI * 2); c.stroke();
+    for (const rr2 of [7, 11]) { c.beginPath(); c.arc(-8, 0, rr2, -0.8, 0.8); c.stroke(); }
+    c.font = `700 14px ${FONTS.num}`; c.fillStyle = e1; c.textAlign = 'right'; c.fillText('I', 14, 1);
+    c.restore();
+  }
   // rules text
   const tx = 22, tw = W - 44;
   let y = 304;
@@ -267,5 +303,64 @@ export function cardBack(): HTMLCanvasElement {
   c.lineWidth = 5; c.beginPath(); c.moveTo(W / 2, H / 2); c.lineTo(W / 2, H / 2 - 90); c.moveTo(W / 2, H / 2); c.lineTo(W / 2 + 55, H / 2 + 20); c.stroke();
   c.globalAlpha = 1; c.fillStyle = '#e0b25c'; c.font = `700 26px ${FONTS.display}`; c.textAlign = 'center'; c.fillText('CHRONO DUEL', W / 2, H - 50);
   backCache.cv = cv;
+  return cv;
+}
+
+export const PACK_W = 360, PACK_H = 560;
+const packCache = new Map<string, HTMLCanvasElement>();
+/** Booster pack wrapper: foil gradient, crimped ends, the set emblem and title. The top 64px is the tear-off strip. */
+export function packArt(name: string, sub: string): HTMLCanvasElement {
+  const key = name + sub;
+  const hit = packCache.get(key);
+  if (hit) return hit;
+  const W = PACK_W, H = PACK_H;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const c = cv.getContext('2d')!;
+  // body silhouette with crimped ends
+  c.beginPath(); c.moveTo(0, 14);
+  for (let x = 0; x <= W; x += 12) c.lineTo(x, ((x / 12) % 2 ? 0 : 14));
+  c.lineTo(W, H - 14);
+  for (let x = W; x >= 0; x -= 12) c.lineTo(x, H - (((W - x) / 12) % 2 ? 0 : 14));
+  c.closePath();
+  const g = c.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, '#0f3b46'); g.addColorStop(0.45, '#15213f'); g.addColorStop(1, '#2a1244');
+  c.fillStyle = g; c.fill();
+  c.save(); c.clip();
+  // foil streaks
+  for (let i = 0; i < 9; i++) {
+    const sg = c.createLinearGradient(0, 0, W, H);
+    const a = 0.05 + (i % 3) * 0.03;
+    sg.addColorStop(Math.max(0, i / 9 - 0.05), 'rgba(255,255,255,0)'); sg.addColorStop(i / 9, `rgba(160,255,240,${a})`); sg.addColorStop(Math.min(1, i / 9 + 0.05), 'rgba(255,255,255,0)');
+    c.fillStyle = sg; c.fillRect(0, 0, W, H);
+  }
+  // emblem: clock face with ripples and an after-image
+  const cx = W / 2, cy = H * 0.44;
+  c.strokeStyle = '#8ff0e0'; c.shadowColor = '#8ff0e0'; c.shadowBlur = 16;
+  for (const [r, a, lw] of [[118, 0.9, 3], [96, 0.5, 1.5], [150, 0.25, 1.2], [182, 0.14, 1]] as const) { c.globalAlpha = a; c.lineWidth = lw; c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.stroke(); }
+  c.globalAlpha = 0.9; c.lineWidth = 2;
+  for (let i = 0; i < 60; i++) { const a = (i / 60) * Math.PI * 2, l = i % 5 ? 6 : 14; c.beginPath(); c.moveTo(cx + Math.cos(a) * 118, cy + Math.sin(a) * 118); c.lineTo(cx + Math.cos(a) * (118 - l), cy + Math.sin(a) * (118 - l)); c.stroke(); }
+  for (const [dx, al] of [[0, 1], [-18, 0.35], [-34, 0.15]] as const) {
+    c.globalAlpha = al; c.lineWidth = 5; c.strokeStyle = '#e0b25c'; c.shadowColor = '#e0b25c';
+    c.beginPath(); c.moveTo(cx + dx, cy); c.lineTo(cx + dx, cy - 86); c.moveTo(cx + dx, cy); c.lineTo(cx + dx + 58, cy + 26); c.stroke();
+  }
+  c.globalAlpha = 1; c.shadowBlur = 0; c.fillStyle = '#e0b25c'; c.beginPath(); c.arc(cx, cy, 8, 0, Math.PI * 2); c.fill();
+  // ripples to the right of the emblem
+  c.strokeStyle = '#8ff0e0'; c.lineWidth = 2;
+  for (let k = 1; k <= 3; k++) { c.globalAlpha = 0.5 - k * 0.12; c.beginPath(); c.arc(cx, cy, 118 + k * 22, -0.5, 0.5); c.stroke(); c.beginPath(); c.arc(cx, cy, 118 + k * 22, Math.PI - 0.5, Math.PI + 0.5); c.stroke(); }
+  c.globalAlpha = 1;
+  // title block
+  c.textAlign = 'center';
+  c.fillStyle = 'rgba(4,10,14,0.55)'; c.fillRect(0, H * 0.7, W, 112);
+  c.fillStyle = '#e0b25c'; c.fillRect(0, H * 0.7, W, 2); c.fillRect(0, H * 0.7 + 110, W, 2);
+  c.font = `700 16px ${FONTS.num}`; c.fillStyle = '#8ff0e0'; c.fillText('CHRONO DUEL ・ SET I', cx, H * 0.7 + 26);
+  c.font = `800 46px ${FONTS.display}`; c.fillStyle = '#f7ecd2'; c.shadowColor = '#000'; c.shadowBlur = 10; c.fillText(name, cx, H * 0.7 + 74); c.shadowBlur = 0;
+  c.font = `500 16px ${FONTS.body}`; c.fillStyle = '#d8c9a5'; c.fillText(sub, cx, H * 0.7 + 100);
+  c.font = `700 15px ${FONTS.num}`; c.fillStyle = 'rgba(241,231,208,0.7)'; c.fillText('5 CARDS', cx, H - 34);
+  // tear line
+  c.setLineDash([8, 7]); c.strokeStyle = 'rgba(241,231,208,0.45)'; c.lineWidth = 2; c.beginPath(); c.moveTo(10, 64); c.lineTo(W - 10, 64); c.stroke(); c.setLineDash([]);
+  c.restore();
+  // edge highlight
+  c.strokeStyle = 'rgba(224,178,92,0.8)'; c.lineWidth = 3; c.strokeRect(1.5, 16, W - 3, H - 32);
+  packCache.set(key, cv);
   return cv;
 }

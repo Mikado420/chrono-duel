@@ -1,5 +1,7 @@
 import type { DeckDef } from '../core/decks';
+import { CARDS } from '../core/cards';
 import { PRESET_DECKS, validateDeck } from '../core/decks';
+import { NEW_WALLET, missingCards, type Wallet } from '../meta/economy';
 
 /** localStorage wrapper that never throws (private mode, blocked storage). */
 function read<T>(key: string, fallback: T): T {
@@ -38,10 +40,18 @@ export const store = {
     else { try { localStorage.removeItem('cd.online'); } catch { /* storage unavailable */ } }
   },
 
-  allDecks(): (DeckDef & { preset: boolean; valid: boolean })[] {
+  /** Coins, pack tickets and the card collection. */
+  wallet: { ...NEW_WALLET(), ...read<Partial<Wallet>>('cd.wallet', {}) } as Wallet,
+  saveWallet() { write('cd.wallet', this.wallet); },
+
+  /** `valid`: legal and every card is in the collection. `missing`: cards the player does not own enough of. */
+  allDecks(): (DeckDef & { preset: boolean; valid: boolean; missing: string[] })[] {
     return [
-      ...PRESET_DECKS.map((d) => ({ ...d, preset: true, valid: true })),
-      ...this.customDecks.map((d) => ({ ...d, preset: false, valid: validateDeck(d.cards).ok })),
+      ...PRESET_DECKS.map((d) => ({ ...d, preset: true, valid: true, missing: [] })),
+      ...this.customDecks.map((d) => {
+        const missing = missingCards(this.wallet, d.cards.filter((c) => CARDS[c] && !CARDS[c].token));
+        return { ...d, preset: false, valid: validateDeck(d.cards).ok && missing.length === 0, missing };
+      }),
     ];
   },
   deckById(id: string) { return this.allDecks().find((d) => d.id === id); },

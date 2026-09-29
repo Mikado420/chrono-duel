@@ -15,6 +15,8 @@ export const RULES = {
   /** Doom bonus grows by 1 every this many ticks after DOOM_AT. */
   DOOM_STEP: 8,
   MAX_RESV: 2,
+  /** Pending echoes a player may have at once; further echoes fade without effect. */
+  MAX_ECHO: 3,
   /** Earliest reservation = your clock after paying + this. */
   RESV_MIN_GAP: 1,
   COST_ATTACK: 1,
