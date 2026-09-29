@@ -4,6 +4,7 @@ import { RULES } from '../core/rules';
 import { audio } from '../render/audio';
 import type { BattleResult } from '../render/battle';
 import { cardFace } from '../render/cardArt';
+import { pwa } from '../pwa';
 import { store } from './storage';
 
 type Child = Node | string | null | undefined | false;
@@ -228,6 +229,12 @@ export class Screens {
   settings(back: () => void) {
     const s = store.settings;
     const commit = () => { store.saveSettings(); this.host.applySettings(); };
+    const pwaBlock = () => {
+      if (pwa.installed) return h('div', { class: 'line' }, h('b', {}, 'アプリ'), h('span', { style: 'color:var(--you)' }, 'ホーム画面から起動しています'));
+      if (pwa.canPrompt) return h('div', { class: 'line' }, h('b', {}, 'アプリとして追加'), h('p', {}, 'ホーム画面に追加すると、全画面で遊べてオフラインでも起動します。'), h('button', { class: 'btn small primary', onclick: async () => { await pwa.install(); this.settings(back); } }, 'ホーム画面に追加'));
+      if (pwa.isIOS) return h('div', { class: 'line' }, h('b', {}, 'アプリとして追加'), h('p', {}, 'Safariの共有ボタン → 「ホーム画面に追加」で、全画面のアプリとして遊べます。'));
+      return h('div', { class: 'line' }, h('b', {}, 'アプリとして追加'), h('p', {}, 'ブラウザのメニューの「インストール」または「ホーム画面に追加」から追加できます。'));
+    };
     const speedBtn = (v: number, t: string) => h('button', { 'aria-pressed': String(s.speed === v), onclick: () => { s.speed = v; commit(); this.settings(back); } }, t);
     this.mount(h('div', { class: 'screen dim' },
       h('div', { class: 'panel' },
@@ -235,6 +242,7 @@ export class Screens {
         h('label', { class: 'line', for: 'vol' }, '音量', h('input', { id: 'vol', type: 'range', min: '0', max: '1', step: '0.05', value: String(s.volume), oninput: (e: Event) => { s.volume = +(e.target as HTMLInputElement).value; commit(); }, onchange: () => audio.play('hit') })),
         h('label', { class: 'check' }, h('input', { id: 'mute', type: 'checkbox', checked: s.muted, onchange: (e: Event) => { s.muted = (e.target as HTMLInputElement).checked; commit(); } }), '消音'),
         h('div', { class: 'line' }, h('b', {}, '演出の速さ'), h('div', { class: 'seg' }, speedBtn(1, '標準'), speedBtn(1.5, '速い'), speedBtn(2.2, 'とても速い'))),
+        pwaBlock(),
         h('label', { class: 'check' }, h('input', { id: 'reduced', type: 'checkbox', checked: s.reduced, onchange: (e: Event) => { s.reduced = (e.target as HTMLInputElement).checked; commit(); } }), '動きを減らす（揺れ・パーティクルを抑える）'),
       )));
   }

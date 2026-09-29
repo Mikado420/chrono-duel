@@ -7,6 +7,7 @@ import { BattleScene, type BattleConfig, type BattleResult } from './render/batt
 import { Fx } from './render/fx';
 import { COLORS, DESIGN } from './render/theme';
 import { Tweener } from './render/tween';
+import { registerServiceWorker } from './pwa';
 import { Screens } from './ui/screens';
 import { store } from './ui/storage';
 
@@ -112,6 +113,7 @@ async function boot() {
   screens.title();
 }
 
+registerServiceWorker();
 boot().catch((e) => {
   const el = document.getElementById('loading');
   if (el) el.textContent = `起動できませんでした：${e instanceof Error ? e.message : String(e)}`;
