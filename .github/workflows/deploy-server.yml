@@ -35,7 +35,7 @@ jobs:
       - name: Install
         if: steps.token.outputs.have == 'true'
         working-directory: server
-        run: npm install
+        run: npm install --legacy-peer-deps
       - name: Deploy
         if: steps.token.outputs.have == 'true'
         working-directory: server
