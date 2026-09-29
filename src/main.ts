@@ -25,7 +25,8 @@ async function boot() {
   await loadFonts();
   const app = new Application();
   const stageEl = document.getElementById('stage')!;
-  await app.init({ resizeTo: stageEl, antialias: true, background: COLORS.ink, resolution: Math.min(window.devicePixelRatio || 1, 2), autoDensity: true });
+  // sizing is driven by relayout() below rather than Pixi's resizeTo, so the canvas and the layout always agree
+  await app.init({ width: stageEl.clientWidth || 360, height: stageEl.clientHeight || 640, antialias: true, background: COLORS.ink, resolution: Math.min(window.devicePixelRatio || 1, 2), autoDensity: true });
   stageEl.appendChild(app.canvas);
 
   const tw = new Tweener(app.ticker);
@@ -36,23 +37,56 @@ async function boot() {
   app.stage.addChild(backdrop, world);
   const fx = new Fx(tw, app.ticker, shake);
 
-  const resize = () => {
-    const w = stageEl.clientWidth, h = stageEl.clientHeight;
+  let battle: BattleScene | null = null;
+  let extra = 0;
+  let lastSize = '';
+  /**
+   * Fit the 720x1280 board to the screen. Phones report intermediate sizes while rotating (and iOS Safari
+   * may not send a final resize event), so this runs from several sources and is cheap to call repeatedly.
+   */
+  const relayout = () => {
+    const w = Math.round(stageEl.clientWidth), h = Math.round(stageEl.clientHeight);
+    if (!w || !h) return;
+    // iOS can leave the page scrolled or zoomed after a rotation; snap back
+    if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+    const key = `${w}x${h}`;
+    if (key === lastSize) return;
+    lastSize = key;
+    app.renderer.resize(w, h);
     backdrop.resize(w, h);
     const s = Math.min(w / DESIGN.w, h / DESIGN.h);
     world.scale.set(s);
-    world.x = (w - DESIGN.w * s) / 2;
+    world.x = Math.round((w - DESIGN.w * s) / 2);
     // on tall screens the battle board stretches downward instead of letterboxing
-    extra = Math.min(h / s - DESIGN.h, 320);
-    world.y = Math.max(0, (h - (DESIGN.h + extra) * s) / 2);
+    extra = Math.max(0, Math.min(h / s - DESIGN.h, 320));
+    world.y = Math.max(0, Math.round((h - (DESIGN.h + extra) * s) / 2));
     battle?.applyLayout(extra);
+    // room beside the board for the log panel (tablets and desktops in landscape)
+    const side = (w - DESIGN.w * s) / 2;
+    document.body.classList.toggle('side-room', side >= 300);
+    updateRotate();
   };
-  let battle: BattleScene | null = null;
-  let extra = 0;
-  window.addEventListener('resize', () => requestAnimationFrame(resize));
-  resize();
+  // phones held sideways: the board would be a third of its size, so ask to turn the phone back
+  const rotateEl = document.getElementById('rotate')!;
+  let pausedForRotate = false;
+  const updateRotate = () => {
+    const w = window.innerWidth, h = window.innerHeight;
+    const phoneLandscape = w > h && Math.min(w, h) < 540;
+    rotateEl.classList.toggle('on', phoneLandscape);
+    const offline = !!battle && !lastCfg?.net;
+    document.getElementById('rotate-sub')!.textContent = battle ? (offline ? 'AI戦は一時停止しています' : 'オンライン対戦は続いています') : '';
+    if (phoneLandscape && offline && !pausedForRotate) { pausedForRotate = true; tw.speed = 0; }
+    else if (!phoneLandscape && pausedForRotate) { pausedForRotate = false; tw.speed = store.settings.speed || 1; }
+  };
+  const settle = () => { relayout(); for (const ms of [120, 350, 800, 1500]) setTimeout(relayout, ms); };
+  window.addEventListener('resize', () => requestAnimationFrame(relayout));
+  window.addEventListener('orientationchange', settle);
+  window.visualViewport?.addEventListener('resize', () => requestAnimationFrame(relayout));
+  if ('ResizeObserver' in window) new ResizeObserver(() => relayout()).observe(stageEl);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { lastSize = ''; settle(); } });
 
   let lastCfg: BattleConfig | null = null;
+  relayout();
   let closePackRef: (() => void) | null = null;
   const root = document.getElementById('ui')!;
 
@@ -66,17 +100,30 @@ async function boot() {
   applySettings();
 
   const logEl = document.getElementById('log')!;
+  const logHead = logEl.firstElementChild!;
+  /** Portrait phones have no room for the log beside the board, so it slides in on demand. */
+  let pausedForLog = false;
+  const setLogOpen = (open: boolean) => {
+    document.body.classList.toggle('log-open', open);
+    if (open) logEl.scrollTop = 0;
+    const offline = !!battle && !lastCfg?.net;
+    if (open && offline && !pausedForLog && tw.speed > 0) { pausedForLog = true; tw.speed = 0; }
+    else if (!open && pausedForLog) { pausedForLog = false; tw.speed = store.settings.speed || 1; }
+  };
+  document.getElementById('log-close')!.addEventListener('click', () => setLogOpen(false));
+  document.getElementById('log-back')!.addEventListener('click', () => setLogOpen(false));
   const log = (text: string, side: 0 | 1 | -1) => {
     const ln = document.createElement('div');
     ln.className = `ln ${side === 0 ? 'you' : side === 1 ? 'foe' : ''}`;
     ln.textContent = text;
-    logEl.insertBefore(ln, logEl.children[1] ?? null);
-    while (logEl.children.length > 40) logEl.lastChild?.remove();
+    logEl.insertBefore(ln, logHead.nextSibling);
+    while (logEl.children.length > 120) logEl.lastChild?.remove();
   };
   const endBattle = () => {
     closePackRef?.();
     document.body.classList.remove('in-battle');
-    logEl.replaceChildren(logEl.firstElementChild!);
+    setLogOpen(false);
+    logEl.replaceChildren(logHead);
     if (battle) { shake.removeChild(battle); battle.destroy(); battle = null; }
     fx.layer.removeChildren();
   };
@@ -126,7 +173,7 @@ async function boot() {
       if (!cfg.net) tw.speed = 0; // pause animations and the AI while the menu is open (a live match cannot wait)
       const resume = () => { tw.speed = store.settings.speed || speed; };
       screens.battleMenu(resume, () => { resume(); battle?.surrender(); });
-    }, log);
+    }, log, () => setLogOpen(!document.body.classList.contains('log-open')));
     document.body.classList.add('in-battle');
     if (!store.settings.guided) {
       const speed = tw.speed;
@@ -134,6 +181,7 @@ async function boot() {
       screens.guide(() => { store.settings.guided = true; store.saveSettings(); tw.speed = store.settings.speed || speed; });
     }
     battle.applyLayout(extra);
+    updateRotate();
     shake.addChild(battle);
     shake.addChild(fx.layer);
   };

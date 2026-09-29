@@ -8,7 +8,7 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; background: var(--ink); color: var(--ivory); font-family: var(--f-body); overflow: hidden; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; width: 100%; overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; background: var(--ink); color: var(--ivory); font-family: var(--f-body); overflow: hidden; -webkit-tap-highlight-color: transparent; }
 #stage { position: fixed; left: 0; right: 0; top: env(safe-area-inset-top, 0px); bottom: env(safe-area-inset-bottom, 0px); touch-action: none; }
 #stage canvas { display: block; width: 100%; height: 100%; }
 #ui { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
@@ -127,12 +127,36 @@ label.line { display: grid; gap: 6px; font-weight: 700; }
 .loading { position: fixed; inset: 0; display: grid; place-items: center; font: 700 14px var(--f-num); letter-spacing: .4em; color: var(--brass); background: var(--ink); z-index: 20; transition: opacity .4s; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 
-/* battle log (wide screens only) */
+/* battle log: beside the board when there is room, otherwise a panel that slides in from the log button */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+/* pinned so iOS cannot leave the page scrolled after a rotation */
+body { position: fixed; inset: 0; }
 #log { position: fixed; right: 20px; top: 20px; bottom: 20px; width: 280px; display: none; flex-direction: column; gap: 6px; padding: 16px; background: rgba(8, 20, 28, .72); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; z-index: 5; pointer-events: none; }
-#log h4 { margin: 0 0 6px; font: 700 13px var(--f-body); letter-spacing: .3em; color: var(--brass); }
+#log h4 { margin: 0 0 6px; font: 700 13px var(--f-body); letter-spacing: .3em; color: var(--brass); display: flex; align-items: center; }
+#log-close { display: none; margin-left: auto; border: 1px solid var(--brass-deep); background: var(--ink2); color: var(--ivory); border-radius: 10px; padding: 6px 14px; font: 700 13px var(--f-body); letter-spacing: .1em; min-height: 36px; }
+body.in-battle.side-room #log { display: flex; }
+body.log-open #log {
+  display: flex; pointer-events: auto; z-index: 30; top: 0; bottom: 0; right: 0; width: min(340px, 88vw); border-radius: 18px 0 0 18px;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); background: rgba(8, 20, 28, .97);
+  overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; animation: slideIn .22s ease-out both;
+}
+body.log-open #log h4 { position: sticky; top: -16px; background: rgba(8, 20, 28, .97); padding: 8px 0; margin: -8px 0 4px; z-index: 1; }
+body.log-open #log-close { display: inline-block; }
+body.log-open #log .ln { font-size: 14px; animation: none; }
+#log-back { display: none; position: fixed; inset: 0; background: rgba(3, 7, 10, .55); z-index: 29; }
+body.log-open #log-back { display: block; }
+@keyframes slideIn { from { transform: translateX(100%); } to { transform: none; } }
+
+/* phones held sideways */
+#rotate { position: fixed; inset: 0; z-index: 40; display: none; place-items: center; background: var(--ink); color: var(--brass); text-align: center; padding: 20px; }
+#rotate.on { display: grid; }
+#rotate svg { width: 72px; height: 72px; animation: turn 2.4s ease-in-out infinite; }
+#rotate p { margin: 12px 0 4px; font: 700 18px var(--f-display); color: var(--ivory); letter-spacing: .08em; }
+#rotate small { color: var(--mute); font-size: 13px; }
+@keyframes turn { 0%, 30% { transform: rotate(90deg); } 60%, 100% { transform: rotate(0deg); } }
 #log .ln { font-size: 13px; line-height: 1.5; color: #cfc5ae; padding-left: 10px; border-left: 3px solid var(--line); animation: fadeIn .25s both; }
 #log .ln.you { border-color: var(--you); } #log .ln.foe { border-color: var(--foe); }
-@media (min-width: 1100px) and (min-aspect-ratio: 4/3) { body.in-battle #log { display: flex; } }
+
 
 /* first-match guide */
 .guide { justify-content: center; }

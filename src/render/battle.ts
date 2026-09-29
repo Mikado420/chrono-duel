@@ -59,6 +59,7 @@ export class BattleScene extends Container {
   private drawBtn: Button;
   private waitBtn: Button;
   private menuBtn: Container;
+  private logBtn: Container;
   private busy = true;
   private mode: Mode = { k: 'idle' };
   private drag: { view: HandCardView; sx: number; sy: number; moved: boolean; ox: number; oy: number } | null = null;
@@ -88,7 +89,7 @@ export class BattleScene extends Container {
 
   private get foe(): string { return this.cfg.net?.foeName ?? 'AI'; }
 
-  constructor(private tw: Tweener, private fx: Fx, private ticker: Ticker, private cfg: BattleConfig, private onEnd: (r: BattleResult) => void, private onMenu: () => void, private onLog: (text: string, side: PlayerIndex | -1) => void = () => {}) {
+  constructor(private tw: Tweener, private fx: Fx, private ticker: Ticker, private cfg: BattleConfig, private onEnd: (r: BattleResult) => void, private onMenu: () => void, private onLog: (text: string, side: PlayerIndex | -1) => void = () => {}, private onLogToggle: () => void = () => {}) {
     super();
     this.dial = new Dial(tw);
     this.huds = [new Hud(0, 'あなた'), new Hud(1, cfg.net ? cfg.net.foeName : `AI ・ ${cfg.aiDeckName}`)];
@@ -99,9 +100,10 @@ export class BattleScene extends Container {
     this.drawBtn.x = 510;
     this.waitBtn.x = 648;
     this.menuBtn = this.makeMenuButton();
+    this.logBtn = this.makeLogButton();
     this.board.addChild(this.slotG, this.laneHi);
     this.applyLayout(0);
-    this.addChild(this.vignette, this.board, this.dial, this.units, this.huds[0], this.huds[1], this.foeHandLayer, this.drawBtn, this.waitBtn, this.menuBtn, this.handLayer, this.arrowG, this.actionBar, this.overlay, this.toastC);
+    this.addChild(this.vignette, this.board, this.dial, this.units, this.huds[0], this.huds[1], this.foeHandLayer, this.drawBtn, this.waitBtn, this.menuBtn, this.logBtn, this.handLayer, this.arrowG, this.actionBar, this.overlay, this.toastC);
     this.eventMode = 'static';
     this.hitArea = { contains: () => true };
     this.on('globalpointermove', (e) => this.onMove(e));
@@ -147,11 +149,27 @@ export class BattleScene extends Container {
     return c;
   }
 
+  /** Opens the action log (a slide-in panel on phones; on wide screens it is always beside the board). */
+  private makeLogButton() {
+    const c = new Container();
+    const g = new Graphics().circle(0, 0, 26).fill({ color: COLORS.ink2, alpha: 0.9 }).circle(0, 0, 26).stroke({ color: COLORS.brassDeep, width: 2 });
+    // a scroll with lines
+    g.roundRect(-11, -13, 22, 26, 4).stroke({ color: COLORS.ivory, width: 2 });
+    for (const y of [-6, 0, 6]) g.moveTo(-6, y).lineTo(6, y).stroke({ color: COLORS.ivory, width: 2 });
+    c.addChild(g);
+    c.x = 626; c.y = 40;
+    c.eventMode = 'static'; c.cursor = 'pointer';
+    c.on('pointertap', (e) => { e.stopPropagation(); audio.play('select'); this.onLogToggle(); });
+    return c;
+  }
+
   /** Spread the lower half of the board over any extra height a tall screen offers. */
   applyLayout(extra: number) {
     const e = Math.max(0, Math.min(extra, 320));
     L.front = 647 + e * 0.12; ROW_Y[0] = 772 + e * 0.24; L.youHud = 922 + e * 0.42; L.hand = 1128 + e * 0.8; L.bar = 1112 + e * 0.8; DECK_POS.y = 1040 + e * 0.7;
     this.huds[0].y = L.youHud; this.drawBtn.y = L.youHud; this.waitBtn.y = L.youHud;
+    this.actionBar.y = L.bar;
+    this.toastC.y = L.front;
     this.buildBoard();
     if (this.s) this.syncAll(false);
   }
@@ -380,7 +398,7 @@ export class BattleScene extends Container {
     while (this.foeHandLayer.children.length > n) this.foeHandLayer.removeChildAt(this.foeHandLayer.children.length - 1).destroy();
     this.foeHandLayer.children.forEach((c, i) => {
       const off = i - (n - 1) / 2;
-      c.x = FOE_HAND_POS.x - 70 + off * 18 - 40; c.y = FOE_HAND_POS.y + Math.abs(off) * 1.5; c.rotation = off * 0.08;
+      c.x = FOE_HAND_POS.x - 140 + off * 18; c.y = FOE_HAND_POS.y + Math.abs(off) * 1.5; c.rotation = off * 0.08;
     });
   }
   private addHandView(uid: number, card: string) {
@@ -954,7 +972,7 @@ export class BattleScene extends Container {
           this.foeHandLayer.addChild(b);
           b.x = 40; b.y = 110;
           const n = this.foeHandLayer.children.length;
-          await tw.to(b, { x: FOE_HAND_POS.x - 110 + ((n - 1) / 2) * 18, y: FOE_HAND_POS.y }, 240);
+          await tw.to(b, { x: FOE_HAND_POS.x - 140 + ((n - 1) / 2) * 18, y: FOE_HAND_POS.y }, 240);
         }
         this.huds[e.pi].setInfo(this.s.players[e.pi].deck.length, e.pi === 1 ? this.foeHandLayer.children.length : null, this.s.players[e.pi].resv.length);
         break;

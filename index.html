@@ -2,7 +2,7 @@
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no" />
     <meta name="theme-color" content="#08141c" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -20,7 +20,9 @@
   </head>
   <body>
     <div id="stage"></div>
-    <div id="log"><h4>行動ログ</h4></div>
+    <div id="log-back" aria-hidden="true"></div>
+    <div id="log" role="log" aria-label="行動ログ"><h4>行動ログ<button id="log-close" type="button" aria-label="ログを閉じる">閉じる</button></h4></div>
+    <div id="rotate" aria-live="polite"><div><svg viewBox="0 0 64 64" aria-hidden="true"><rect x="20" y="8" width="24" height="44" rx="4" fill="none" stroke="currentColor" stroke-width="3"/><path d="M50 40a18 18 0 0 1-16 14" fill="none" stroke="currentColor" stroke-width="3"/><path d="M36 50l-3 5 6 1" fill="none" stroke="currentColor" stroke-width="3"/></svg><p>縦向きにしてお楽しみください</p><small id="rotate-sub"></small></div></div>
     <div id="ui"></div>
     <div id="loading" class="loading">LOADING</div>
     <script type="module" src="/src/main.ts"></script>
