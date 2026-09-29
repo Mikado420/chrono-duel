@@ -8,7 +8,8 @@ import { Fx } from './render/fx';
 import { COLORS, DESIGN } from './render/theme';
 import { Tweener } from './render/tween';
 import { PackOpenScene } from './render/packOpen';
-import { applyReward, canOpen, localDate, openPack, packById, reward, type Reward } from './meta/economy';
+import { MIN_ACTIONS, applyReward, canOpen, localDate, openPack, packById, reward, type Reward } from './meta/economy';
+import { recordBattle, track } from './meta/progress';
 import { codeFromHash } from './net/config';
 import { OnlineFlow } from './net/flow';
 import { registerServiceWorker } from './pwa';
@@ -139,9 +140,15 @@ async function boot() {
     const rw: Reward = reward(store.wallet, { mode: online ? 'online' : 'ai', level: lastCfg?.level ?? 'normal', winner: r.winner, reason: r.reason, myActions: r.myActions, today });
     applyReward(store.wallet, rw, today);
     store.saveWallet();
+    // rank and missions
+    const xp = recordBattle(store.meta, {
+      won: r.winner === 0, played: r.myActions >= MIN_ACTIONS, hard: !online && lastCfg?.level === 'hard', online,
+      spells: r.stats.spells, summons: r.stats.summons, reserves: r.stats.reserves, attacks: r.stats.attacks,
+    }, today);
+    store.saveMeta();
     // the final board stays visible behind the result screen until the player moves on
-    if (online) screens.resultOnline(r, endBattle, rw);
-    else screens.result(r, () => { screens.clear(); if (lastCfg) run(lastCfg); }, endBattle, rw);
+    if (online) screens.resultOnline(r, endBattle, rw, xp);
+    else screens.result(r, () => { screens.clear(); if (lastCfg) run(lastCfg); }, endBattle, rw, xp);
   };
 
   // ---- booster packs
@@ -154,6 +161,7 @@ async function boot() {
     screens.clear();
     const o = openPack(store.wallet, pack);
     store.saveWallet();
+    track(store.meta, 'pack', 1, localDate()); store.saveMeta();
     packScene = new PackOpenScene(tw, fx, app.ticker, o, {
       again: () => {
         const pay = canOpen(store.wallet, pack);

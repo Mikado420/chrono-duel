@@ -12,6 +12,7 @@
     "sim": "tsx src/sim/simulate.ts",
     "test:net": "tsx src/sim/nettest.ts",
     "test:econ": "tsx src/sim/econtest.ts",
+    "test:meta": "tsx src/sim/metatest.ts",
     "dev:server": "tsx server/dev.ts"
   },
   "dependencies": {

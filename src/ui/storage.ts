@@ -2,6 +2,7 @@ import type { DeckDef } from '../core/decks';
 import { CARDS } from '../core/cards';
 import { PRESET_DECKS, validateDeck } from '../core/decks';
 import { NEW_WALLET, missingCards, type Wallet } from '../meta/economy';
+import { NEW_META, type Meta } from '../meta/progress';
 
 /** localStorage wrapper that never throws (private mode, blocked storage). */
 function read<T>(key: string, fallback: T): T {
@@ -43,6 +44,10 @@ export const store = {
   /** Coins, pack tickets and the card collection. */
   wallet: { ...NEW_WALLET(), ...read<Partial<Wallet>>('cd.wallet', {}) } as Wallet,
   saveWallet() { write('cd.wallet', this.wallet); },
+
+  /** Rank, missions, login bonus, presents and news. */
+  meta: { ...NEW_META(), ...read<Partial<Meta>>('cd.meta', {}) } as Meta,
+  saveMeta() { write('cd.meta', this.meta); },
 
   /** `valid`: legal and every card is in the collection. `missing`: cards the player does not own enough of. */
   allDecks(): (DeckDef & { preset: boolean; valid: boolean; missing: string[] })[] {

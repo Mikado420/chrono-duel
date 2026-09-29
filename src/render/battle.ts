@@ -25,7 +25,7 @@ export interface BattleConfig {
   /** Online match: the opponent is a person and the server owns the game state. */
   net?: NetLink;
 }
-export interface BattleResult { winner: PlayerIndex | -1; reason: 'ko' | 'time' | 'surrender' | 'timeout' | 'disconnect'; myHp: number; foeHp: number; actions: number; myActions: number }
+export interface BattleResult { winner: PlayerIndex | -1; reason: 'ko' | 'time' | 'surrender' | 'timeout' | 'disconnect'; myHp: number; foeHp: number; actions: number; myActions: number; stats: { spells: number; summons: number; reserves: number; attacks: number } }
 
 const LANE_X = [150, 360, 570];
 /** Vertical layout in design units. Tall phones get extra height, which is shared out by `applyLayout`. */
@@ -86,6 +86,7 @@ export class BattleScene extends Container {
   private timerShown = '';
   /** Actions the player took (rewards need a real match, not an instant surrender). */
   private myActs = 0;
+  private stats = { spells: 0, summons: 0, reserves: 0, attacks: 0 };
 
   private get foe(): string { return this.cfg.net?.foeName ?? 'AI'; }
 
@@ -266,7 +267,7 @@ export class BattleScene extends Container {
     const o = this.netResult ?? this.s.over!;
     await this.tw.wait(500);
     if (this.destroyed_) return;
-    this.onEnd({ winner: o.winner, reason: o.reason, myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs });
+    this.onEnd({ winner: o.winner, reason: o.reason, myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats } });
   }
   // ------------------------------------------------------------------ online play
   private async startOnline(net: NetLink) {
@@ -363,7 +364,7 @@ export class BattleScene extends Container {
     if (this.cfg.net) { this.cfg.net.send({ t: 'surrender' }); return; }
     if (this.s.over) return;
     this.busy = true;
-    this.onEnd({ winner: 1, reason: 'surrender', myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs });
+    this.onEnd({ winner: 1, reason: 'surrender', myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats } });
   }
 
   // ------------------------------------------------------------------ sync
@@ -920,7 +921,13 @@ export class BattleScene extends Container {
     switch (e.e) {
       case 'act': {
         const a = e.action;
-        if (e.pi === 0) this.myActs++;
+        if (e.pi === 0) {
+          this.myActs++;
+          if (a.t === 'play') this.stats.summons++;
+          else if (a.t === 'cast') this.stats.spells++;
+          else if (a.t === 'reserve') this.stats.reserves++;
+          else if (a.t === 'attack') this.stats.attacks++;
+        }
         if (e.pi === 0 && (a.t === 'play' || a.t === 'cast' || a.t === 'reserve')) {
           const v = this.handViews.get(a.hand);
           if (v) { this.flyFrom ??= { x: v.x, y: v.y }; v.destroy({ children: true }); this.handViews.delete(a.hand); this.layoutHand(); }

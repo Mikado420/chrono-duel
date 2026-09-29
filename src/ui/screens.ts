@@ -1,13 +1,18 @@
-import { CARD_LIST, RARITY_NAMES, SET_NAMES, cardDef, keywordsOf, KEYWORD_HELP, setOf, type CardSet } from '../core/cards';
+import { CARDS, CARD_LIST, RARITY_NAMES, SET_NAMES, cardDef, keywordsOf, KEYWORD_HELP, setOf, type CardSet } from '../core/cards';
 import { maxCopies, PRESET_DECKS, validateDeck, type DeckDef } from '../core/decks';
-import { NET, normalizeCode } from '../core/net';
+import { NET, cleanName, normalizeCode } from '../core/net';
 import { RULES } from '../core/rules';
 import { inviteLink } from '../net/config';
 import type { OnlineFlow } from '../net/flow';
 import { audio } from '../render/audio';
 import type { BattleResult } from '../render/battle';
 import { cardFace, packArt } from '../render/cardArt';
-import { DAILY_BONUS, DUPE_COINS, LAST_SLOT, MIN_ACTIONS, PACKS, PITY, canOpen, ownedCount, setProgress, type Reward } from '../meta/economy';
+import { DAILY_BONUS, DUPE_COINS, LAST_SLOT, MIN_ACTIONS, PACKS, PITY, canOpen, localDate, ownedCount, setProgress, type Reward } from '../meta/economy';
+import {
+  DAILY_ALL_BONUS, LOGIN_CALENDAR, NEWS, beginnerView, track, checkLogin, claimMission, claimPresents, claimable, dailyView, prizeText, rankOf, unreadNews,
+  type MissionView, type News, type Prize,
+} from '../meta/progress';
+import { VERSION } from '../version';
 import { pwa } from '../pwa';
 import { store } from './storage';
 
@@ -38,6 +43,30 @@ function purse() {
     h('span', { class: 'coin', 'aria-label': `コイン ${w.coins}` }, h('i', {}), String(w.coins)),
     w.tickets ? h('span', { class: 'ticket', 'aria-label': `パックチケット ${w.tickets}枚` }, h('i', {}), `×${w.tickets}`) : null);
 }
+type Tab = 'home' | 'battle' | 'deck' | 'shop' | 'menu';
+export interface XpGain { exp: number; before: number; after: number }
+/** Collection progress over every collectible card. */
+function setProgressAll() {
+  const kinds = CARD_LIST.filter((c) => ownedCount(store.wallet, c.id) > 0).length;
+  return { kinds, total: CARD_LIST.length, pct: Math.round((kinds / CARD_LIST.length) * 100) };
+}
+const svg = (d: string) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+/** Line icons for the tab bar and home shortcuts. */
+const ICON = {
+  home: svg('<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>'),
+  battle: svg('<path d="M4 4l9 9M20 4l-9 9"/><path d="M4 4h4M4 4v4M20 4h-4M20 4v4"/><path d="M9 15l-4 4M15 15l4 4"/><path d="M7 13l4 4M17 13l-4 4"/>'),
+  deck: svg('<rect x="7" y="3" width="12" height="16" rx="2"/><path d="M5 6v13a2 2 0 0 0 2 2h9"/>'),
+  shop: svg('<path d="M5 8h14l-1 12H6z"/><path d="M9 8a3 3 0 0 1 6 0"/>'),
+  menu: svg('<rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/>'),
+  news: svg('<path d="M4 10v4l11 5V5z"/><path d="M15 9a3 3 0 0 1 0 6"/><path d="M7 14l1 5"/>'),
+  mission: svg('<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8l1.5 1.5L13 7M9 13l1.5 1.5L13 12"/><path d="M15 8h1M15 13h1"/>'),
+  gift: svg('<rect x="4" y="9" width="16" height="11" rx="1.5"/><path d="M3 9h18M12 9v11"/><path d="M12 9c-2-4-6-4-6-1s6 1 6 1c2-4 6-4 6-1s-6 1-6 1"/>'),
+  user: svg('<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>'),
+  book: svg('<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/><path d="M9 7h6"/>'),
+  help: svg('<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.7"/><path d="M12 17h.01"/>'),
+  gear: svg('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>'),
+  door: svg('<path d="M14 4h5v16h-5"/><path d="M10 8l-4 4 4 4"/><path d="M6 12h10"/>'),
+};
 const imgCache = new Map<string, string>();
 function cardImg(id: string): string {
   let u = imgCache.get(id);
@@ -69,28 +98,338 @@ export class Screens {
   clear() { this.cleanup?.(); this.cleanup = null; this.host.root.replaceChildren(); }
 
   // ---------------------------------------------------------------- title
+  /** Key visual and TAP TO START. First launch asks for a player name before entering the home screen. */
   title() {
-    const r = store.record;
-    const click = (fn: () => void) => () => { audio.play('select'); fn(); };
-    this.mount(h('div', { class: 'screen title' },
+    const legends = ['dragon', 'e_verna', 'titan'];
+    let gone = false;
+    const start = () => {
+      if (gone) return;
+      gone = true;
+      audio.unlock();
+      audio.play('bell');
+      el.classList.add('leaving');
+      setTimeout(() => (store.settings.name ? this.home() : this.nameEntry(() => this.home())), 380);
+    };
+    const el = h('div', { class: 'screen titlekv', onclick: start, role: 'button', 'aria-label': 'タップしてスタート' },
+      h('div', { class: 'kv-rings', 'aria-hidden': 'true' }, h('i', {}), h('i', {}), h('i', {})),
+      h('div', { class: 'kv-cards', 'aria-hidden': 'true' }, ...legends.map((id, i) => h('img', { class: `c${i}`, src: cardImg(id), alt: '' }))),
       h('div', { class: 'logo' },
         h('span', { class: 'en' }, 'CHRONO DUEL'),
         h('h1', {}, 'クロノ・デュエル'),
         h('span', { class: 'tag' }, 'ターンはない。時間を奪い合え。'),
       ),
-      purse(),
-      h('div', { class: 'menu' },
-        h('button', { class: 'btn primary', onclick: click(() => this.setup()) }, 'AIと対戦'),
-        h('button', { class: 'btn primary', onclick: click(() => this.onlineMenu()) }, '友達とオンライン対戦'),
-        h('button', { class: 'btn shop-btn', onclick: click(() => this.shop()) }, 'ショップ',
-          PACKS.some((p) => canOpen(store.wallet, p)) ? h('span', { class: 'dot', 'aria-label': '開封できるパックがあります' }) : null,
-          h('span', { class: 'new-set' }, '第1弾')),
-        h('button', { class: 'btn', onclick: click(() => this.decks()) }, 'デッキ編集'),
-        h('button', { class: 'btn', onclick: click(() => this.rules(() => this.title())) }, '遊び方'),
-        h('button', { class: 'btn', onclick: click(() => this.settings(() => this.title())) }, '設定'),
-      ),
-      h('div', { class: 'record', html: `戦績　<b>${r.win}</b> 勝　<b>${r.lose}</b> 敗${r.draw ? `　<b>${r.draw}</b> 分` : ''}` }),
+      h('div', { class: 'tap' }, 'TAP TO START'),
+      h('div', { class: 'title-foot' },
+        h('button', { class: 'link', onclick: (e: Event) => { e.stopPropagation(); this.newsModal(); } }, 'お知らせ'),
+        h('span', {}, `Ver. ${VERSION}`),
+        h('button', { class: 'link', onclick: (e: Event) => { e.stopPropagation(); this.settings(() => this.title()); } }, '設定')),
+    );
+    this.mount(el);
+  }
+
+  /** First launch: pick the name shown to friends online and on the profile. */
+  nameEntry(done: () => void) {
+    let name = store.settings.name;
+    const input = h('input', { class: 'text', id: 'first-name', maxlength: String(NET.NAME_MAX), placeholder: 'プレイヤー名', autocomplete: 'nickname', value: name, oninput: (e: Event) => { name = (e.target as HTMLInputElement).value; ok.disabled = !name.trim(); } });
+    const ok = h('button', { class: 'btn primary', disabled: !name.trim(), onclick: () => { store.settings.name = cleanName(name); store.saveSettings(); audio.play('reserve'); done(); } }, '決定');
+    this.mount(h('div', { class: 'screen dim title' }, h('div', { class: 'panel modal-in', style: 'width:min(420px,100%)' },
+      h('div', { class: 'step' }, 'WELCOME'),
+      h('h2', {}, 'プレイヤー名を決めてください'),
+      h('p', {}, `オンライン対戦で相手に表示されます（${NET.NAME_MAX}文字まで・あとで変更できます）。`),
+      input, ok)));
+    setTimeout(() => input.focus(), 50);
+  }
+
+  // ---------------------------------------------------------------- hub (header + bottom tabs)
+  private tab: Tab = 'home';
+  private hub(tab: Tab, body: HTMLElement) {
+    this.tab = tab;
+    const w = store.wallet, m = store.meta;
+    const rk = rankOf(m.exp);
+    const today = localDate();
+    const missions = claimable(m, today);
+    const canPack = PACKS.some((p) => canOpen(w, p));
+    const go = (t: Tab) => () => { if (t === this.tab && t !== 'home') return; audio.play('select'); this.openTab(t); };
+    const nav = (t: Tab, label: string, icon: string, badge = false) => h('button', { class: `tab${t === tab ? ' on' : ''}`, 'aria-current': t === tab ? 'page' : undefined, onclick: go(t) },
+      h('span', { class: 'ic', html: icon }), h('span', {}, label), badge ? h('i', { class: 'badge-dot' }) : null);
+    const root = h('div', { class: `hub hub-${tab}` },
+      h('header', { class: 'hub-top' },
+        h('button', { class: 'me', 'aria-label': 'プロフィール', onclick: () => this.profileModal() },
+          h('span', { class: 'rank' }, h('small', {}, 'RANK'), String(rk.rank)),
+          h('span', { class: 'who' }, h('b', {}, store.settings.name || 'プレイヤー'), h('span', { class: 'exp' }, h('i', { style: `width:${(rk.into / rk.need) * 100}%` })))),
+        purse()),
+      h('main', { class: 'hub-body' }, body),
+      h('nav', { class: 'hub-nav', 'aria-label': 'メインメニュー' },
+        nav('home', 'ホーム', ICON.home, missions > 0 || m.presents.length > 0),
+        nav('battle', 'バトル', ICON.battle),
+        nav('deck', 'デッキ', ICON.deck, store.wallet.fresh.length > 0),
+        nav('shop', 'ショップ', ICON.shop, canPack),
+        nav('menu', 'メニュー', ICON.menu, unreadNews(m) > 0)));
+    this.mount(root);
+    return root;
+  }
+  openTab(t: Tab) {
+    if (t === 'home') this.home();
+    else if (t === 'battle') this.battleTab();
+    else if (t === 'deck') this.decks();
+    else if (t === 'shop') this.shop();
+    else this.menuTab();
+  }
+
+  // ---------------------------------------------------------------- home
+  home() {
+    const m = store.meta;
+    const today = localDate();
+    const loginDay = checkLogin(m, today);
+    store.saveMeta();
+    const fav = m.favorite && CARDS[m.favorite] ? m.favorite : 'dragon';
+    const favDef = cardDef(fav);
+    const missions = claimable(m, today);
+    const deck = store.deckById(store.settings.lastDeck);
+    const quick = deck && deck.valid ? deck : store.allDecks()[0];
+    const banners = this.banners();
+    let slide = 0;
+    const track = h('div', { class: 'banner-track' }, ...banners);
+    const dots = h('div', { class: 'banner-dots' }, ...banners.map((_, i) => h('i', { class: i === 0 ? 'on' : '' })));
+    const setSlide = (i: number) => { slide = (i + banners.length) % banners.length; track.style.transform = `translateX(${-slide * 100}%)`; [...dots.children].forEach((d, k) => d.classList.toggle('on', k === slide)); };
+    let sx = 0;
+    const carousel = h('div', { class: 'banners', 'aria-roledescription': 'カルーセル' }, track, dots);
+    carousel.addEventListener('pointerdown', (e) => { sx = e.clientX; });
+    carousel.addEventListener('pointerup', (e) => { const d = e.clientX - sx; if (Math.abs(d) > 40) { setSlide(slide + (d < 0 ? 1 : -1)); e.stopPropagation(); } });
+    const iconBtn = (label: string, icon: string, n: number, fn: () => void) => h('button', { class: 'side-btn', 'aria-label': `${label}${n ? `（${n}件）` : ''}`, onclick: () => { audio.play('select'); fn(); } },
+      h('span', { class: 'ic', html: icon }), h('span', {}, label), n ? h('b', { class: 'count-badge' }, String(Math.min(n, 99))) : null);
+    const dv = dailyView(m, today);
+    const body = h('div', { class: 'home' },
+      h('div', { class: 'kv' },
+        h('div', { class: 'kv-rays', 'aria-hidden': 'true' }),
+        h('button', { class: 'fav', 'aria-label': `看板カード ${favDef.name}`, onclick: () => this.zoomCard(fav) }, h('img', { src: cardImg(fav), alt: favDef.name })),
+        h('div', { class: 'fav-name' }, h('small', {}, '看板カード'), favDef.name)),
+      h('div', { class: 'side left' },
+        h('button', { class: 'daily-card', onclick: () => this.missionsModal('daily') },
+          h('b', {}, 'デイリーミッション'),
+          h('span', { class: 'dm-sum' }, `達成 ${dv.filter((x) => x.done).length}/${dv.length}`, dv.some((x) => x.done && !x.claimed) ? h('i', { class: 'badge-dot' }) : null),
+          ...dv.map((x) => h('div', { class: `dm${x.claimed ? ' claimed' : x.done ? ' done' : ''}` }, h('span', {}, x.m.text), h('span', { class: 'n' }, x.claimed ? '済' : `${x.now}/${x.m.goal}`))))),
+      h('div', { class: 'side right' },
+        iconBtn('お知らせ', ICON.news, unreadNews(m), () => this.newsModal()),
+        iconBtn('ミッション', ICON.mission, missions, () => this.missionsModal(dv.some((x) => x.done && !x.claimed) || !beginnerView(m).some((x) => x.done && !x.claimed) ? 'daily' : 'beginner')),
+        iconBtn('プレゼント', ICON.gift, m.presents.length, () => this.presentsModal())),
+      carousel,
+      h('div', { class: 'home-cta' },
+        h('button', { class: 'battle-cta', onclick: () => { audio.play('summon'); this.clear(); this.host.startBattle(quick, PRESET_DECKS[Math.floor(Math.random() * PRESET_DECKS.length)], store.settings.level); } },
+          h('span', { class: 'big' }, 'バトル開始'),
+          h('small', {}, `${quick.name} ・ AI${store.settings.level === 'hard' ? '（つよい）' : '（ふつう）'}`)),
+        h('button', { class: 'btn cta-sub', onclick: () => this.battleTab() }, 'モード選択')),
+    );
+    this.hub('home', body);
+    const timer = window.setInterval(() => { if (!carousel.isConnected) { clearInterval(timer); return; } setSlide(slide + 1); }, 5000);
+    if (loginDay) setTimeout(() => this.loginModal(loginDay), 350);
+  }
+
+  private banners(): HTMLElement[] {
+    const pack = PACKS[0];
+    const flow = this.host.flow();
+    const b = (cls: string, kicker: string, title: string, sub: string, fn: () => void, art?: HTMLElement) =>
+      h('button', { class: `banner ${cls}`, onclick: () => { audio.play('select'); fn(); } }, h('div', { class: 'txt' }, h('small', {}, kicker), h('b', {}, title), h('span', {}, sub)), art ?? null);
+    return [
+      b('b-pack', '第1弾 配信中', `「${pack.name}」`, '新カード22種・伝説は15パックで確定', () => this.shop(), h('img', { src: packImg(pack.name, pack.sub), alt: '' })),
+      b('b-online', 'フレンド対戦', '友達と時間を奪い合え', flow.available ? 'あいことば・招待リンクですぐ対戦' : '準備中', () => this.onlineMenu(), h('img', { src: cardImg('e_atra'), alt: '' })),
+      b('b-mission', 'デイリーミッション', '毎日コインを集めよう', `全達成でさらに${DAILY_ALL_BONUS.coins}コイン`, () => this.missionsModal('daily'), h('img', { src: cardImg('e_bellkeeper'), alt: '' })),
+    ];
+  }
+
+  // ---------------------------------------------------------------- battle tab
+  battleTab() {
+    const flow = this.host.flow();
+    const r = store.record, o = store.onlineRecord;
+    const mode = (cls: string, title: string, sub: string, art: string, fn: (() => void) | null, note?: string) =>
+      h('button', { class: `mode ${cls}`, disabled: !fn, onclick: () => { if (!fn) return; audio.play('select'); fn(); } },
+        h('img', { src: cardImg(art), alt: '' }), h('div', { class: 'txt' }, h('b', {}, title), h('span', {}, sub), note ? h('small', {}, note) : null));
+    this.hub('battle', h('div', { class: 'tab-page' },
+      h('h2', { class: 'page-title' }, 'バトル'),
+      mode('m-ai', 'AI対戦', '4種類のAIデッキと練習・腕試し', 'gear', () => this.setup(), `戦績 ${r.win}勝 ${r.lose}敗 ・ 勝利でコイン40〜60`),
+      mode('m-online', 'フレンド対戦', 'あいことば・招待リンクで友達とオンライン対戦', 'e_atra', flow.available ? () => this.onlineMenu() : null, flow.available ? `戦績 ${o.win}勝 ${o.lose}敗 ・ 勝利でコイン50` : '準備中'),
+      mode('m-guide', '遊び方', 'ルールと操作をおさらい', 'oracle', () => this.rules(() => this.battleTab())),
     ));
+  }
+
+  // ---------------------------------------------------------------- menu tab
+  menuTab() {
+    const m = store.meta;
+    const tile = (label: string, icon: string, fn: () => void, badge = 0) => h('button', { class: 'menu-tile', onclick: () => { audio.play('select'); fn(); } },
+      h('span', { class: 'ic', html: icon }), h('span', {}, label), badge ? h('b', { class: 'count-badge' }, String(badge)) : null);
+    this.hub('menu', h('div', { class: 'tab-page' },
+      h('h2', { class: 'page-title' }, 'メニュー'),
+      h('div', { class: 'menu-grid' },
+        tile('プロフィール', ICON.user, () => this.profileModal()),
+        tile('カード図鑑', ICON.book, () => this.collection()),
+        tile('ミッション', ICON.mission, () => this.missionsModal('daily'), claimable(m, localDate())),
+        tile('プレゼント', ICON.gift, () => this.presentsModal(), m.presents.length),
+        tile('お知らせ', ICON.news, () => this.newsModal(), unreadNews(m)),
+        tile('遊び方', ICON.help, () => this.rules(() => this.menuTab())),
+        tile('設定', ICON.gear, () => this.settings(() => this.menuTab())),
+        tile('タイトルへ', ICON.door, () => this.title())),
+      h('div', { class: 'ver' }, `クロノ・デュエル Ver. ${VERSION}`)));
+  }
+
+  // ---------------------------------------------------------------- modals
+  private modal(title: string, body: (HTMLElement | null)[], opts: { cls?: string; onClose?: () => void; foot?: HTMLElement[] } = {}) {
+    const close = () => { wrap.classList.add('out'); setTimeout(() => { wrap.remove(); opts.onClose?.(); }, 160); };
+    const wrap = h('div', { class: `modal-wrap ${opts.cls ?? ''}`, onclick: (e: Event) => { if (e.target === wrap) close(); } },
+      h('div', { class: 'modal', role: 'dialog', 'aria-label': title },
+        h('div', { class: 'modal-head' }, h('h2', {}, title), h('button', { class: 'x', 'aria-label': '閉じる', onclick: close }, '×')),
+        h('div', { class: 'modal-body' }, ...body),
+        opts.foot ? h('div', { class: 'modal-foot' }, ...opts.foot) : null));
+    this.host.root.append(wrap);
+    return { wrap, close };
+  }
+  private refreshHub() { this.openTab(this.tab); }
+  private grant(p: Prize, from: string) {
+    if (p.coins) store.wallet.coins += p.coins;
+    if (p.tickets) store.wallet.tickets += p.tickets;
+    store.saveWallet(); store.saveMeta();
+    audio.play('coin');
+    this.toast(`${from}：${prizeText(p)}を受け取りました`);
+  }
+  private toast(text: string) {
+    const t = h('div', { class: 'ui-toast', role: 'status' }, text);
+    this.host.root.append(t);
+    setTimeout(() => t.classList.add('out'), 1800);
+    setTimeout(() => t.remove(), 2200);
+  }
+
+  loginModal(day: number) {
+    const cells = LOGIN_CALENDAR.map((p, i) => h('div', { class: `lb${i + 1 < day ? ' got' : i + 1 === day ? ' today' : ''}` },
+      h('small', {}, `${i + 1}日目`),
+      h('span', { class: p.tickets ? 'ic-ticket' : 'ic-coin' }),
+      h('b', {}, p.tickets ? `×${p.tickets}` : String(p.coins)),
+      i + 1 <= day ? h('i', { class: 'stamp' }, '済') : null));
+    audio.play('reserve');
+    const { close } = this.modal('ログインボーナス', [
+      h('p', { class: 'center' }, `ログイン${store.meta.loginDays}日目！　${prizeText(LOGIN_CALENDAR[day - 1])}をプレゼントボックスに送りました。`),
+      h('div', { class: 'lb-grid' }, ...cells),
+      h('p', { class: 'small center' }, '7日ごとにくり返します。毎日ログインしてパックチケットを手に入れよう。'),
+    ], { cls: 'login', onClose: () => this.refreshHub(), foot: [h('button', { class: 'btn primary', onclick: () => { close(); setTimeout(() => this.presentsModal(), 200); } }, 'プレゼントを受け取る'), h('button', { class: 'btn', onclick: () => close() }, '閉じる')] });
+  }
+
+  missionsModal(tab: 'daily' | 'beginner') {
+    const m = store.meta;
+    const today = localDate();
+    let cur = tab;
+    let ref: { wrap: HTMLElement; close: () => void };
+    const row = (v: MissionView) => h('div', { class: `ms${v.claimed ? ' claimed' : v.done ? ' done' : ''}` },
+      h('div', { class: 'ms-main' }, h('b', {}, v.m.text), h('div', { class: 'bar' }, h('i', { style: `width:${(v.now / v.m.goal) * 100}%` })), h('small', {}, `${v.now} / ${v.m.goal}　報酬：${prizeText(v.m.prize)}`)),
+      h('button', { class: `btn small${v.done && !v.claimed ? ' primary' : ''}`, disabled: !v.done || v.claimed, onclick: () => { const p = claimMission(m, v.m.id, today); if (p) { this.grant(p, 'ミッション'); render(); } } }, v.claimed ? '受取済' : v.done ? '受け取る' : '挑戦中'));
+    const render = () => {
+      const dv = dailyView(m, today);
+      const allDone = dv.every((x) => x.claimed), allGot = m.dailyClaimed.includes('all');
+      const list = cur === 'daily'
+        ? [...dv.map(row), h('div', { class: `ms all${allGot ? ' claimed' : allDone ? ' done' : ''}` },
+            h('div', { class: 'ms-main' }, h('b', {}, 'デイリーミッションをすべて達成'), h('small', {}, `報酬：${prizeText(DAILY_ALL_BONUS)}`)),
+            h('button', { class: `btn small${allDone && !allGot ? ' primary' : ''}`, disabled: !allDone || allGot, onclick: () => { const p = claimMission(m, 'all', today); if (p) { this.grant(p, 'ミッション'); render(); } } }, allGot ? '受取済' : allDone ? '受け取る' : '挑戦中')),
+          h('p', { class: 'small center' }, '毎日0時（端末の時刻）に新しいミッションに入れ替わります。')]
+        : beginnerView(m).map(row);
+      const body = ref.wrap.querySelector('.modal-body')!;
+      body.scrollTop = 0;
+      body.replaceChildren(
+        h('div', { class: 'seg full sticky' },
+          h('button', { 'aria-pressed': String(cur === 'daily'), onclick: () => { cur = 'daily'; render(); } }, 'デイリー'),
+          h('button', { 'aria-pressed': String(cur === 'beginner'), onclick: () => { cur = 'beginner'; render(); } }, `初心者${beginnerView(m).some((x) => x.done && !x.claimed) ? ' ●' : ''}`)),
+        ...list);
+    };
+    ref = this.modal('ミッション', [], { onClose: () => this.refreshHub() });
+    render();
+  }
+
+  presentsModal() {
+    const m = store.meta;
+    let ref: { wrap: HTMLElement; close: () => void };
+    const render = () => {
+      const body = ref.wrap.querySelector('.modal-body')!;
+      const foot = ref.wrap.querySelector('.modal-foot button') as HTMLButtonElement | null;
+      if (foot) foot.disabled = !m.presents.length;
+      body.replaceChildren(...(m.presents.length ? m.presents.map((p) => h('div', { class: 'pr' },
+        h('span', { class: p.prize.tickets ? 'ic-ticket' : 'ic-coin' }),
+        h('div', { class: 'pr-main' }, h('b', {}, prizeText(p.prize)), h('small', {}, `${p.from}：${p.text}（${p.at}）`)),
+        h('button', { class: 'btn small primary', onclick: () => { this.grant(claimPresents(m, [p.id]), 'プレゼント'); render(); } }, '受け取る'))) : [h('p', { class: 'empty' }, '受け取れるプレゼントはありません')]));
+    };
+    ref = this.modal('プレゼントボックス', [], {
+      onClose: () => this.refreshHub(),
+      foot: [h('button', { class: 'btn primary', onclick: () => { if (!m.presents.length) return; this.grant(claimPresents(m), 'プレゼント'); render(); } }, '一括受け取り')],
+    });
+    render();
+  }
+
+  newsModal() {
+    const m = store.meta;
+    let ref: { wrap: HTMLElement; close: () => void };
+    const list = () => ref.wrap.querySelector('.modal-body')!.replaceChildren(...NEWS.map((n) => h('button', { class: `news${m.newsRead.includes(n.id) ? '' : ' unread'}`, onclick: () => detail(n) },
+      h('span', { class: `tag t-${n.tag}` }, n.tag), h('b', {}, n.title), h('small', {}, n.date))));
+    const detail = (n: News) => {
+      if (!m.newsRead.includes(n.id)) { m.newsRead.push(n.id); store.saveMeta(); }
+      ref.wrap.querySelector('.modal-body')!.replaceChildren(
+        h('button', { class: 'btn small', onclick: list }, '← 一覧へ'),
+        h('div', { class: 'news-detail' }, h('span', { class: `tag t-${n.tag}` }, n.tag), h('h3', {}, n.title), h('small', {}, n.date), h('p', {}, n.body)));
+    };
+    ref = this.modal('お知らせ', [], { onClose: () => { if (this.host.root.querySelector('.hub')) this.refreshHub(); } });
+    list();
+  }
+
+  profileModal() {
+    const m = store.meta;
+    const rk = rankOf(m.exp);
+    const r = store.record, o = store.onlineRecord;
+    const wins = r.win + o.win, games = r.win + r.lose + r.draw + o.win + o.lose + o.draw;
+    const base = setProgressAll();
+    let name = store.settings.name;
+    const owned = CARD_LIST.filter((c) => ownedCount(store.wallet, c.id) > 0);
+    const favGrid = h('div', { class: 'fav-grid' }, ...owned.sort((a, b) => 'LERC'.indexOf(a.rarity) - 'LERC'.indexOf(b.rarity)).map((c) => h('button', { class: `tile${(m.favorite || 'dragon') === c.id ? ' picked' : ''}`, 'aria-label': `${c.name}を看板カードにする`, onclick: (e: Event) => {
+      m.favorite = c.id; store.saveMeta(); audio.play('select');
+      favGrid.querySelectorAll('.picked').forEach((x) => x.classList.remove('picked'));
+      (e.currentTarget as HTMLElement).classList.add('picked');
+    } }, h('img', { src: cardImg(c.id), alt: c.name, loading: 'lazy' }))));
+    this.modal('プロフィール', [
+      h('div', { class: 'prof' },
+        h('div', { class: 'rank-big' }, h('small', {}, 'RANK'), String(rk.rank)),
+        h('div', {}, h('div', { class: 'exp wide' }, h('i', { style: `width:${(rk.into / rk.need) * 100}%` })), h('small', {}, `次のランクまで ${rk.need - rk.into} EXP`))),
+      h('label', { class: 'line' }, 'プレイヤー名', h('input', { class: 'text', maxlength: String(NET.NAME_MAX), value: name, oninput: (e: Event) => { name = (e.target as HTMLInputElement).value; }, onchange: () => { store.settings.name = cleanName(name); store.saveSettings(); } })),
+      h('div', { class: 'stat-grid' },
+        h('div', {}, h('b', {}, String(games)), h('span', {}, '対戦数')),
+        h('div', {}, h('b', {}, games ? `${Math.round((wins / games) * 100)}%` : '—'), h('span', {}, '勝率')),
+        h('div', {}, h('b', {}, `${o.win}-${o.lose}`), h('span', {}, 'オンライン')),
+        h('div', {}, h('b', {}, `${base.pct}%`), h('span', {}, 'カード収集'))),
+      h('h3', {}, '看板カード（ホームに表示）'),
+      favGrid,
+    ], { onClose: () => this.refreshHub() });
+  }
+
+  zoomCard(id: string) {
+    const d = cardDef(id);
+    this.modal(d.name, [h('img', { class: 'zoom-img', src: cardImg(id), alt: d.name }), ...keywordsOf(d).filter((k) => KEYWORD_HELP[k]).map((k) => h('p', { class: 'kw' }, h('b', {}, k), `：${KEYWORD_HELP[k]}`))], { cls: 'card-zoom' });
+  }
+
+  // ---------------------------------------------------------------- collection
+  collection() {
+    let setF: 'all' | CardSet = 'all';
+    let rar: 'all' | 'C' | 'R' | 'E' | 'L' = 'all';
+    const render = () => {
+      const w = store.wallet;
+      const list = CARD_LIST.filter((c) => (setF === 'all' || setOf(c) === setF) && (rar === 'all' || c.rarity === rar)).sort((a, b) => (setOf(a) === setOf(b) ? 0 : setOf(a) === 'base' ? -1 : 1) || a.cost - b.cost);
+      const seg = <T extends string>(cur: T, set: (v: T) => void, opts: [T, string][]) => h('div', { class: 'seg fit' }, ...opts.map(([v, t]) => h('button', { 'aria-pressed': String(cur === v), onclick: () => { set(v); render(); } }, t)));
+      const all = setProgressAll();
+      const echo = setProgress(w, 'echo');
+      this.mount(h('div', { class: 'screen dim' }, h('div', { class: 'panel' },
+        h('div', { class: 'head' }, h('h2', {}, 'カード図鑑'), h('button', { class: 'btn small', onclick: () => this.menuTab() }, '戻る')),
+        h('div', { class: 'progress' }, h('i', { style: `width:${all.pct}%` })),
+        h('div', { class: 'small' }, `全体 ${all.kinds}/${all.total}種（${all.pct}%）・ 第1弾 ${echo.kinds}/${echo.kindsTotal}種`),
+        seg(setF, (v) => (setF = v), [['all', '全セット'], ['base', '基本'], ['echo', '第1弾']]),
+        seg(rar, (v) => (rar = v), [['all', 'すべて'], ['C', '通常'], ['R', '希少'], ['E', '秘宝'], ['L', '伝説']]),
+        h('div', { class: 'grid' }, ...list.map((c) => {
+          const o = ownedCount(w, c.id);
+          return h('button', { class: `tile${o ? '' : ' locked'}`, 'aria-label': `${c.name}${o ? '' : '（未所持）'}`, onclick: () => this.zoomCard(c.id) },
+            h('img', { src: cardImg(c.id), alt: c.name, loading: 'lazy' }), setOf(c) !== 'base' ? h('span', { class: 'own' }, o ? `所持 ${o}` : '未所持') : null);
+        })))));
+    };
+    render();
   }
 
   // ---------------------------------------------------------------- match setup
@@ -109,7 +448,7 @@ export class Screens {
       const lv = (v: 'normal' | 'hard', t: string) => h('button', { 'aria-pressed': String(level === v), onclick: () => { level = v; render(); } }, t);
       this.mount(h('div', { class: 'screen dim' },
         h('div', { class: 'panel' },
-          h('div', { class: 'head' }, h('h2', {}, '対戦の準備'), h('button', { class: 'btn small', onclick: () => this.title() }, '戻る')),
+          h('div', { class: 'head' }, h('h2', {}, '対戦の準備'), h('button', { class: 'btn small', onclick: () => this.battleTab() }, '戻る')),
           h('h3', {}, 'あなたのデッキ'), h('div', { class: 'opt-list' }, ...deckOpts),
           h('h3', {}, '相手（AI）のデッキ'), h('div', { class: 'opt-list' }, ...aiOpts),
           h('h3', {}, 'AIの強さ'), h('div', { class: 'seg' }, lv('normal', 'ふつう'), lv('hard', 'つよい')),
@@ -130,9 +469,9 @@ export class Screens {
   // ---------------------------------------------------------------- deck list + editor
   decks() {
     const list = store.allDecks();
-    this.mount(h('div', { class: 'screen dim' },
+    this.hub('deck', h('div', { class: 'tab-page' },
       h('div', { class: 'panel' },
-        h('div', { class: 'head' }, h('h2', {}, 'デッキ'), h('button', { class: 'btn small', onclick: () => this.title() }, '戻る')),
+        h('div', { class: 'head' }, h('h2', {}, 'デッキ')),
         h('p', {}, `デッキは${RULES.DECK_SIZE}枚。同じカードは${RULES.MAX_COPIES}枚まで、伝説カードは${RULES.MAX_LEGEND_COPIES}枚までです。基本デッキは複製してから編集できます。`),
         h('div', { class: 'opt-list' }, ...list.map((d) => h('div', { class: 'opt' },
           h('div', { style: 'min-width:0' }, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, d.preset ? '基本デッキ' : `自作デッキ・${d.cards.length}枚`)),
@@ -193,6 +532,7 @@ export class Screens {
         const i = store.customDecks.findIndex((x) => x.id === d.id);
         if (i >= 0) store.customDecks[i] = d; else store.customDecks.push(d);
         store.saveDecks();
+        track(store.meta, 'deck', 1, localDate()); store.saveMeta();
         audio.play('reserve');
         this.decks();
       };
@@ -370,7 +710,18 @@ export class Screens {
     return PACKS.some((p) => canOpen(store.wallet, p)) ? h('button', { class: 'btn shop-btn', onclick: () => { leave(); this.shop(); } }, 'パックを開封する', h('span', { class: 'dot' })) : null;
   }
 
-  private resultView(r: BattleResult, foeLabel: string, buttons: (HTMLElement | null)[], note?: string, rw?: Reward) {
+  /** EXP gained and rank-ups after a match. */
+  private expView(xp?: XpGain) {
+    if (!xp || !xp.exp) return null;
+    const rk = rankOf(store.meta.exp);
+    const fill = h('i', { style: `width:${xp.after > xp.before ? 0 : ((rk.into - xp.exp) / rk.need) * 100}%` });
+    requestAnimationFrame(() => setTimeout(() => { fill.style.width = `${(rk.into / rk.need) * 100}%`; }, 250));
+    return h('div', { class: 'xp' },
+      h('div', { class: 'xp-row' }, h('span', { class: 'rank' }, h('small', {}, 'RANK'), String(rk.rank)), h('div', { class: 'exp wide' }, fill), h('b', {}, `EXP +${xp.exp}`)),
+      xp.after > xp.before ? h('div', { class: 'rankup' }, `RANK UP!  ランク${xp.after}　報酬をプレゼントボックスに送りました`) : null);
+  }
+
+  private resultView(r: BattleResult, foeLabel: string, buttons: (HTMLElement | null)[], note?: string, rw?: Reward, xp?: XpGain) {
     const kind = r.winner === 0 ? 'win' : r.winner === 1 ? 'lose' : 'draw';
     const win = kind === 'win';
     const title = win ? '勝利' : kind === 'lose' ? '敗北' : '引き分け';
@@ -390,16 +741,17 @@ export class Screens {
         h('div', {}, h('b', {}, String(r.actions)), h('span', {}, '総行動数'))),
       note ? h('div', { class: 'why' }, note) : null,
       this.rewardView(rw),
+      this.expView(xp),
       h('div', { class: 'menu' }, ...buttons));
   }
 
-  result(r: BattleResult, again: () => void, leave: () => void, rw?: Reward) {
+  result(r: BattleResult, again: () => void, leave: () => void, rw?: Reward, xp?: XpGain) {
     this.mount(this.resultView(r, 'AI', [
       h('button', { class: 'btn primary', onclick: again }, 'もう一度'),
       this.shopLink(leave),
       h('button', { class: 'btn', onclick: () => { leave(); this.setup(); } }, 'デッキを変えて対戦'),
-      h('button', { class: 'btn', onclick: () => { leave(); this.title(); } }, 'タイトルへ'),
-    ], undefined, rw));
+      h('button', { class: 'btn', onclick: () => { leave(); this.home(); } }, 'ホームへ'),
+    ], undefined, rw, xp));
   }
 
   // ---------------------------------------------------------------- online
@@ -407,7 +759,7 @@ export class Screens {
     const flow = this.host.flow();
     if (!flow.available) {
       this.mount(h('div', { class: 'screen dim' }, h('div', { class: 'panel' },
-        h('div', { class: 'head' }, h('h2', {}, 'オンライン対戦'), h('button', { class: 'btn small', onclick: () => this.title() }, '戻る')),
+        h('div', { class: 'head' }, h('h2', {}, 'オンライン対戦'), h('button', { class: 'btn small', onclick: () => this.battleTab() }, '戻る')),
         h('p', {}, 'オンライン対戦は現在準備中です。公開までもうしばらくお待ちください。'))));
       return;
     }
@@ -429,7 +781,7 @@ export class Screens {
       const r = store.onlineRecord;
       this.mount(h('div', { class: 'screen dim' },
         h('div', { class: 'panel' },
-          h('div', { class: 'head' }, h('h2', {}, 'オンライン対戦'), h('button', { class: 'btn small', onclick: () => this.title() }, '戻る')),
+          h('div', { class: 'head' }, h('h2', {}, 'オンライン対戦'), h('button', { class: 'btn small', onclick: () => this.battleTab() }, '戻る')),
           invite ? h('div', { class: 'invite' }, '友達から招待されています。名前とデッキを選んで「入室」を押してください。') : null,
           h('h3', {}, 'あなたの名前'),
           h('input', { class: 'text', id: 'pname', value: name, maxlength: String(NET.NAME_MAX), placeholder: 'プレイヤー', autocomplete: 'nickname', 'aria-label': '名前', oninput: (e: Event) => { name = (e.target as HTMLInputElement).value; } }),
@@ -491,7 +843,7 @@ export class Screens {
     this.live(build, (fn) => flow.onChange(fn));
   }
 
-  resultOnline(r: BattleResult, leave: () => void, rw?: Reward) {
+  resultOnline(r: BattleResult, leave: () => void, rw?: Reward, xp?: XpGain) {
     const flow = this.host.flow();
     const build = () => {
       const foe = flow.foe, rm = flow.rematch;
@@ -501,8 +853,8 @@ export class Screens {
       return this.resultView(r, foe?.name ?? '相手', [
         h('button', { class: 'btn primary', disabled: rm.me || !here, onclick: () => { audio.play('select'); flow.requestRematch(); } }, label),
         h('button', { class: 'btn', onclick: () => { flow.leave(); leave(); this.onlineMenu(); } }, '部屋を出る'),
-        h('button', { class: 'btn', onclick: () => { flow.leave(); leave(); this.title(); } }, 'タイトルへ'),
-      ], note, rw);
+        h('button', { class: 'btn', onclick: () => { flow.leave(); leave(); this.home(); } }, 'ホームへ'),
+      ], note, rw, xp);
     };
     this.live(build, (fn) => flow.onChange(fn));
   }
@@ -519,9 +871,9 @@ export class Screens {
       const left = PITY - w.pity;
       const cards = CARD_LIST.filter((c) => setOf(c) === pack.set).sort((a, b) => 'CREL'.indexOf(b.rarity) - 'CREL'.indexOf(a.rarity) || a.cost - b.cost);
       const slot = (r: string, pr: number) => h('tr', {}, h('td', {}, RARITY_NAMES[r as 'C']), h('td', {}, `${Math.round(pr * 1000) / 10}%`), h('td', {}, `${cards.filter((c) => c.rarity === r).length}種`));
-      this.mount(h('div', { class: 'screen dim' },
+      this.hub('shop', h('div', { class: 'tab-page' },
         h('div', { class: 'panel shop' },
-          h('div', { class: 'head' }, h('h2', {}, 'ショップ'), purse(), h('button', { class: 'btn small', onclick: () => this.title() }, '戻る')),
+          h('div', { class: 'head' }, h('h2', {}, 'ショップ')),
           h('div', { class: 'pack-show' },
             h('div', { class: 'pack-img' }, h('img', { src: packImg(pack.name, pack.sub), alt: `${pack.name} パック` }), h('i', { class: 'sheen' })),
             h('div', { class: 'pack-info' },
