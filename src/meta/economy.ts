@@ -4,6 +4,7 @@
  */
 import { CARD_LIST, cardDef, setOf, type CardSet, type Rarity } from '../core/cards';
 import { maxCopies } from '../core/decks';
+import { AI_LEVEL_NAMES, type AiLevel } from '../core/ai';
 
 export interface PackDef { id: string; set: CardSet; name: string; sub: string; price: number; size: number }
 export const PACKS: PackDef[] = [
@@ -78,11 +79,11 @@ export function craft(w: Wallet, id: string): boolean {
 }
 
 // ------------------------------------------------------------------ rewards
-export interface RewardInput { mode: 'ai' | 'online'; level: 'normal' | 'hard'; winner: 0 | 1 | -1; reason: string; myActions: number; today: string }
+export interface RewardInput { mode: 'ai' | 'online'; level: AiLevel; winner: 0 | 1 | -1; reason: string; myActions: number; today: string }
 export interface Reward { lines: { label: string; coins: number }[]; total: number; capped?: boolean }
 
 /** [win, loss, draw] coins per match type. */
-export const MATCH_REWARD: Record<string, [number, number, number]> = { 'ai-normal': [25, 10, 15], 'ai-hard': [35, 12, 18], online: [30, 12, 18] };
+export const MATCH_REWARD: Record<string, [number, number, number]> = { 'ai-easy': [20, 8, 12], 'ai-normal': [25, 10, 15], 'ai-hard': [35, 12, 18], 'ai-expert': [45, 15, 22], online: [30, 12, 18] };
 /** Matches you give up on almost at once pay nothing, so surrendering in a loop cannot farm coins. */
 export const MIN_ACTIONS = 5;
 export const DAILY_BONUS = 50;
@@ -99,7 +100,7 @@ export function reward(w: Wallet, r: RewardInput): Reward {
   const room = Math.max(0, DAILY_MATCH_CAP - used);
   const base = r.winner === 0 ? win : r.winner === -1 ? draw : r.reason !== 'surrender' ? lose : 0;
   const pay = Math.min(base, room);
-  if (r.winner === 0) lines.push({ label: r.mode === 'online' ? 'オンライン勝利' : r.level === 'hard' ? '勝利（つよい）' : '勝利', coins: pay });
+  if (r.winner === 0) lines.push({ label: r.mode === 'online' ? 'オンライン勝利' : r.level === 'normal' ? '勝利' : `勝利（${AI_LEVEL_NAMES[r.level]}）`, coins: pay });
   else if (r.winner === -1) lines.push({ label: '引き分け', coins: pay });
   else lines.push({ label: '対戦に参加', coins: pay });
   if (r.winner === 0 && w.dailyWin !== r.today) lines.push({ label: '本日の初勝利ボーナス', coins: DAILY_BONUS });

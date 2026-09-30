@@ -9,6 +9,7 @@ on:
       - server/**
       - src/core/**
       - src/server/**
+      - src/meta/rating.ts
       - .github/workflows/deploy-server.yml
   workflow_dispatch:
 

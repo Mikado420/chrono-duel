@@ -10,6 +10,10 @@ import { Tweener } from './render/tween';
 import { PackOpenScene } from './render/packOpen';
 import { MIN_ACTIONS, applyReward, canOpen, localDate, openPack, packById, reward, type Reward } from './meta/economy';
 import { recordBattle, track } from './meta/progress';
+import { finishRated, pickOpponent, startRated, type RatedGame } from './meta/rating';
+import { PRESET_DECKS } from './core/decks';
+import { PACK_TEST_DECKS } from './sim/packDecks';
+import { syncRated } from './net/api';
 import { codeFromHash } from './net/config';
 import { OnlineFlow } from './net/flow';
 import { registerServiceWorker } from './pwa';
@@ -89,6 +93,7 @@ async function boot() {
   let lastCfg: BattleConfig | null = null;
   relayout();
   let closePackRef: (() => void) | null = null;
+  let pendingNotice = '';
   const root = document.getElementById('ui')!;
 
   const applySettings = () => {
@@ -142,14 +147,42 @@ async function boot() {
     store.saveWallet();
     // rank and missions
     const xp = recordBattle(store.meta, {
-      won: r.winner === 0, played: r.myActions >= MIN_ACTIONS, hard: !online && lastCfg?.level === 'hard', online,
+      won: r.winner === 0, played: r.myActions >= MIN_ACTIONS, hard: !online && (lastCfg?.level === 'hard' || lastCfg?.level === 'expert'), online,
       spells: r.stats.spells, summons: r.stats.summons, reserves: r.stats.reserves, attacks: r.stats.attacks,
     }, today);
     store.saveMeta();
+    // rated play: the rating moves now; the ranking server gets the result in the background
+    let rated: RatedGame | null = null;
+    if (!online && lastCfg?.rated) {
+      rated = finishRated(store.rated, r.winner === 0 ? 1 : r.winner === -1 ? 0.5 : 0, r.myActions, Date.now(), newId());
+      store.saveRated();
+      void syncRated();
+    }
     // the final board stays visible behind the result screen until the player moves on
     if (online) screens.resultOnline(r, endBattle, rw, xp);
-    else screens.result(r, () => { screens.clear(); if (lastCfg) run(lastCfg); }, endBattle, rw, xp);
+    else if (rated) {
+      const deck = store.deckById(rated.deck);
+      screens.result(r, () => { screens.clear(); if (deck && deck.valid) startRatedGame(deck); else { endBattle(); screens.rated(); } }, endBattle, rw, xp, rated);
+    } else screens.result(r, () => { screens.clear(); if (lastCfg) run(lastCfg); }, endBattle, rw, xp);
   };
+  const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  /** Starts a rated game: the opponent's strength follows the rating (only 超つよい from 時の賢者 up). */
+  const startRatedGame = (deck: DeckDef) => {
+    const ai = pickOpponent(store.rated.rating);
+    const pool = ai === 'easy' || ai === 'normal' ? PRESET_DECKS : [...PRESET_DECKS, ...PACK_TEST_DECKS];
+    const aiDeck = pool[Math.floor(Math.random() * pool.length)];
+    startRated(store.rated, ai, deck.id, Date.now());
+    store.saveRated();
+    screens.clear();
+    run({ myDeck: deck.cards, myDeckName: deck.name, aiDeck: aiDeck.cards, aiDeckName: aiDeck.name, level: ai, rated: true });
+  };
+  // a rated game left unfinished last time (app closed, tab killed) counts as a loss
+  if (store.rated.pending) {
+    const g = finishRated(store.rated, 0, 0, Date.now(), newId());
+    store.saveRated();
+    if (g) pendingNotice = `前回のレート戦は途中で終了したため敗北として記録されました（レート ${g.before} → ${g.after}）`;
+  }
+  void syncRated();
 
   // ---- booster packs
   let packScene: PackOpenScene | null = null;
@@ -203,6 +236,8 @@ async function boot() {
   closePackRef = closePack;
   const screens: Screens = new Screens({
     openPack: (id: string) => openPackScene(id),
+    startRated: (deck: DeckDef) => startRatedGame(deck),
+    takeNotice: () => { const n = pendingNotice; pendingNotice = ''; return n; },
     root,
     flow: () => flow,
     startBattle: (deck: DeckDef, ai: DeckDef, level) => run({ myDeck: deck.cards, myDeckName: deck.name, aiDeck: ai.cards, aiDeckName: ai.name, level }),

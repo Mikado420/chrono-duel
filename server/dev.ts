@@ -8,6 +8,7 @@ import { createServer, type IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { normalizeCode, type ClientMsg, type ServerMsg } from '../src/core/net';
 import { Room, type Conn, type RoomEnv } from '../src/server/room';
+import { Leaderboard, handleApi, type KV } from '../src/server/leaderboard';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const env: RoomEnv = { now: () => Date.now(), uuid: () => randomUUID(), seed: () => Math.floor(Math.random() * 2 ** 32) };
@@ -79,7 +80,28 @@ function accept(code: string, req: IncomingMessage, socket: Duplex) {
   socket.on('error', gone);
 }
 
-const server = createServer((_req, res) => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('chrono-duel dev server ok\n'); });
+const mem = new Map<string, unknown>();
+const kv: KV = {
+  get: async <T>(k: string) => structuredClone(mem.get(k)) as T | undefined,
+  put: async (k, v) => { mem.set(k, structuredClone(v)); },
+  list: async <T>(prefix: string) => [...mem.entries()].filter(([k]) => k.startsWith(prefix)).map(([, v]) => structuredClone(v) as T),
+};
+const board = new Leaderboard(kv, () => Date.now());
+const server = createServer((req, res) => {
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST, OPTIONS', 'access-control-allow-headers': 'content-type' };
+  const path = (req.url ?? '/').split('?')[0];
+  if (!path.startsWith('/api/')) { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('chrono-duel dev server ok\n'); return; }
+  if (req.method === 'OPTIONS') { res.writeHead(204, cors); res.end(); return; }
+  let text = '';
+  req.on('data', (c: Buffer) => { text += c.toString('utf8'); });
+  req.on('end', async () => {
+    let body: unknown = {};
+    try { body = text ? JSON.parse(text) : {}; } catch { /* handled below as an empty body */ }
+    const r = await handleApi(board, path, req.method ?? 'GET', body);
+    res.writeHead(r.status, { ...cors, 'content-type': 'application/json' });
+    res.end(JSON.stringify(r.body));
+  });
+});
 server.on('upgrade', (req, socket) => {
   const m = (req.url ?? '').match(/^\/ws\/([A-Za-z0-9]+)/);
   const code = m ? normalizeCode(m[1]) : null;

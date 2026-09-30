@@ -1,11 +1,13 @@
 /* Balance simulator: `npm run sim -- [games] [levelA] [levelB]` */
-import { chooseAction, type AiLevel } from '../core/ai';
+import { EXPERT_SEARCH, chooseAction, setExpertWeights, type AiLevel } from '../core/ai';
 import { PRESET_DECKS, validateDeck } from '../core/decks';
 import { PACK_TEST_DECKS } from './packDecks';
 import { actor, apply, createGame, mulberry32, type GameEvent, type PlayerIndex } from '../core/engine';
 
 import { RULES } from '../core/rules';
 if (process.env.RULES) Object.assign(RULES as Record<string, unknown>, JSON.parse(process.env.RULES));
+if (process.env.EXPW) setExpertWeights(JSON.parse(process.env.EXPW));
+if (process.env.EXPS) Object.assign(EXPERT_SEARCH, JSON.parse(process.env.EXPS));
 const N = +(process.argv[2] ?? 400);
 const LA = (process.argv[3] ?? 'normal') as AiLevel;
 const LB = (process.argv[4] ?? LA) as AiLevel;

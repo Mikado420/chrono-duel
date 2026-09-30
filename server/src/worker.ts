@@ -8,9 +8,12 @@
 import { DurableObject } from 'cloudflare:workers';
 import { normalizeCode, type ClientMsg, type ServerMsg } from '../../src/core/net';
 import { Room, type Conn, type RoomEnv, type RoomSnapshot } from '../../src/server/room';
+import { Leaderboard, handleApi, type KV } from '../../src/server/leaderboard';
 
 export interface Env {
   ROOMS: DurableObjectNamespace<RoomDO>;
+  /** One object holds the friends' ranking. */
+  RANKING: DurableObjectNamespace<RankingDO>;
   /** Comma separated list of allowed Origin headers. Empty or unset allows any origin. */
   ALLOWED_ORIGINS?: string;
 }
@@ -25,6 +28,7 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname === '/' || url.pathname === '/health') return new Response('chrono-duel online ok\n', { headers: { 'content-type': 'text/plain' } });
+    if (url.pathname.startsWith('/api/')) return api(req, env);
     const m = url.pathname.match(/^\/ws\/([A-Za-z0-9]+)$/);
     const code = m ? normalizeCode(m[1]) : null;
     if (!code) return new Response('not found', { status: 404 });
@@ -35,6 +39,44 @@ export default {
     return env.ROOMS.get(env.ROOMS.idFromName(code)).fetch(req);
   },
 } satisfies ExportedHandler<Env>;
+
+/** Origins allowed to call the API from a browser (same list as the game sockets). */
+function corsFor(req: Request, env: Env): Record<string, string> | null {
+  const allowed = (env.ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const origin = req.headers.get('Origin');
+  if (allowed.length && (!origin || !allowed.includes(origin))) return null;
+  return { 'access-control-allow-origin': origin ?? '*', 'access-control-allow-methods': 'POST, OPTIONS', 'access-control-allow-headers': 'content-type', 'access-control-max-age': '86400', vary: 'Origin' };
+}
+async function api(req: Request, env: Env): Promise<Response> {
+  const cors = corsFor(req, env);
+  if (!cors) return new Response('origin not allowed', { status: 403 });
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+  const res = await env.RANKING.get(env.RANKING.idFromName('friends')).fetch(req);
+  const out = new Response(res.body, res);
+  for (const [k, v] of Object.entries(cors)) out.headers.set(k, v);
+  return out;
+}
+
+export class RankingDO extends DurableObject<Env> {
+  private lb: Leaderboard;
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    const kv: KV = {
+      get: async <T>(k: string) => (await ctx.storage.get<T>(k)) ?? undefined,
+      put: async (k, v) => { await ctx.storage.put(k, v); },
+      list: async <T>(prefix: string) => [...(await ctx.storage.list<T>({ prefix })).values()],
+    };
+    this.lb = new Leaderboard(kv, () => Date.now());
+  }
+  async fetch(req: Request): Promise<Response> {
+    const text = await req.text();
+    if (text.length > 16_384) return Response.json({ error: 'too large' }, { status: 413 });
+    let body: unknown = null;
+    try { body = text ? JSON.parse(text) : {}; } catch { return Response.json({ error: 'bad json' }, { status: 400 }); }
+    const r = await handleApi(this.lb, new URL(req.url).pathname, req.method, body);
+    return Response.json(r.body, { status: r.status });
+  }
+}
 
 interface Attachment { cid: string }
 

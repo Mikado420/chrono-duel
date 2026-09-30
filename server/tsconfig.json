@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "isolatedModules": true
   },
-  "include": ["src", "../src/core", "../src/server"]
+  "include": ["src", "../src/core", "../src/server", "../src/meta/rating.ts"]
 }

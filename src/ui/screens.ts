@@ -15,6 +15,9 @@ import {
 import { VERSION } from '../version';
 import { pwa } from '../pwa';
 import { store } from './storage';
+import { AI_LEVEL_NAMES, type AiLevel } from '../core/ai';
+import { AI_RATING, EXPERT_ONLY, PLACEMENT_GAMES, opponentPool, tierOf, type RatedGame, type Tier } from '../meta/rating';
+import { fetchRanking, rankingAvailable, syncRated } from '../net/api';
 
 type Child = Node | string | null | undefined | false;
 export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, unknown> = {}, ...kids: Child[]): HTMLElementTagNameMap[K] {
@@ -54,6 +57,10 @@ function craftBox(id: string, done: () => void) {
     h('div', { class: 'craft-info' }, h('span', { class: 'shard-ic' }), h('span', {}, `所持 ${w.shards}`), h('span', { class: 'sep' }, '／'), h('span', {}, `作成に ${cost}`)),
     h('button', { class: `btn small${block ? '' : ' primary'}`, disabled: !!block, onclick: () => { if (craft(store.wallet, id)) { store.saveWallet(); audio.play('rareR'); done(); } } }, block ?? '欠片で作成'));
 }
+/** Hexagonal badge in the tier's colour. */
+function tierBadge(t: Tier, size: 'sm' | 'lg' = 'sm') {
+  return h('span', { class: `tier-badge ${size}`, style: `--tier:${t.color}` }, h('i', {}), h('b', {}, t.name));
+}
 type Tab = 'home' | 'battle' | 'deck' | 'shop' | 'menu';
 export interface XpGain { exp: number; before: number; after: number }
 /** Collection progress over every collectible card. */
@@ -91,7 +98,10 @@ function cardImg(id: string): string {
 export interface ScreenHost {
   root: HTMLElement;
   openPack(id: string): void;
-  startBattle(deck: DeckDef, ai: DeckDef, level: 'normal' | 'hard'): void;
+  startBattle(deck: DeckDef, ai: DeckDef, level: AiLevel): void;
+  startRated(deck: DeckDef): void;
+  /** One-off message for the home screen (e.g. an abandoned rated game), or ''. */
+  takeNotice(): string;
   applySettings(): void;
   flow(): OnlineFlow;
 }
@@ -231,12 +241,15 @@ export class Screens {
       h('div', { class: 'home-cta' },
         h('button', { class: 'battle-cta', onclick: () => { audio.play('summon'); this.clear(); this.host.startBattle(quick, PRESET_DECKS[Math.floor(Math.random() * PRESET_DECKS.length)], store.settings.level); } },
           h('span', { class: 'big' }, 'バトル開始'),
-          h('small', {}, `${quick.name} ・ AI${store.settings.level === 'hard' ? '（つよい）' : '（ふつう）'}`)),
+          h('small', {}, `フリー対戦 ・ ${quick.name} ・ AI（${AI_LEVEL_NAMES[store.settings.level] ?? 'ふつう'}）`)),
         h('button', { class: 'btn cta-sub', onclick: () => this.battleTab() }, 'モード選択')),
     );
     this.hub('home', body);
     const timer = window.setInterval(() => { if (!carousel.isConnected) { clearInterval(timer); return; } setSlide(slide + 1); }, 5000);
     if (loginDay) setTimeout(() => this.loginModal(loginDay), 350);
+    const notice = this.host.takeNotice();
+    // important, so it waits to be read (after the login bonus if both appear)
+    if (notice) setTimeout(() => { const { close } = this.modal('レート戦', [h('p', {}, notice)], { foot: [h('button', { class: 'btn primary', onclick: () => close() }, 'OK')] }); }, loginDay ? 600 : 400);
   }
 
   private banners(): HTMLElement[] {
@@ -246,9 +259,91 @@ export class Screens {
       h('button', { class: `banner ${cls}`, onclick: () => { audio.play('select'); fn(); } }, h('div', { class: 'txt' }, h('small', {}, kicker), h('b', {}, title), h('span', {}, sub)), art ?? null);
     return [
       b('b-pack', '第1弾 配信中', `「${pack.name}」`, '新カード22種・伝説は15パックで確定', () => this.shop(), h('img', { src: packImg(pack.name, pack.sub), alt: '' })),
+      b('b-rated', 'レート戦', '段位を上げて友達と競え', `いま「${tierOf(store.rated.rating).tier.name}」・レート${store.rated.rating}`, () => this.rated(), h('img', { src: cardImg('e_verna'), alt: '' })),
       b('b-online', 'フレンド対戦', '友達と時間を奪い合え', flow.available ? 'あいことば・招待リンクですぐ対戦' : '準備中', () => this.onlineMenu(), h('img', { src: cardImg('e_atra'), alt: '' })),
       b('b-mission', 'デイリーミッション', '毎日コインを集めよう', `全達成でさらに${DAILY_ALL_BONUS.coins}コイン`, () => this.missionsModal('daily'), h('img', { src: cardImg('e_bellkeeper'), alt: '' })),
     ];
+  }
+
+  // ---------------------------------------------------------------- rated play
+  rated() {
+    const decks = store.allDecks();
+    let mine = decks.find((d) => d.id === store.settings.lastDeck && d.valid) ?? decks.find((d) => d.valid) ?? decks[0];
+    let board: HTMLElement;
+    const loadRanking = async () => {
+      if (!rankingAvailable()) { board.replaceChildren(h('p', { class: 'small' }, 'オンラインのサーバーが設定されていないため、ランキングは表示できません。レートはこの端末に記録されます。')); return; }
+      board.replaceChildren(h('p', { class: 'small' }, '読み込み中…'));
+      await syncRated();
+      const res = await fetchRanking();
+      if (!board.isConnected) return;
+      if (!res) { board.replaceChildren(h('p', { class: 'small' }, 'ランキングを読み込めませんでした。通信状況を確かめて、あとでもう一度開いてください。')); return; }
+      const row = (place: number, r: { name: string; rating: number; games: number; wins: number; me?: boolean }) => {
+        const t = tierOf(r.rating).tier;
+        return h('div', { class: `rk-row${r.me ? ' me' : ''}${place <= 3 ? ` top${place}` : ''}` },
+          h('span', { class: 'place' }, String(place)), tierBadge(t), h('span', { class: 'nm' }, r.name), h('span', { class: 'wl' }, `${r.wins}勝${r.games - r.wins}敗`), h('b', {}, String(r.rating)));
+      };
+      const rows = res.top.map((r, i) => row(i + 1, r));
+      if (res.me && res.me.place > res.top.length) rows.push(h('div', { class: 'rk-gap' }, '…'), row(res.me.place, res.me));
+      const unsent = store.rated.outbox.length;
+      board.replaceChildren(
+        ...(rows.length ? rows : [h('p', { class: 'small' }, 'まだ誰もレート戦をしていません。最初の1人になろう。')]),
+        h('p', { class: 'small' }, `参加者 ${res.total}人${unsent ? ` ・ 未送信の結果 ${unsent}件（通信できたときに送ります）` : ''}`));
+      render(false);
+    };
+    const render = (reload = true) => {
+      const r = store.rated;
+      const t = tierOf(r.rating);
+      const pool = opponentPool(r.rating);
+      const foes = pool.map(([lv, w]) => `${AI_LEVEL_NAMES[lv]}${pool.length > 1 ? ` ${Math.round(w * 100)}%` : ''}`).join('・');
+      const deckOpts = decks.map((d) => h('button', { class: 'opt', 'aria-pressed': String(d.id === mine.id), disabled: !d.valid, onclick: () => { mine = d; audio.play('select'); render(false); } },
+        h('div', {}, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, d.blurb ?? `${d.cards.length}枚・自作デッキ`)), !d.valid ? h('span', { class: 'badge' }, d.missing.length ? '未所持あり' : '未完成') : null));
+      const hist = r.history.slice(0, 8).map((g) => h('div', { class: `rh ${g.score === 1 ? 'w' : g.score === 0 ? 'l' : 'd'}` },
+        h('b', {}, g.score === 1 ? '勝' : g.score === 0 ? '敗' : '分'), h('span', {}, `AI（${AI_LEVEL_NAMES[g.ai]}）`), h('span', { class: 'dl' }, `${g.after - g.before >= 0 ? '+' : ''}${g.after - g.before}`), h('span', { class: 'rt' }, String(g.after))));
+      board ??= h('div', { class: 'ranking' });
+      this.mount(h('div', { class: 'screen dim' }, h('div', { class: 'panel rated' },
+        h('div', { class: 'head' }, h('h2', {}, 'レート戦'), h('button', { class: 'btn small', onclick: () => this.battleTab() }, '戻る')),
+        h('div', { class: 'rated-card', style: `--tier:${t.tier.color}` },
+          tierBadge(t.tier, 'lg'),
+          h('div', { class: 'rating' }, h('small', {}, 'RATING'), h('b', {}, String(r.rating))),
+          h('div', { class: 'progress tier-prog' }, h('i', { style: `width:${t.next ? (t.into / t.span) * 100 : 100}%` })),
+          h('div', { class: 'small' }, t.next ? `次の段位「${t.next.name}」まで ${t.next.min - r.rating}` : '最高段位', `　・　最高 ${r.peak}　・　${r.games}戦${r.wins}勝`)),
+        h('div', { class: 'foe-info' }, h('span', {}, '対戦相手'), h('b', {}, `AI（${foes}）`)),
+        r.rating >= EXPERT_ONLY ? h('p', { class: 'small warn' }, `「${tierOf(EXPERT_ONLY).tier.name}」以上では超つよいAIとしか当たりません。`) : h('p', { class: 'small' }, `レート${EXPERT_ONLY}（${tierOf(EXPERT_ONLY).tier.name}）からは超つよいAIのみになります。`),
+        h('ul', { class: 'earn' },
+          h('li', {}, `強いAIに勝つほど大きく上がり、弱いAIに負けるほど大きく下がります（AIのレート：${(['easy', 'normal', 'hard', 'expert'] as AiLevel[]).map((l) => `${AI_LEVEL_NAMES[l]}${AI_RATING[l]}`).join('・')}）`),
+          h('li', {}, `はじめの${PLACEMENT_GAMES}戦は変動が大きくなります`),
+          h('li', {}, '降参・途中でアプリを閉じた場合は敗北になります')),
+        h('h3', {}, 'デッキ'), h('div', { class: 'opt-list' }, ...deckOpts),
+        h('button', { class: 'btn primary big-cta', disabled: !mine.valid, onclick: () => { store.settings.lastDeck = mine.id; store.saveSettings(); audio.play('summon'); this.host.startRated(mine); } }, 'レート戦を開始'),
+        hist.length ? h('h3', {}, '最近の結果') : null,
+        hist.length ? h('div', { class: 'rhist' }, ...hist) : null,
+        h('div', { class: 'row' }, h('h3', {}, '友達ランキング'), h('span', { class: 'spacer' }), rankingAvailable() ? h('button', { class: 'btn small', onclick: () => void loadRanking() }, '更新') : null),
+        board)));
+      if (reload) void loadRanking();
+    };
+    render();
+  }
+
+  /** Rating change on the result screen, counted up, with a promotion/demotion line. */
+  private ratedView(g?: RatedGame) {
+    if (!g) return null;
+    const d = g.after - g.before;
+    const t0 = tierOf(g.before).tier, t1 = tierOf(g.after).tier;
+    const num = h('b', {}, String(g.before));
+    const start = performance.now();
+    const stepFn = () => {
+      const k = Math.min(1, (performance.now() - start) / 900);
+      num.textContent = String(Math.round(g.before + d * (1 - Math.pow(1 - k, 3))));
+      if (k < 1 && num.isConnected) requestAnimationFrame(stepFn);
+    };
+    setTimeout(() => requestAnimationFrame(stepFn), 300);
+    const up = t1.min > t0.min, down = t1.min < t0.min;
+    if (up) setTimeout(() => audio.play('rareE'), 900);
+    return h('div', { class: `rated-res ${d >= 0 ? 'up' : 'down'}`, style: `--tier:${t1.color}` },
+      h('div', { class: 'rr-row' }, tierBadge(t1), h('span', { class: 'lbl' }, 'レート'), num, h('span', { class: 'delta' }, `${d >= 0 ? '+' : ''}${d}`)),
+      h('div', { class: 'small' }, `対戦相手：AI（${AI_LEVEL_NAMES[g.ai]}・レート${AI_RATING[g.ai]}）`),
+      up ? h('div', { class: 'promo' }, `昇格！「${t1.name}」になりました`) : down ? h('div', { class: 'demo' }, `「${t1.name}」に降格しました`) : null,
+      g.after >= EXPERT_ONLY && g.before < EXPERT_ONLY ? h('div', { class: 'promo' }, 'ここからは超つよいAIだけが相手です') : null);
   }
 
   // ---------------------------------------------------------------- battle tab
@@ -258,9 +353,11 @@ export class Screens {
     const mode = (cls: string, title: string, sub: string, art: string, fn: (() => void) | null, note?: string) =>
       h('button', { class: `mode ${cls}`, disabled: !fn, onclick: () => { if (!fn) return; audio.play('select'); fn(); } },
         h('img', { src: cardImg(art), alt: '' }), h('div', { class: 'txt' }, h('b', {}, title), h('span', {}, sub), note ? h('small', {}, note) : null));
+    const rt = store.rated, tr = tierOf(rt.rating);
     this.hub('battle', h('div', { class: 'tab-page' },
       h('h2', { class: 'page-title' }, 'バトル'),
-      mode('m-ai', 'AI対戦', '4種類のAIデッキと練習・腕試し', 'gear', () => this.setup(), `戦績 ${r.win}勝 ${r.lose}敗 ・ 勝利でコイン${MATCH_REWARD['ai-normal'][0]}〜${MATCH_REWARD['ai-hard'][0]}`),
+      mode('m-rated', 'レート戦', `AIと真剣勝負。レートが上がるほど相手が強くなる`, 'e_verna', () => this.rated(), `${tr.tier.name} ・ レート ${rt.rating} ・ ${rt.games}戦${rt.wins}勝`),
+      mode('m-ai', 'フリー対戦', 'AIの強さを選んで練習・腕試し（レートは変わりません）', 'gear', () => this.setup(), `戦績 ${r.win}勝 ${r.lose}敗 ・ 勝利でコイン${MATCH_REWARD['ai-normal'][0]}〜${MATCH_REWARD['ai-hard'][0]}`),
       mode('m-online', 'フレンド対戦', 'あいことば・招待リンクで友達とオンライン対戦', 'e_atra', flow.available ? () => this.onlineMenu() : null, flow.available ? `戦績 ${o.win}勝 ${o.lose}敗 ・ 勝利でコイン${MATCH_REWARD['online'][0]}` : '準備中'),
       mode('m-guide', '遊び方', 'ルールと操作をおさらい', 'oracle', () => this.rules(() => this.battleTab())),
     ));
@@ -406,7 +503,8 @@ export class Screens {
       h('div', { class: 'prof' },
         h('div', { class: 'rank-big' }, h('small', {}, 'RANK'), String(rk.rank)),
         h('div', {}, h('div', { class: 'exp wide' }, h('i', { style: `width:${(rk.into / rk.need) * 100}%` })), h('small', {}, `次のランクまで ${rk.need - rk.into} EXP`))),
-      h('label', { class: 'line' }, 'プレイヤー名', h('input', { class: 'text', maxlength: String(NET.NAME_MAX), value: name, oninput: (e: Event) => { name = (e.target as HTMLInputElement).value; }, onchange: () => { store.settings.name = cleanName(name); store.saveSettings(); } })),
+      h('div', { class: 'prof-rated' }, tierBadge(tierOf(store.rated.rating).tier), h('span', {}, `レート ${store.rated.rating}（最高 ${store.rated.peak}）`), h('button', { class: 'btn small', onclick: () => { document.querySelector('.modal-wrap')?.remove(); this.rated(); } }, 'レート戦へ')),
+      h('label', { class: 'line' }, 'プレイヤー名', h('input', { class: 'text', maxlength: String(NET.NAME_MAX), value: name, oninput: (e: Event) => { name = (e.target as HTMLInputElement).value; }, onchange: () => { store.settings.name = cleanName(name); store.saveSettings(); void syncRated(); } })),
       h('div', { class: 'stat-grid' },
         h('div', {}, h('b', {}, String(games)), h('span', {}, '対戦数')),
         h('div', {}, h('b', {}, games ? `${Math.round((wins / games) * 100)}%` : '—'), h('span', {}, '勝率')),
@@ -467,13 +565,13 @@ export class Screens {
       }, h('div', {}, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, d.blurb ?? `${d.cards.length}枚・自作デッキ`)), !d.valid ? h('span', { class: 'badge' }, d.missing.length ? '未所持あり' : '未完成') : null));
       const aiOpts = [h('button', { class: 'opt', 'aria-pressed': String(ai === 'random'), onclick: () => { ai = 'random'; render(); } }, h('div', {}, h('div', { class: 'nm' }, 'おまかせ'), h('div', { class: 'ds' }, '4種のデッキから選ばれます'))),
         ...PRESET_DECKS.map((d) => h('button', { class: 'opt', 'aria-pressed': String(ai !== 'random' && ai.id === d.id), onclick: () => { ai = d; render(); } }, h('div', {}, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, d.blurb ?? ''))))];
-      const lv = (v: 'normal' | 'hard', t: string) => h('button', { 'aria-pressed': String(level === v), onclick: () => { level = v; render(); } }, t);
+      const lv = (v: AiLevel, t: string) => h('button', { 'aria-pressed': String(level === v), onclick: () => { level = v; render(); } }, t);
       this.mount(h('div', { class: 'screen dim' },
         h('div', { class: 'panel' },
           h('div', { class: 'head' }, h('h2', {}, '対戦の準備'), h('button', { class: 'btn small', onclick: () => this.battleTab() }, '戻る')),
           h('h3', {}, 'あなたのデッキ'), h('div', { class: 'opt-list' }, ...deckOpts),
           h('h3', {}, '相手（AI）のデッキ'), h('div', { class: 'opt-list' }, ...aiOpts),
-          h('h3', {}, 'AIの強さ'), h('div', { class: 'seg' }, lv('normal', 'ふつう'), lv('hard', 'つよい')),
+          h('h3', {}, 'AIの強さ'), h('div', { class: 'seg fit' }, lv('easy', 'やさしい'), lv('normal', 'ふつう'), lv('hard', 'つよい'), lv('expert', '超つよい')),
           h('button', {
             class: 'btn primary', onclick: () => {
               store.settings.lastDeck = mine.id; store.settings.level = level; store.saveSettings();
@@ -748,7 +846,7 @@ export class Screens {
       xp.after > xp.before ? h('div', { class: 'rankup' }, `RANK UP!  ランク${xp.after}　報酬をプレゼントボックスに送りました`) : null);
   }
 
-  private resultView(r: BattleResult, foeLabel: string, buttons: (HTMLElement | null)[], note?: string, rw?: Reward, xp?: XpGain) {
+  private resultView(r: BattleResult, foeLabel: string, buttons: (HTMLElement | null)[], note?: string, rw?: Reward, xp?: XpGain, rated?: RatedGame) {
     const kind = r.winner === 0 ? 'win' : r.winner === 1 ? 'lose' : 'draw';
     const win = kind === 'win';
     const title = win ? '勝利' : kind === 'lose' ? '敗北' : '引き分け';
@@ -767,12 +865,22 @@ export class Screens {
         h('div', {}, h('b', {}, String(Math.max(0, r.foeHp))), h('span', {}, `${foeLabel}の体力`)),
         h('div', {}, h('b', {}, String(r.actions)), h('span', {}, '総行動数'))),
       note ? h('div', { class: 'why' }, note) : null,
+      this.ratedView(rated),
       this.rewardView(rw),
       this.expView(xp),
       h('div', { class: 'menu' }, ...buttons));
   }
 
-  result(r: BattleResult, again: () => void, leave: () => void, rw?: Reward, xp?: XpGain) {
+  result(r: BattleResult, again: () => void, leave: () => void, rw?: Reward, xp?: XpGain, rated?: RatedGame | null) {
+    if (rated) {
+      this.mount(this.resultView(r, 'AI', [
+        h('button', { class: 'btn primary', onclick: again }, '次のレート戦へ'),
+        h('button', { class: 'btn', onclick: () => { leave(); this.rated(); } }, 'レート戦の画面へ'),
+        this.shopLink(leave),
+        h('button', { class: 'btn', onclick: () => { leave(); this.home(); } }, 'ホームへ'),
+      ], undefined, rw, xp, rated));
+      return;
+    }
     this.mount(this.resultView(r, 'AI', [
       h('button', { class: 'btn primary', onclick: again }, 'もう一度'),
       this.shopLink(leave),

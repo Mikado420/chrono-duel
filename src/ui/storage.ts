@@ -3,6 +3,8 @@ import { CARDS } from '../core/cards';
 import { PRESET_DECKS, validateDeck } from '../core/decks';
 import { NEW_WALLET, missingCards, type Wallet } from '../meta/economy';
 import { NEW_META, type Meta } from '../meta/progress';
+import { NEW_RATED, type Rated } from '../meta/rating';
+import type { AiLevel } from '../core/ai';
 
 /** localStorage wrapper that never throws (private mode, blocked storage). */
 function read<T>(key: string, fallback: T): T {
@@ -15,7 +17,7 @@ function write(key: string, v: unknown) {
   try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* storage unavailable: keep in memory only */ }
 }
 
-export interface Settings { volume: number; muted: boolean; speed: number; reduced: boolean; level: 'normal' | 'hard'; lastDeck: string; guided: boolean; name: string }
+export interface Settings { volume: number; muted: boolean; speed: number; reduced: boolean; level: AiLevel; lastDeck: string; guided: boolean; name: string }
 const DEFAULT_SETTINGS: Settings = { volume: 0.7, muted: false, speed: 1, reduced: false, level: 'normal', lastDeck: 'balance', guided: false, name: '' };
 
 export interface OnlineSession { code: string; token: string; name: string; at: number }
@@ -44,6 +46,20 @@ export const store = {
   /** Coins, pack tickets and the card collection. */
   wallet: { ...NEW_WALLET(), ...read<Partial<Wallet>>('cd.wallet', {}) } as Wallet,
   saveWallet() { write('cd.wallet', this.wallet); },
+
+  /** Rated play against the AI. */
+  rated: { ...NEW_RATED(), ...read<Partial<Rated>>('cd.rated', {}) } as Rated,
+  saveRated() { write('cd.rated', this.rated); },
+  /** Anonymous identity for the friends' ranking (created on first use, kept on this device). */
+  account(): { id: string; secret: string } {
+    let a = read<{ id: string; secret: string } | null>('cd.account', null);
+    if (!a || !a.id || !a.secret) {
+      const u = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`);
+      a = { id: u(), secret: u() };
+      write('cd.account', a);
+    }
+    return a;
+  },
 
   /** Rank, missions, login bonus, presents and news. */
   meta: { ...NEW_META(), ...read<Partial<Meta>>('cd.meta', {}) } as Meta,

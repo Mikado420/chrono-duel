@@ -1,5 +1,5 @@
 import { Container, FederatedPointerEvent, Graphics, type Sprite, type Ticker } from 'pixi.js';
-import { chooseAction, type AiLevel } from '../core/ai';
+import { AI_LEVEL_NAMES, chooseAction, chooseActionAsync, type AiLevel } from '../core/ai';
 import { KEYWORD_HELP, cardDef, keywordsOf } from '../core/cards';
 import {
   actor, apply, attackTarget, cardCost, createGame, legalActions, other, resvCount, resvRange,
@@ -22,6 +22,8 @@ export interface BattleConfig {
   aiDeckName: string;
   level: AiLevel;
   seed?: number;
+  /** Rated game against the AI (surrendering or leaving counts as a loss). */
+  rated?: boolean;
   /** Online match: the opponent is a person and the server owns the game state. */
   net?: NetLink;
 }
@@ -93,7 +95,7 @@ export class BattleScene extends Container {
   constructor(private tw: Tweener, private fx: Fx, private ticker: Ticker, private cfg: BattleConfig, private onEnd: (r: BattleResult) => void, private onMenu: () => void, private onLog: (text: string, side: PlayerIndex | -1) => void = () => {}, private onLogToggle: () => void = () => {}) {
     super();
     this.dial = new Dial(tw);
-    this.huds = [new Hud(0, 'あなた'), new Hud(1, cfg.net ? cfg.net.foeName : `AI ・ ${cfg.aiDeckName}`)];
+    this.huds = [new Hud(0, 'あなた'), new Hud(1, cfg.net ? cfg.net.foeName : `AI（${AI_LEVEL_NAMES[cfg.level]}）・ ${cfg.aiDeckName}`)];
     this.huds[1].x = 16; this.huds[1].y = 44;
     this.huds[0].x = 16;
     this.drawBtn = new Button('ドロー', 124, 66, 'plain', `${RULES.COST_DRAW}刻`, () => this.tryAction({ t: 'draw' }));
@@ -231,7 +233,8 @@ export class BattleScene extends Container {
         this.busy = true;
         this.refreshControls();
         await this.tw.wait(420);
-        const act = chooseAction(this.s, 1, this.cfg.level);
+        const act = await chooseActionAsync(this.s, 1, this.cfg.level);
+        if (this.destroyed_) return;
         const ev = apply(this.s, act);
         await this.play(ev);
       } else if (a === 0) {
