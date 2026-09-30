@@ -7,7 +7,7 @@ import { maxCopies } from '../core/decks';
 
 export interface PackDef { id: string; set: CardSet; name: string; sub: string; price: number; size: number }
 export const PACKS: PackDef[] = [
-  { id: 'echo1', set: 'echo', name: '残響の刻', sub: '第1弾ブースターパック', price: 250, size: 5 },
+  { id: 'echo1', set: 'echo', name: '残響の刻', sub: '第1弾ブースターパック', price: 100, size: 5 },
 ];
 export const packById = (id: string) => PACKS.find((p) => p.id === id) ?? PACKS[0];
 
@@ -82,12 +82,12 @@ export interface RewardInput { mode: 'ai' | 'online'; level: 'normal' | 'hard'; 
 export interface Reward { lines: { label: string; coins: number }[]; total: number; capped?: boolean }
 
 /** [win, loss, draw] coins per match type. */
-export const MATCH_REWARD: Record<string, [number, number, number]> = { 'ai-normal': [20, 8, 12], 'ai-hard': [30, 10, 15], online: [25, 10, 15] };
+export const MATCH_REWARD: Record<string, [number, number, number]> = { 'ai-normal': [25, 10, 15], 'ai-hard': [35, 12, 18], online: [30, 12, 18] };
 /** Matches you give up on almost at once pay nothing, so surrendering in a loop cannot farm coins. */
 export const MIN_ACTIONS = 5;
-export const DAILY_BONUS = 40;
+export const DAILY_BONUS = 50;
 /** Coins from match results per day (the first-win bonus and missions are on top of this). */
-export const DAILY_MATCH_CAP = 200;
+export const DAILY_MATCH_CAP = 250;
 
 export function reward(w: Wallet, r: RewardInput): Reward {
   const lines: Reward['lines'] = [];

@@ -30,7 +30,7 @@ export const NEW_META = (): Meta => ({ v: 1, exp: 0, loginDays: 0, lastLogin: ''
 
 // ------------------------------------------------------------------ rank
 /** EXP needed to go from rank r to r+1. */
-export const expFor = (r: number) => 150 + r * 100;
+export const expFor = (r: number) => 100 + r * 60;
 export function rankOf(exp: number) {
   let r = 1, left = exp;
   while (left >= expFor(r) && r < 99) { left -= expFor(r); r++; }
@@ -49,7 +49,7 @@ export function claimPresents(m: Meta, ids?: string[]): Prize {
 }
 
 // ------------------------------------------------------------------ login bonus
-export const LOGIN_CALENDAR: Prize[] = [{ coins: 20 }, { coins: 30 }, { coins: 40 }, { coins: 30 }, { coins: 40 }, { coins: 30 }, { tickets: 1 }];
+export const LOGIN_CALENDAR: Prize[] = [{ coins: 30 }, { coins: 40 }, { coins: 50 }, { coins: 40 }, { coins: 60 }, { coins: 40 }, { tickets: 1 }];
 /** Call when the home screen opens. Returns the calendar day (1..7) granted today, or null if already done. */
 export function checkLogin(m: Meta, today: string): number | null {
   rollDay(m, today);
@@ -67,14 +67,14 @@ export interface Mission { id: string; text: string; stat: Stat; goal: number; p
 
 /** Daily missions are drawn from this pool, three per day. */
 const DAILY_POOL: Mission[] = [
-  { id: 'd_play2', text: '対戦を2回する', stat: 'play', goal: 2, prize: { coins: 15 } },
-  { id: 'd_win1', text: '対戦で1回勝利する', stat: 'win', goal: 1, prize: { coins: 15 } },
-  { id: 'd_spell5', text: '術を5回使う（予約を含む）', stat: 'spell', goal: 5, prize: { coins: 10 } },
-  { id: 'd_summon8', text: 'ユニットを8体召喚する', stat: 'summon', goal: 8, prize: { coins: 10 } },
-  { id: 'd_resv3', text: '未来予約を3回する', stat: 'reserve', goal: 3, prize: { coins: 10 } },
-  { id: 'd_attack10', text: 'ユニットで10回攻撃する', stat: 'attack', goal: 10, prize: { coins: 10 } },
+  { id: 'd_play2', text: '対戦を2回する', stat: 'play', goal: 2, prize: { coins: 20 } },
+  { id: 'd_win1', text: '対戦で1回勝利する', stat: 'win', goal: 1, prize: { coins: 20 } },
+  { id: 'd_spell5', text: '術を5回使う（予約を含む）', stat: 'spell', goal: 5, prize: { coins: 15 } },
+  { id: 'd_summon8', text: 'ユニットを8体召喚する', stat: 'summon', goal: 8, prize: { coins: 15 } },
+  { id: 'd_resv3', text: '未来予約を3回する', stat: 'reserve', goal: 3, prize: { coins: 15 } },
+  { id: 'd_attack10', text: 'ユニットで10回攻撃する', stat: 'attack', goal: 10, prize: { coins: 15 } },
 ];
-export const DAILY_ALL_BONUS: Prize = { coins: 20 };
+export const DAILY_ALL_BONUS: Prize = { coins: 30 };
 export const BEGINNER: Mission[] = [
   { id: 'b_play', text: 'はじめての対戦をする', stat: 'play', goal: 1, prize: { coins: 100 } },
   { id: 'b_win', text: 'AIに勝利する', stat: 'win', goal: 1, prize: { coins: 100 } },
@@ -165,7 +165,7 @@ export function recordBattle(meta: Meta, b: BattleStats, today: string): { exp: 
 // ------------------------------------------------------------------ news
 export interface News { id: string; date: string; tag: 'お知らせ' | '新カード' | '機能追加' | '不具合修正'; title: string; body: string }
 export const NEWS: News[] = [
-  { id: 'n6', date: '2026-09-30', tag: 'お知らせ', title: '「欠片」とカード作成を追加し、報酬を見直しました', body: '上限枚数を超えて出たカードは、コインではなく「欠片」になりました。欠片を集めると、カード図鑑やデッキ編集から好きなカードを作成できます（通常40・希少100・秘宝400・伝説1600）。あわせて、パックの価格を250コインに改め、対戦・ミッション・ログインボーナスの報酬と、ランクアップに必要な経験値を見直しました。対戦の報酬には1日の上限（200コイン）があります。すでにお持ちのコインとカードはそのまま使えます。' },
+  { id: 'n6', date: '2026-09-30', tag: 'お知らせ', title: '「欠片」とカード作成を追加し、報酬を見直しました', body: '上限枚数を超えて出たカードは、コインではなく「欠片」になりました。欠片を集めると、カード図鑑やデッキ編集から好きなカードを作成できます（通常40・希少100・秘宝400・伝説1600）。あわせて、対戦・ミッション・ログインボーナスの報酬を見直し、対戦の報酬に1日の上限（250コイン）を設けました。パックの価格は100コインのままです。すでにお持ちのコインとカードはそのまま使えます。' },
   { id: 'n5', date: '2026-09-30', tag: '機能追加', title: 'ホーム画面・ミッション・ログインボーナスを追加しました', body: 'ホーム画面をリニューアルしました。毎日のログインボーナス、デイリーミッション、初心者ミッション、プレゼントボックス、プレイヤーランクが加わりました。報酬はすべてゲーム内のコインとパックチケットです。' },
   { id: 'n4', date: '2026-09-30', tag: '新カード', title: '第1弾パック「残響の刻」配信開始', body: '新キーワード「残響」「共鳴」「急襲」「充填」を持つ新カード22種を収録した第1弾パックを配信しました。ショップでコインまたはパックチケットと交換できます。提供割合はショップ画面の「提供割合」からご確認いただけます。' },
   { id: 'n3', date: '2026-09-30', tag: '不具合修正', title: 'スマートフォンで画面が崩れる不具合を修正しました', body: '端末を横にしてから縦に戻すと、対戦画面の配置が崩れる場合がある不具合を修正しました。また、縦画面でも対戦中に行動ログを確認できるようになりました（画面右上のログボタン）。' },
