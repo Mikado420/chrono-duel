@@ -645,10 +645,11 @@ export class Screens {
     const exists = store.customDecks.some((d) => d.id === deck.id);
     const count = (id: string) => cards.filter((c) => c === id).length;
     let flash = '';
+    let lastAdded = '';
     const add = (id: string) => {
       if (count(id) >= own(id)) { audio.play('deny'); flash = own(id) === 0 ? `「${cardDef(id).name}」は持っていません。ショップのパックで手に入ります` : `「${cardDef(id).name}」は${own(id)}枚しか持っていません`; render(); return; }
       if (count(id) >= maxCopies(id) || cards.length >= RULES.DECK_SIZE) { audio.play('deny'); return; }
-      flash = ''; cards.push(id); audio.play('draw'); render();
+      flash = ''; lastAdded = id; cards.push(id); audio.play('draw'); render();
     };
     const remove = (id: string) => { const i = cards.lastIndexOf(id); if (i >= 0) { cards.splice(i, 1); audio.play('select'); render(); } };
     const zoom = (id: string) => {
@@ -664,7 +665,7 @@ export class Screens {
             h('button', { class: 'btn primary', onclick: () => { add(id); z.remove(); } }, '1枚入れる'),
             h('button', { class: 'btn', onclick: () => z.remove() }, '閉じる'),
           )));
-      this.host.root.firstElementChild?.append(z);
+      this.host.root.append(z);
     };
     const render = () => {
       const v = validateDeck(cards);
@@ -695,22 +696,33 @@ export class Screens {
             h('div', { class: 'filters seg' }, fbtn('all', 'すべて'), fbtn('unit', 'ユニット'), fbtn('spell', '術')),
             h('div', { class: 'filters seg' }, sbtn('all', '全セット'), sbtn('base', '基本'), sbtn('echo', '第1弾')),
             flash ? h('div', { class: 'note warn' }, flash) : null,
-            h('p', { style: 'font-size:13px;color:var(--mute)' }, 'タップで1枚追加。長押し（右クリック）で拡大表示。'),
+            h('p', { style: 'font-size:13px;color:var(--mute)' }, 'タップで1枚追加。長押しか ⓘ でカードの詳しい説明。'),
             h('div', { class: 'grid' }, ...pool.map((c) => {
               const n = count(c.id);
               const o = own(c.id);
-              const t = h('button', { class: `tile${n >= Math.min(o, maxCopies(c.id)) ? ' maxed' : ''}${o === 0 ? ' locked' : ''}`, 'aria-label': o ? `${c.name}を追加` : `${c.name}（未所持）`, onclick: () => add(c.id), oncontextmenu: (e: Event) => { e.preventDefault(); zoom(c.id); } },
-                h('img', { src: cardImg(c.id), alt: c.name, loading: 'lazy' }),
+              // long press shows the card; the tap that ends it must not also add a copy
+              let timer = 0, longed = false;
+              const t = h('button', { class: `tile${n >= Math.min(o, maxCopies(c.id)) ? ' maxed' : ''}${o === 0 ? ' locked' : ''}`, 'aria-label': o ? `${c.name}を追加` : `${c.name}（未所持）`,
+                onclick: () => { if (longed) { longed = false; return; } add(c.id); },
+                oncontextmenu: (e: Event) => { e.preventDefault(); if (!longed) zoom(c.id); } },
+                h('img', { src: cardImg(c.id), alt: c.name, loading: 'lazy', draggable: 'false' }),
                 n ? h('span', { class: 'cnt' }, String(n)) : null,
                 setOf(c) !== 'base' ? h('span', { class: 'own' }, o ? `所持 ${o}` : '未所持') : null,
-                fresh.has(c.id) ? h('span', { class: 'new' }, 'NEW') : null);
-              let timer = 0;
-              t.addEventListener('touchstart', () => { timer = window.setTimeout(() => zoom(c.id), 450); }, { passive: true });
-              t.addEventListener('touchend', () => clearTimeout(timer));
-              t.addEventListener('touchmove', () => clearTimeout(timer), { passive: true });
+                fresh.has(c.id) ? h('span', { class: 'new' }, 'NEW') : null,
+                h('span', { class: 'info', role: 'button', 'aria-label': `${c.name}の説明`, onclick: (e: Event) => { e.stopPropagation(); zoom(c.id); } }, 'i'));
+              const stop = () => clearTimeout(timer);
+              t.addEventListener('touchstart', () => { longed = false; stop(); timer = window.setTimeout(() => { longed = true; navigator.vibrate?.(12); zoom(c.id); }, 450); }, { passive: true });
+              t.addEventListener('touchend', (e) => { stop(); if (longed) e.preventDefault(); });
+              t.addEventListener('touchmove', stop, { passive: true });
+              t.addEventListener('touchcancel', stop);
               return t;
             })),
           ),
+          h('div', { class: 'deckbar' },
+            h('button', { class: `db-count ${v.ok ? 'ok' : 'bad'}`, 'aria-label': 'デッキを見る', onclick: () => { tab = 'deck'; render(); } }, h('b', {}, `${cards.length}/${RULES.DECK_SIZE}`), h('small', {}, 'デッキ ›')),
+            h('div', { class: 'db-strip' }, ...(grouped.length ? grouped.map((c) => h('button', { class: `chip${c.id === lastAdded ? ' pop' : ''}${count(c.id) > own(c.id) ? ' short' : ''}`, 'data-id': c.id, onclick: () => zoom(c.id) },
+              h('b', {}, String(c.cost)), h('span', {}, c.name), h('i', {}, `×${count(c.id)}`))) : [h('span', { class: 'db-empty' }, 'カードをタップするとここに入ります')])),
+            h('button', { class: 'btn small primary', onclick: save }, '保存')),
           h('div', { class: 'panel decklist' },
             h('input', { id: 'deck-name', value: name, maxlength: '20', 'aria-label': 'デッキ名', oninput: (e: Event) => { name = (e.target as HTMLInputElement).value; } }),
             h('div', { class: 'row' }, h('span', { class: `count ${v.ok ? 'ok' : 'bad'}` }, `${cards.length} / ${RULES.DECK_SIZE}`), h('span', { class: 'spacer' }), h('span', { style: 'font-size:13px;color:var(--mute)' }, `ユニット ${units}・術 ${cards.length - units}`)),
@@ -728,6 +740,9 @@ export class Screens {
         )));
       const sc = this.host.root.firstElementChild;
       if (sc) sc.scrollTop = scrollY;
+      const pop = sc?.querySelector('.db-strip .pop') as HTMLElement | null;
+      if (pop) { const st = pop.parentElement!; st.scrollLeft = pop.offsetLeft - st.clientWidth / 2 + pop.clientWidth / 2; }
+      lastAdded = '';
     };
     render();
   }
