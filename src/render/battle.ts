@@ -772,8 +772,8 @@ export class BattleScene extends Container {
   private chargeHint(card: string, x: number): string {
     const d = cardDef(card);
     const head = `充填 ${x}/${d.charge}`;
-    if (d.kind === 'unit') return `${head}：攻撃${d.atk! + x}・体力${d.hp! + x}${card === 'e_colossus' && x >= 2 ? '・挑発' : ''}`;
-    if (d.effect === 'eSlash') return `${head}：敵ユニットに${2 + x}ダメージ`;
+    if (d.kind === 'unit') return `${head}：攻撃${d.atk! + x}・体力${d.hp! + x}${card === 'e_colossus' && x >= 3 ? '・挑発' : ''}`;
+    if (d.effect === 'eSlash') return `${head}：敵ユニットに${1 + x}ダメージ`;
     return head;
   }
   private handPos(uid: number) { const v = this.handViews.get(uid); return v ? { x: v.x, y: v.y } : null; }

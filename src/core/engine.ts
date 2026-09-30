@@ -295,6 +295,14 @@ function breakNearest(s: GameState, qi: PlayerIndex, ev: GameEvent[]): boolean {
   ev.push({ e: 'breakResv', pi: qi, uid: x.uid, card: x.card });
   return true;
 }
+function breakLatest(s: GameState, qi: PlayerIndex, ev: GameEvent[]): boolean {
+  const r = s.players[qi].resv;
+  if (!r.length) return false;
+  r.sort((a, b) => a.T - b.T);
+  const x = r.pop()!;
+  ev.push({ e: 'breakResv', pi: qi, uid: x.uid, card: x.card });
+  return true;
+}
 function revealAll(s: GameState, qi: PlayerIndex, ev: GameEvent[]) {
   const r = s.players[qi].resv;
   r.forEach((x) => (x.revealed = true));
@@ -315,6 +323,7 @@ function runEcho(s: GameState, pi: PlayerIndex, card: string, fx: EchoEffect, ev
     case 'ping2': damageBase(s, qi, 2, ev); break;
     case 'shot1': shot(s, qi, 1, 1, ev); break;
     case 'heal2': heal(s, pi, 2, ev); break;
+    case 'heal3': heal(s, pi, 3, ev); break;
     case 'draw1': drawCard(s, pi, ev); break;
     case 'storm1': storm(s, pi, qi, 1, card, ev); break;
     case 'rally': {
@@ -361,7 +370,7 @@ function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, e
       const l = topEnemy(s, qi);
       if (l < 0) { ev.push({ e: 'fizzle', pi, card: d.id }); break; }
       const u = s.players[qi].field[l]!;
-      u.readyAt = Math.max(u.readyAt, s.players[qi].time) + (boosted ? 6 : 4);
+      u.readyAt = Math.max(u.readyAt, s.players[qi].time) + (boosted ? 8 : 6);
       ev.push({ e: 'stun', pi: qi, lane: l, readyAt: u.readyAt });
       break;
     }
@@ -390,12 +399,14 @@ function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, e
     case 'stop': shiftClock(s, qi, boosted ? 4 : 3, ev); break;
     // 第1弾
     case 'eShot': shot(s, qi, 2 + b, 1, ev); break;
-    case 'ePray': heal(s, pi, boosted ? 3 : 2, ev); break;
-    case 'eSlash': shot(s, qi, boosted ? 4 : 2 + x, boosted ? 2 : 1, ev); break;
+    case 'ePray': heal(s, pi, boosted ? 4 : 3, ev); break;
+    case 'eSlash': shot(s, qi, boosted ? 3 : 1 + x, boosted ? 2 : 1, ev); break;
     case 'ePeek': revealAll(s, qi, ev); for (let i = 0; i < (boosted ? 2 : 1); i++) drawCard(s, pi, ev); break;
     case 'eBreak': {
       let n = 0;
-      for (let i = 0; i < (boosted ? 2 : 1); i++) if (breakNearest(s, qi, ev)) n++;
+      // shows the opponent's hand of reservations first, then cuts the latest one (the big finisher is usually last)
+      if (s.players[qi].resv.some((r) => !r.revealed)) revealAll(s, qi, ev);
+      for (let i = 0; i < (boosted ? 2 : 1); i++) if (breakLatest(s, qi, ev)) n++;
       if (!n) ev.push({ e: 'fizzle', pi, card: d.id });
       break;
     }
@@ -437,7 +448,7 @@ function summonUnit(s: GameState, pi: PlayerIndex, card: string, lane: number, f
   const kw = d.keywords ?? [];
   const unit: Unit = {
     uid: s.nextUid++, card, atk: d.atk! + x, hp: d.hp! + x, maxHp: d.hp! + x, reload: d.reload!,
-    readyAt: p.time + (kw.includes('swift') ? 0 : 1), taunt: kw.includes('taunt') || (card === 'e_colossus' && x >= 2), pierce: kw.includes('pierce'),
+    readyAt: p.time + (kw.includes('swift') ? 0 : 1), taunt: kw.includes('taunt') || (card === 'e_colossus' && x >= 3), pierce: kw.includes('pierce'),
   };
   p.field[lane] = unit;
   ev.push({ e: 'summon', pi, lane, unit: { ...unit }, fromHand });

@@ -78,6 +78,20 @@ function pruneReserves(s: GameState, pi: PlayerIndex, acts: Action[]): Action[] 
 }
 
 /** Heuristic bonus for things the static evaluation cannot see (future value of a reservation). */
+/**
+ * 破約の刃 needs targets. How many reservations the opponent has and when they fire is public (the pins on the dial),
+ * but `fogged` drops the unrevealed ones, so judge it on the real state: use it only when something is there to cut.
+ */
+function breakBonus(s: GameState, pi: PlayerIndex, a: Action): number {
+  if (a.t !== 'cast' && a.t !== 'reserve') return 0;
+  const h = s.players[pi].hand.find((x) => x.uid === a.hand);
+  if (!h || cardDef(h.card).effect !== 'eBreak') return 0;
+  const resv = s.players[other(pi)].resv;
+  const n = a.t === 'cast' ? resv.length : resv.filter((r) => r.T > a.T).length;
+  if (!n) return -6;
+  const hidden = resv.some((r) => !r.revealed && !r.echo) ? 1.5 : 0;
+  return 2 + hidden + Math.min(n, a.t === 'cast' ? 1 : 2) * 1.2;
+}
 function intentBonus(s: GameState, pi: PlayerIndex, a: Action): number {
   if (a.t !== 'reserve') return 0;
   const h = s.players[pi].hand.find((x) => x.uid === a.hand)!;
@@ -99,7 +113,7 @@ function intentBonus(s: GameState, pi: PlayerIndex, a: Action): number {
     case 'ePray': b = s.players[pi].hp < 10 ? 2.5 : 1; break;
     case 'eSlash': b = 1.5 + enemies * 0.8; break;
     case 'ePeek': b = 2; break;
-    case 'eBreak': b = 1.2 + op.resv.length * 1.5; break;
+    case 'eBreak': b = 0; break; // valued by breakBonus, which can see how many reservations the opponent has
     case 'eDraw': b = 2.5; break;
     case 'eReverse': b = 3.5; break;
     case 'eStorm': b = 1 + enemies * 1.3; break;
@@ -209,7 +223,7 @@ function* expertSteps(s: GameState, pi: PlayerIndex, rand: () => number): Genera
   const scored = acts.map((a) => {
     const c = clone(base);
     apply(c, a);
-    return { a, v: deepValue(c, pi, 2, 2) + intentBonus(base, pi, a) };
+    return { a, v: deepValue(c, pi, 2, 2) + intentBonus(base, pi, a) + breakBonus(s, pi, a) };
   }).sort((x, y) => y.v - x.v);
   const short = scored.slice(0, EXPERT_SEARCH.candidates);
   if (short.length <= 1) return short[0]?.a ?? { t: 'wait' };
@@ -257,7 +271,7 @@ export function chooseAction(s: GameState, pi: PlayerIndex, level: AiLevel, rand
     const c = clone(base);
     apply(c, a);
     let v = level === 'hard' ? bestReply(c, pi) : evaluate(c, pi);
-    v += intentBonus(base, pi, a);
+    v += intentBonus(base, pi, a) + breakBonus(s, pi, a);
     if (level === 'normal') v += (rand() - 0.5) * 4;
     if (level === 'easy') v += (rand() - 0.5) * 22;
     if (v > bestV) { bestV = v; best = a; }

@@ -9,53 +9,53 @@ export const STATS: {
   "perPair": 100,
   "win": {
     "heavy": 49,
-    "scout": 44,
+    "scout": 42,
     "scribe": 50,
     "arrow": 51,
     "cage": 45,
     "pendulum": 46,
-    "bolt": 43,
-    "gear": 47,
-    "lancer": 51,
-    "archer": 47,
-    "warden": 43,
-    "delayer": 50,
-    "collapse": 56,
-    "insight": 47,
-    "dragon": 51,
-    "haste": 43,
+    "bolt": 41,
+    "gear": 46,
+    "lancer": 49,
+    "archer": 45,
+    "warden": 48,
+    "delayer": 48,
+    "collapse": 53,
+    "insight": 49,
+    "dragon": 49,
+    "haste": 41,
     "sentinel": 50,
-    "ghost": 48,
+    "ghost": 46,
     "rewind": 52,
     "breaker": 50,
     "titan": 59,
-    "stop": 49,
-    "oracle": 48,
-    "e_verna": 55,
-    "e_draw": 48,
-    "e_shot": 57,
-    "e_bellkeeper": 53,
-    "e_march": 51,
-    "e_sprite": 53,
-    "e_twin": 53,
-    "e_tuner": 50,
-    "e_atra": 56,
-    "e_mage": 47,
-    "e_eternal": 50,
-    "e_storm": 60,
-    "e_pray": 47,
-    "e_blade": 48,
-    "e_reverse": 43,
-    "e_page": 45,
-    "e_raider": 49,
-    "e_slash": 52,
-    "e_guard": 46,
-    "e_break": 38,
-    "e_colossus": 52
+    "stop": 46,
+    "oracle": 43,
+    "e_verna": 60,
+    "e_shot": 64,
+    "e_bellkeeper": 60,
+    "e_tuner": 59,
+    "e_draw": 50,
+    "e_march": 58,
+    "e_sprite": 60,
+    "e_twin": 59,
+    "e_atra": 62,
+    "e_mage": 59,
+    "e_eternal": 55,
+    "e_storm": 65,
+    "e_pray": 55,
+    "e_blade": 45,
+    "e_reverse": 40,
+    "e_page": 42,
+    "e_raider": 45,
+    "e_slash": 47,
+    "e_guard": 48,
+    "e_break": 49,
+    "e_colossus": 55
   },
   "use": {
     "archer": [
-      0.88,
+      0.89,
       0
     ],
     "heavy": [
@@ -63,60 +63,60 @@ export const STATS: {
       0
     ],
     "pendulum": [
-      1.2,
+      1.21,
       0
     ],
     "scout": [
-      0.97,
+      0.99,
       0
     ],
     "arrow": [
-      0.68,
-      0.68
+      0.66,
+      0.71
     ],
     "scribe": [
-      0.62,
+      0.61,
       0
     ],
     "warden": [
-      0.46,
+      0.5,
       0
     ],
     "cage": [
       0,
-      0.64
-    ],
-    "gear": [
-      1.49,
-      0
+      0.65
     ],
     "bolt": [
-      0.85,
+      0.86,
       0.08
     ],
     "delayer": [
       0.55,
       0
     ],
-    "lancer": [
-      0.48,
+    "gear": [
+      1.51,
       0
     ],
     "collapse": [
-      0.33,
-      0.26
+      0.34,
+      0.24
+    ],
+    "lancer": [
+      0.48,
+      0
     ],
     "insight": [
       0,
       0.11
     ],
     "dragon": [
-      0.37,
+      0.38,
       0
     ],
     "haste": [
-      0.19,
-      0.18
+      0.2,
+      0.17
     ],
     "sentinel": [
       0.2,
@@ -150,17 +150,21 @@ export const STATS: {
       0.12,
       0
     ],
-    "e_draw": [
-      0.02,
-      0.19
-    ],
     "e_shot": [
       0.14,
       0.09
     ],
     "e_bellkeeper": [
-      0.22,
+      0.21,
       0
+    ],
+    "e_tuner": [
+      0.19,
+      0
+    ],
+    "e_draw": [
+      0.02,
+      0.19
     ],
     "e_march": [
       0.22,
@@ -172,10 +176,6 @@ export const STATS: {
     ],
     "e_twin": [
       0.21,
-      0
-    ],
-    "e_tuner": [
-      0.19,
       0
     ],
     "e_atra": [
@@ -192,10 +192,10 @@ export const STATS: {
     ],
     "e_storm": [
       0.07,
-      0.04
+      0.05
     ],
     "e_pray": [
-      0.22,
+      0.24,
       0.1
     ],
     "e_blade": [
@@ -207,24 +207,24 @@ export const STATS: {
       0.1
     ],
     "e_page": [
-      0.2,
-      0
-    ],
-    "e_raider": [
       0.21,
       0
     ],
+    "e_raider": [
+      0.22,
+      0
+    ],
     "e_slash": [
-      0.19,
-      0.04
+      0.18,
+      0.05
     ],
     "e_guard": [
       0.22,
       0
     ],
     "e_break": [
-      0,
-      0.09
+      0.03,
+      0.02
     ],
     "e_colossus": [
       0.23,
@@ -243,84 +243,84 @@ export const STATS: {
   ],
   "matrix": {
     "均衡の刻": [
-      48,
-      50,
+      42,
       53,
-      55,
-      45,
-      48,
-      50,
-      51
+      39,
+      57,
+      35,
+      61,
+      60,
+      35
     ],
     "秒針突撃": [
-      46,
+      49,
       50,
-      48,
-      54,
-      45,
-      53,
+      56,
       55,
-      43
+      37,
+      56,
+      49,
+      37
     ],
     "永劫の城塞": [
       49,
-      66,
+      69,
+      54,
       57,
-      53,
-      45,
+      31,
       60,
-      53,
-      55
+      54,
+      61
     ],
     "予言の書架": [
-      52,
-      51,
-      48,
-      52,
-      49,
-      49,
+      41,
+      45,
+      39,
       50,
-      45
+      46,
+      51,
+      44,
+      44
     ],
     "残響": [
-      53,
-      48,
-      54,
-      52,
-      46,
-      41,
-      59,
-      55
+      62,
+      60,
+      66,
+      64,
+      50,
+      51,
+      63,
+      54
     ],
     "急襲": [
-      43,
-      53,
-      41,
-      51,
-      40,
-      48,
-      34,
-      53
-    ],
-    "均衡+": [
-      55,
-      61,
-      38,
-      60,
-      53,
-      52,
-      48,
-      51
-    ],
-    "城塞+": [
-      55,
-      56,
-      45,
-      56,
       39,
       52,
+      40,
+      49,
+      35,
+      52,
+      32,
+      39
+    ],
+    "均衡+": [
+      42,
       54,
-      53
+      39,
+      60,
+      37,
+      47,
+      55,
+      43
+    ],
+    "城塞+": [
+      62,
+      56,
+      56,
+      56,
+      42,
+      55,
+      56,
+      54
     ]
   }
 };
