@@ -30,6 +30,9 @@ class Audio {
   private live = 0;
   private scene: BgmScene | null = null;
   private lastBattle = '';
+  /** The battle track the next battle will use, chosen early so it can be downloaded in advance. */
+  private nextBattle = '';
+  private warmed = new Set<string>();
   private hidden = false;
   volume = 0.7;
   bgmVolume = 0.5;
@@ -71,17 +74,40 @@ class Audio {
   bgm(scene: BgmScene | null, fresh = false) {
     if (scene === this.scene && !fresh) { if (scene) this.startWanted(); return; }
     this.scene = scene;
+    this.prefetchFor(scene);
     if (!this.ctx) return;
     if (!scene) { this.fadeOutAll(); return; }
     this.crossfadeTo(this.pick(scene));
   }
   private pick(scene: BgmScene): string {
-    const list = BGM[scene];
-    if (scene !== 'battle') return list[0];
-    const pool = list.filter((t) => t !== this.lastBattle);
-    const t = pool[Math.floor(Math.random() * pool.length)];
+    if (scene !== 'battle') return BGM[scene][0];
+    const t = this.peekBattle();
     this.lastBattle = t;
+    this.nextBattle = '';
     return t;
+  }
+  private peekBattle(): string {
+    if (!this.nextBattle) {
+      const pool = BGM.battle.filter((t) => t !== this.lastBattle);
+      this.nextBattle = pool[Math.floor(Math.random() * pool.length)];
+    }
+    return this.nextBattle;
+  }
+  /**
+   * Downloads the music the player is about to hear into the browser cache, so it starts at once instead of streaming
+   * from nothing when the scene changes (the slow part on phones). Loading needs no gesture, only playing does.
+   */
+  private prefetchFor(scene: BgmScene | null) {
+    const later = (ms: number, t: () => string) => setTimeout(() => this.warm(t()), ms);
+    if (scene === 'title') { this.warm(BGM.title[0]); later(2500, () => BGM.home[0]); }
+    if (scene === 'home') { this.warm(BGM.home[0]); later(3000, () => this.peekBattle()); }
+    if (scene === 'battle') later(20000, () => this.peekBattle());
+  }
+  private warm(track: string) {
+    const u = bgmUrl(track);
+    if (this.warmed.has(u)) return;
+    this.warmed.add(u);
+    fetch(u).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status))))).catch(() => this.warmed.delete(u));
   }
   private deck(i: number) {
     while (this.decks.length <= i) {
@@ -101,6 +127,8 @@ class Audio {
     const c = this.ctx!, now = c.currentTime;
     const old = this.decks[this.live];
     if (old?.track === track && !old.el.paused) return;
+    // fade in only when replacing a track that is sounding; from silence the music should start right away
+    const fadeIn = instant || !old || old.el.paused ? 0.25 : FADE;
     this.live = old ? 1 - this.live : 0;
     const d = this.deck(this.live);
     if (old) {
@@ -115,7 +143,7 @@ class Audio {
     d.el.loop = this.scene !== 'battle';
     d.g.gain.cancelScheduledValues(now);
     d.g.gain.setValueAtTime(0, now);
-    d.g.gain.linearRampToValueAtTime(1, now + (instant ? 0.05 : FADE));
+    d.g.gain.linearRampToValueAtTime(1, now + fadeIn);
     this.playEl(d.el);
   }
   private startWanted() {

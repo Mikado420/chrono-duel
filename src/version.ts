@@ -1,2 +1,2 @@
 /** Shown on the title screen. Bump with each release. */
-export const VERSION = '0.9.0';
+export const VERSION = '0.9.1';
