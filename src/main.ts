@@ -99,6 +99,7 @@ async function boot() {
   const applySettings = () => {
     const s = store.settings;
     audio.setVolume(s.volume);
+    audio.setBgmVolume(s.bgm ?? 0.5);
     audio.setMuted(s.muted);
     tw.speed = s.speed;
     tw.reduced = s.reduced || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -217,6 +218,7 @@ async function boot() {
   const run = (cfg: BattleConfig) => {
     endBattle();
     lastCfg = cfg;
+    audio.bgm('battle', true);
     battle = new BattleScene(tw, fx, app.ticker, cfg, onResult, () => {
       const speed = tw.speed;
       if (!cfg.net) tw.speed = 0; // pause animations and the AI while the menu is open (a live match cannot wait)
@@ -252,7 +254,7 @@ async function boot() {
     applySettings,
   });
 
-  if (location.hash === '#debug' || /[?&]debug\b/.test(location.search)) (window as unknown as { __cd: unknown }).__cd = { battle: () => battle?.debug(), app, screens };
+  if (location.hash === '#debug' || /[?&]debug\b/.test(location.search)) (window as unknown as { __cd: unknown }).__cd = { battle: () => battle?.debug(), app, screens, audio };
   window.addEventListener('pointerdown', () => audio.unlock(), { once: true });
   document.getElementById('loading')?.remove();
   const invite = codeFromHash(location.hash);

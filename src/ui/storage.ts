@@ -17,8 +17,8 @@ function write(key: string, v: unknown) {
   try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* storage unavailable: keep in memory only */ }
 }
 
-export interface Settings { volume: number; muted: boolean; speed: number; reduced: boolean; level: AiLevel; lastDeck: string; guided: boolean; name: string }
-const DEFAULT_SETTINGS: Settings = { volume: 0.7, muted: false, speed: 1, reduced: false, level: 'normal', lastDeck: 'balance', guided: false, name: '' };
+export interface Settings { volume: number; bgm: number; muted: boolean; speed: number; reduced: boolean; level: AiLevel; lastDeck: string; guided: boolean; name: string }
+const DEFAULT_SETTINGS: Settings = { volume: 0.7, bgm: 0.5, muted: false, speed: 1, reduced: false, level: 'normal', lastDeck: 'balance', guided: false, name: '' };
 
 export interface OnlineSession { code: string; token: string; name: string; at: number }
 

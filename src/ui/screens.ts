@@ -126,10 +126,16 @@ export class Screens {
   title() {
     const legends = ['dragon', 'e_verna', 'titan'];
     let gone = false;
+    audio.bgm('title');
+    // measured when the finger goes down, before any click handler has woken the sound
+    let wasOn = audio.musicOn;
     const start = () => {
       if (gone) return;
-      gone = true;
+      // Browsers keep sound off until the first tap. If this tap is the one that starts the title music, let it play
+      // and wait for the next tap to go in (otherwise the title theme would never be heard).
       audio.unlock();
+      if (!wasOn && audio.musicOn) { wasOn = true; audio.play('reveal'); el.classList.add('awake'); return; }
+      gone = true;
       audio.play('bell');
       el.classList.add('leaving');
       setTimeout(() => (store.settings.name ? this.home() : this.nameEntry(() => this.home())), 380);
@@ -148,6 +154,7 @@ export class Screens {
         h('span', {}, `Ver. ${VERSION}`),
         h('button', { class: 'link', onclick: (e: Event) => { e.stopPropagation(); this.settings(() => this.title()); } }, '設定')),
     );
+    el.addEventListener('pointerdown', () => { wasOn = audio.musicOn; }, true);
     this.mount(el);
   }
 
@@ -167,6 +174,7 @@ export class Screens {
   // ---------------------------------------------------------------- hub (header + bottom tabs)
   private tab: Tab = 'home';
   private hub(tab: Tab, body: HTMLElement) {
+    audio.bgm('home');
     this.tab = tab;
     const w = store.wallet, m = store.meta;
     const rk = rankOf(m.exp);
@@ -877,7 +885,8 @@ export class Screens {
     this.mount(h('div', { class: 'screen dim' },
       h('div', { class: 'panel' },
         h('div', { class: 'head' }, h('h2', {}, '設定'), h('button', { class: 'btn small', onclick: back }, '戻る')),
-        h('label', { class: 'line', for: 'vol' }, '音量', h('input', { id: 'vol', type: 'range', min: '0', max: '1', step: '0.05', value: String(s.volume), oninput: (e: Event) => { s.volume = +(e.target as HTMLInputElement).value; commit(); }, onchange: () => audio.play('hit') })),
+        h('label', { class: 'line', for: 'bgmvol' }, 'BGM', h('input', { id: 'bgmvol', type: 'range', min: '0', max: '1', step: '0.05', value: String(s.bgm ?? 0.5), oninput: (e: Event) => { s.bgm = +(e.target as HTMLInputElement).value; commit(); } })),
+        h('label', { class: 'line', for: 'vol' }, '効果音', h('input', { id: 'vol', type: 'range', min: '0', max: '1', step: '0.05', value: String(s.volume), oninput: (e: Event) => { s.volume = +(e.target as HTMLInputElement).value; commit(); }, onchange: () => audio.play('hit') })),
         h('label', { class: 'check' }, h('input', { id: 'mute', type: 'checkbox', checked: s.muted, onchange: (e: Event) => { s.muted = (e.target as HTMLInputElement).checked; commit(); } }), '消音'),
         h('div', { class: 'line' }, h('b', {}, '演出の速さ'), h('div', { class: 'seg' }, speedBtn(1, '標準'), speedBtn(1.5, '速い'), speedBtn(2.2, 'とても速い'))),
         pwaBlock(),

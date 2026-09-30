@@ -41,7 +41,7 @@ export function registerServiceWorker() {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then(async () => {
       const reg = await navigator.serviceWorker.ready;
-      const urls = performance.getEntriesByType('resource').map((r) => r.name).filter((u) => u.startsWith(location.origin) || /fonts\.(googleapis|gstatic)\.com/.test(u));
+      const urls = performance.getEntriesByType('resource').map((r) => r.name).filter((u) => (u.startsWith(location.origin) && !u.includes('/bgm/')) || /fonts\.(googleapis|gstatic)\.com/.test(u));
       reg.active?.postMessage({ type: 'precache', urls: [...new Set(urls)] });
     }).catch((err) => console.warn('service worker failed', err));
   });

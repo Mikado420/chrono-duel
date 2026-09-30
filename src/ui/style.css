@@ -295,6 +295,9 @@ body.log-open #log-back { display: block; }
 /* ================================================================ title (key visual) */
 .titlekv { justify-content: center; gap: 22px; text-align: center; cursor: pointer; overflow: hidden; background: radial-gradient(ellipse at 50% 42%, rgba(31, 127, 109, .28), transparent 60%), radial-gradient(ellipse at 50% 110%, rgba(156, 116, 50, .3), transparent 55%); }
 .titlekv.leaving { animation: kvOut .38s ease-in both; }
+/* the first tap woke the sound: a flash of light on the logo while the title theme starts */
+.titlekv.awake .logo { animation: kvWake 1.4s ease-out both; }
+@keyframes kvWake { 0% { filter: brightness(1) drop-shadow(0 0 0 rgba(224, 178, 92, 0)); } 25% { filter: brightness(1.6) drop-shadow(0 0 24px rgba(224, 178, 92, .9)); } 100% { filter: brightness(1) drop-shadow(0 0 0 rgba(224, 178, 92, 0)); } }
 @keyframes kvOut { to { opacity: 0; transform: scale(1.06); filter: brightness(1.6); } }
 .kv-rings { position: absolute; left: 50%; top: 40%; width: 0; height: 0; pointer-events: none; }
 .kv-rings i { position: absolute; left: 50%; top: 50%; border: 1.5px solid rgba(224, 178, 92, .35); border-radius: 50%; transform: translate(-50%, -50%); }

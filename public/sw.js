@@ -31,6 +31,8 @@ self.addEventListener('fetch', (e) => {
   const sameOrigin = url.origin === self.location.origin;
   const fontHost = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
   if (!sameOrigin && !fontHost) return;
+  // Music streams with range requests and is large: leave it to the browser's own HTTP cache.
+  if (sameOrigin && url.pathname.includes('/bgm/')) return;
 
   // Pages: network first so a new deploy shows up right away, cache when offline.
   // The game is cached as ./index.html; other pages (the wiki at ./wiki/) are cached under their own URL

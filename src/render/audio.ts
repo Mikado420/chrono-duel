@@ -1,11 +1,38 @@
-/** Synthesized sound effects (no audio files, no licensing). Starts silent until the first user gesture. */
+/**
+ * Sound: synthesized effects plus streamed background music. Everything starts silent until the first user gesture
+ * (browsers do not allow sound before one), so `unlock` is called from every tap.
+ *
+ * BGM streams from <audio> elements routed through Web Audio, which gives iOS a working volume and lets two decks
+ * crossfade. Tracks are loaded only when played, so they cost no download until needed.
+ */
+export type BgmScene = 'title' | 'home' | 'battle';
+const BGM: Record<BgmScene, string[]> = {
+  title: ['title_azure_core'],
+  home: ['home_tsuki_no_furu_machi'],
+  battle: ['battle_crystal_brilliance', 'battle_crystal_reverie', 'battle_crystal_afterimage'],
+};
+/** AAC plays in every major browser; builds without it (open-source Chromium, some Linux browsers) get Opus. */
+let bgmExt = '';
+const bgmUrl = (t: string) => {
+  bgmExt ||= document.createElement('audio').canPlayType('audio/mp4; codecs="mp4a.40.2"') ? 'm4a' : 'ogg';
+  return `./bgm/${t}.${bgmExt}`;
+};
+const FADE = 1.2;
+
 type Sfx = 'tick' | 'bell' | 'summon' | 'hit' | 'heavyHit' | 'base' | 'destroy' | 'cast' | 'reserve' | 'reveal' | 'draw' | 'select' | 'deny' | 'heal' | 'doom' | 'win' | 'lose' | 'clock' | 'echo'
   | 'tear' | 'burst' | 'flip' | 'rareR' | 'rareE' | 'rareL' | 'coin' | 'charge';
 
 class Audio {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private music: GainNode | null = null;
+  private decks: { el: HTMLAudioElement; g: GainNode; track: string }[] = [];
+  private live = 0;
+  private scene: BgmScene | null = null;
+  private lastBattle = '';
+  private hidden = false;
   volume = 0.7;
+  bgmVolume = 0.5;
   muted = false;
 
   unlock() {
@@ -16,10 +43,102 @@ class Audio {
       this.master = this.ctx.createGain();
       this.master.gain.value = this.muted ? 0 : this.volume;
       this.master.connect(this.ctx.destination);
+      this.music = this.ctx.createGain();
+      this.music.gain.value = this.musicLevel();
+      this.music.connect(this.ctx.destination);
+      document.addEventListener('visibilitychange', () => this.onVisibility());
     } catch { this.ctx = null; }
+    // the scene asked for music before sound was allowed: start it inside this gesture
+    if (this.scene) this.startWanted();
   }
+  /** Whether background music is actually sounding (the title uses this to know if its first tap only woke the sound). */
+  get musicOn() { const d = this.decks[this.live]; return !!d && !d.el.paused && this.musicLevel() > 0; }
   setVolume(v: number) { this.volume = v; if (this.master && !this.muted) this.master.gain.value = v; }
-  setMuted(m: boolean) { this.muted = m; if (this.master) this.master.gain.value = m ? 0 : this.volume; }
+  setBgmVolume(v: number) { this.bgmVolume = v; this.applyMusicLevel(); }
+  setMuted(m: boolean) { this.muted = m; if (this.master) this.master.gain.value = m ? 0 : this.volume; this.applyMusicLevel(); }
+  private musicLevel() { return this.muted ? 0 : this.bgmVolume * 0.9; }
+  private applyMusicLevel() {
+    if (!this.music || !this.ctx) return;
+    this.music.gain.setTargetAtTime(this.musicLevel(), this.ctx.currentTime, 0.05);
+    if (this.musicLevel() > 0 && this.scene) this.startWanted();
+  }
+
+  // ------------------------------------------------------------------ music
+  /**
+   * Switches the background music to a scene. Battles pick one of their tracks at random and move on to another when it
+   * ends; `fresh` picks a new one even if a battle track is already playing (each new battle).
+   */
+  bgm(scene: BgmScene | null, fresh = false) {
+    if (scene === this.scene && !fresh) { if (scene) this.startWanted(); return; }
+    this.scene = scene;
+    if (!this.ctx) return;
+    if (!scene) { this.fadeOutAll(); return; }
+    this.crossfadeTo(this.pick(scene));
+  }
+  private pick(scene: BgmScene): string {
+    const list = BGM[scene];
+    if (scene !== 'battle') return list[0];
+    const pool = list.filter((t) => t !== this.lastBattle);
+    const t = pool[Math.floor(Math.random() * pool.length)];
+    this.lastBattle = t;
+    return t;
+  }
+  private deck(i: number) {
+    while (this.decks.length <= i) {
+      const el = document.createElement('audio');
+      el.preload = 'auto';
+      el.setAttribute('playsinline', '');
+      const g = this.ctx!.createGain();
+      g.gain.value = 0;
+      this.ctx!.createMediaElementSource(el).connect(g).connect(this.music!);
+      const d = { el, g, track: '' };
+      el.addEventListener('ended', () => { if (this.decks[this.live] === d && this.scene === 'battle') this.crossfadeTo(this.pick('battle'), true); });
+      this.decks.push(d);
+    }
+    return this.decks[i];
+  }
+  private crossfadeTo(track: string, instant = false) {
+    const c = this.ctx!, now = c.currentTime;
+    const old = this.decks[this.live];
+    if (old?.track === track && !old.el.paused) return;
+    this.live = old ? 1 - this.live : 0;
+    const d = this.deck(this.live);
+    if (old) {
+      old.g.gain.cancelScheduledValues(now);
+      old.g.gain.setValueAtTime(old.g.gain.value, now);
+      old.g.gain.linearRampToValueAtTime(0, now + FADE * 0.8);
+      const el = old.el;
+      setTimeout(() => { if (this.decks[this.live]?.el !== el) el.pause(); }, FADE * 1000 + 100);
+    }
+    d.track = track;
+    d.el.src = bgmUrl(track);
+    d.el.loop = this.scene !== 'battle';
+    d.g.gain.cancelScheduledValues(now);
+    d.g.gain.setValueAtTime(0, now);
+    d.g.gain.linearRampToValueAtTime(1, now + (instant ? 0.05 : FADE));
+    this.playEl(d.el);
+  }
+  private startWanted() {
+    if (!this.ctx || !this.scene || this.hidden) return;
+    void this.ctx.resume();
+    const d = this.decks[this.live];
+    if (!d?.track) { this.crossfadeTo(this.pick(this.scene)); return; }
+    if (d.el.paused) { d.g.gain.setValueAtTime(1, this.ctx.currentTime); this.playEl(d.el); }
+  }
+  private playEl(el: HTMLAudioElement) {
+    if (this.hidden) return;
+    // blocked without a gesture on some browsers; the next tap calls unlock → startWanted and tries again
+    el.play().catch(() => {});
+  }
+  private fadeOutAll() {
+    const now = this.ctx!.currentTime;
+    for (const d of this.decks) { d.g.gain.cancelScheduledValues(now); d.g.gain.setValueAtTime(d.g.gain.value, now); d.g.gain.linearRampToValueAtTime(0, now + FADE); const el = d.el; setTimeout(() => { if (!this.scene) el.pause(); }, FADE * 1000 + 100); }
+  }
+  private onVisibility() {
+    this.hidden = document.visibilityState === 'hidden';
+    if (this.hidden) { for (const d of this.decks) d.el.pause(); return; }
+    this.startWanted();
+  }
 
   private tone(freq: number, dur: number, type: OscillatorType, gain: number, when = 0, slide?: number) {
     const c = this.ctx!, t = c.currentTime + when;
