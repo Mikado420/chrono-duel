@@ -68,6 +68,8 @@ export class BattleScene extends Container {
   private mode: Mode = { k: 'idle' };
   private drag: { view: HandCardView; sx: number; sy: number; moved: boolean; ox: number; oy: number } | null = null;
   private unitDrag: { lane: number; sx: number; sy: number; moved: boolean } | null = null;
+  /** The current press started on the background itself (not on a card, unit or button). */
+  private bgDown = false;
   private flyFrom: { x: number; y: number } | null = null;
   private toastC = new Container();
   private modal: Container | null = null;
@@ -117,7 +119,12 @@ export class BattleScene extends Container {
     this.on('globalpointermove', (e) => this.onMove(e));
     this.on('pointerup', (e) => this.onUp(e));
     this.on('pointerupoutside', (e) => this.onUp(e));
-    this.on('pointertap', (e) => this.onBackgroundTap(e));
+    // A tap reaches the background even when it started on a card, a unit or a button (Pixi dispatches pointertap
+    // to the common ancestor). Only taps that also *started* on the background count, or the tap that ends a drop
+    // or a button press would cancel the choice it just opened (e.g. the 充填 bar).
+    this.on('pointerdowncapture', () => { this.bgDown = false; });
+    this.on('pointerdown', () => { this.bgDown = true; });
+    this.on('pointertap', (e) => { if (!this.bgDown) return; this.bgDown = false; this.onBackgroundTap(e); });
     this.timerTxt.anchor.set(0.5);
     this.timerC.addChild(this.timerBg, this.timerTxt);
     this.timerC.x = 360; this.timerC.y = 26; this.timerC.visible = false;
@@ -388,7 +395,7 @@ export class BattleScene extends Container {
   }
 
   /** Test hook (only exposed with #debug in the URL). */
-  debug() { return { s: this.s, busy: this.busy, mode: this.mode.k, use: (uid: number, lane: number | null) => this.use(uid, lane), act: (a: Action) => this.tryAction(a), auto: () => (this.cfg.net ? legalActions(this.s, 0).filter((x) => x.t !== 'wait' && x.t !== 'draw')[0] ?? { t: 'wait' } : chooseAction(this.s, 0, 'normal')), finished: this.finished }; }
+  debug() { return { s: this.s, busy: this.busy, mode: this.mode.k, use: (uid: number, lane: number | null) => this.use(uid, lane), act: (a: Action) => this.tryAction(a), auto: () => (this.cfg.net ? legalActions(this.s, 0).filter((x) => x.t !== 'wait' && x.t !== 'draw')[0] ?? { t: 'wait' } : chooseAction(this.s, 0, 'normal')), finished: this.finished, hand: () => [...this.handViews].map(([uid, v]) => ({ uid, card: v.card, x: v.x, y: v.y })), lanes: { x: [...LANE_X], y: ROW_Y[0] }, redraw: () => this.syncAll(false) }; }
   surrender(reason: 'surrender' | 'timeout' = 'surrender') {
     if (this.cfg.net) { this.cfg.net.send({ t: 'surrender' }); return; }
     if (this.s.over || this.finished) return;
