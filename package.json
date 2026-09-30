@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "sim": "tsx src/sim/simulate.ts",
+    "wiki:stats": "tsx src/sim/wikistats.ts",
     "test:net": "tsx src/sim/nettest.ts",
     "test:econ": "tsx src/sim/econtest.ts",
     "test:meta": "tsx src/sim/metatest.ts",

@@ -33,11 +33,16 @@ self.addEventListener('fetch', (e) => {
   if (!sameOrigin && !fontHost) return;
 
   // Pages: network first so a new deploy shows up right away, cache when offline.
+  // The game is cached as ./index.html; other pages (the wiki at ./wiki/) are cached under their own URL
+  // so opening them never replaces the game's offline copy.
   if (req.mode === 'navigate') {
+    const scope = new URL(self.registration.scope).pathname;
+    const isGame = url.pathname === scope || url.pathname === scope + 'index.html';
+    const key = isGame ? './index.html' : url.origin + url.pathname;
     e.respondWith(
       fetch(req)
-        .then((res) => { const copy = res.clone(); caches.open(CACHE).then((c) => c.put('./index.html', copy)); return res; })
-        .catch(() => caches.match('./index.html').then((r) => r || caches.match('./'))),
+        .then((res) => { if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(key, copy)); } return res; })
+        .catch(async () => (await caches.match(key)) || (isGame && (await caches.match('./'))) || Response.error()),
     );
     return;
   }

@@ -77,7 +77,10 @@ const ICON = {
   help: svg('<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.7"/><path d="M12 17h.01"/>'),
   gear: svg('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>'),
   door: svg('<path d="M14 4h5v16h-5"/><path d="M10 8l-4 4 4 4"/><path d="M6 12h10"/>'),
+  wiki: svg('<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>'),
 };
+/** Opens the strategy wiki (built as a second page at ./wiki/) in a new tab. */
+const openWiki = () => window.open('./wiki/', '_blank', 'noopener');
 const imgCache = new Map<string, string>();
 function cardImg(id: string): string {
   let u = imgCache.get(id);
@@ -277,6 +280,7 @@ export class Screens {
         tile('プレゼント', ICON.gift, () => this.presentsModal(), m.presents.length),
         tile('お知らせ', ICON.news, () => this.newsModal(), unreadNews(m)),
         tile('遊び方', ICON.help, () => this.rules(() => this.menuTab())),
+        tile('攻略wiki', ICON.wiki, openWiki),
         tile('設定', ICON.gear, () => this.settings(() => this.menuTab())),
         tile('タイトルへ', ICON.door, () => this.title())),
       h('div', { class: 'ver' }, `クロノ・デュエル Ver. ${VERSION}`)));
@@ -636,6 +640,9 @@ export class Screens {
             h('li', {}, 'カードをタップすると詳細と操作ボタンが出ます。'),
             h('li', {}, '攻撃できるユニットをタップして矢印を確認、もう一度タップ（または上へドラッグ）で攻撃。'),
             h('li', {}, 'カードを選ぶと、時計に「使った後の針」が薄く表示されます。'))),
+        h('section', {}, h('h3', {}, 'もっと詳しく'),
+          h('p', {}, '全カードの効果と攻略メモ、デッキの相性表、立ち回りのコツは攻略wikiにまとめています。'),
+          h('button', { class: 'btn small', onclick: openWiki }, '攻略wikiを開く')),
       )));
   }
 

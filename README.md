@@ -93,6 +93,7 @@ npm install
 npm run dev        # 開発サーバー
 npm run build      # 型チェック + 本番ビルド（dist/）
 npm run sim        # AI同士の対戦でバランスを検証
+npm run wiki:stats # 攻略wikiの勝率・相性表を更新（src/wiki/stats.ts を書き出す）
 npm run sim -- 800 hard normal   # 試合数とAIの強さを指定
 npm run test:net   # オンライン部屋ロジックのテスト（偽の接続で2人ぶん）
 npm run test:econ  # パックの確率・天井・報酬のテスト
@@ -131,12 +132,22 @@ src/
   meta/      コイン・報酬・パック抽選
   ui/        タイトル・デッキ編集・ショップなどのDOM画面
   sim/       バランス検証用シミュレーター、オンライン部屋のテスト
+  wiki/      攻略wiki（main.ts・本文の content.ts・生成される stats.ts）
   server/    部屋ロジック（Room）。Workers とローカルサーバーと試験で共有
   net/       オンラインの接続・部屋の流れ（クライアント側）
 server/      Cloudflare Workers（Durable Objects）の入れ物、ローカル用サーバー
 ```
 
 エンジンは行動ごとにイベント列（`GameEvent[]`）を返し、描画側はそれを順番に演出として再生します。ルール変更は `core/` だけで完結し、描画は自動で追従します。
+
+## 攻略wiki
+
+`wiki/index.html` を入口にした2ページ目で、ゲームと一緒にビルドされて `/wiki/` に公開されます（GitHub Pages なら `https://<ユーザー名>.github.io/chrono-duel/wiki/`）。ゲーム内では「メニュー → 攻略wiki」と「遊び方」の一番下から開きます。開発中は `npm run dev` のあと `http://localhost:5173/wiki/`。
+
+- カードの数値・効果文、デッキ、ルールの数値、パックの確率と報酬は `core/` と `meta/` を直接読んで表示します。カードを追加・調整すると、次のビルドでwikiも変わります。
+- 採用時勝率・使用回数・相性表は `src/wiki/stats.ts`（生成ファイル）から表示します。カードやバランスを変えたら `npm run wiki:stats` で作り直してコミットしてください（6,400戦で1分ほど）。
+- 攻略メモ・デッキ解説・用語集などの文章は `src/wiki/content.ts` に書きます。新カードは `MEMO` に1行足すと「攻略」欄が出ます（無くても表示されます）。
+- 各ページは `#cards` `#decks` のようなURLで直接開けます。
 
 ## PWA
 

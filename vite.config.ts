@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 /** Stamps the service worker with a build id so every deploy invalidates the old cache. */
 function stampServiceWorker(): Plugin {
@@ -18,5 +19,15 @@ function stampServiceWorker(): Plugin {
 export default defineConfig({
   base: './',
   plugins: [stampServiceWorker()],
-  build: { target: 'es2022', chunkSizeWarningLimit: 1500 },
+  build: {
+    target: 'es2022',
+    chunkSizeWarningLimit: 1500,
+    // Two pages: the game (index.html) and the strategy wiki (wiki/index.html → /wiki/).
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        wiki: fileURLToPath(new URL('./wiki/index.html', import.meta.url)),
+      },
+    },
+  },
 });
