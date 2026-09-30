@@ -947,7 +947,7 @@ export class BattleScene extends Container {
       case 'heal': return this.onLog(`${nm(e.pi)}の拠点が${e.amount}回復`, e.pi);
       case 'clock': return this.onLog(`${nm(e.pi)}の時計が${e.delta > 0 ? '+' : '−'}${Math.abs(e.delta)}刻`, -1);
       case 'bell': return this.onLog(`${nm(e.pi)}：${e.at}刻の鐘`, e.pi);
-      case 'doom': return this.onLog(`終焉の刻：拠点へのダメージ+${e.level}`, -1);
+      case 'doom': return this.onLog(`終焉の刻：ユニットが拠点に与えるダメージ+${e.level}`, -1);
       case 'act': if (e.action.t === 'draw' || e.action.t === 'wait') this.onLog(`${nm(e.pi)}：${e.action.t === 'draw' ? 'ドロー' : '待機'}`, e.pi); return;
       default: return;
     }
@@ -1228,7 +1228,7 @@ export class BattleScene extends Container {
         audio.play('doom');
         this.dial.setDoom(e.level);
         void fx.flash(COLORS.doom, 0.3, 700);
-        await fx.banner(e.level === 1 ? '終焉の刻' : `終焉 ${e.level}段階`, `拠点へのダメージ +${e.level}`, COLORS.doom, 360, 640);
+        await fx.banner(e.level === 1 ? '終焉の刻' : `終焉 ${e.level}段階`, `ユニットが拠点に与えるダメージ +${e.level}`, COLORS.doom, 360, 640);
         break;
       }
       case 'end': {

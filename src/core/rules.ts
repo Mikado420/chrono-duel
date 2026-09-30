@@ -10,7 +10,7 @@ export const RULES = {
   MAX_LEGEND_COPIES: 1,
   /** Crossing these on your own clock draws a card. */
   BELLS: [8, 16, 24, 32] as readonly number[],
-  /** From this world time, every hit on a base deals +1. */
+  /** From this world time, every hit on a base by a unit deals +1 (spells and echoes are not affected). */
   DOOM_AT: 20,
   /** Doom bonus grows by 1 every this many ticks after DOOM_AT. */
   DOOM_STEP: 8,

@@ -242,10 +242,11 @@ function reap(s: GameState, ev: GameEvent[]) {
     });
   }
 }
-function damageBase(s: GameState, pi: PlayerIndex, amount: number, ev: GameEvent[]) {
+/** Damage to a base. 終焉 (doom) only adds to hits from units: spells and echoes that ignore the board deal their printed amount. */
+function damageBase(s: GameState, pi: PlayerIndex, amount: number, ev: GameEvent[], byUnit = false) {
   if (amount <= 0) return;
-  const doom = s.doom > 0;
-  const n = amount + s.doom;
+  const doom = byUnit && s.doom > 0;
+  const n = amount + (byUnit ? s.doom : 0);
   const p = s.players[pi];
   p.hp -= n;
   ev.push({ e: 'dmgBase', pi, amount: n, hp: p.hp, doom });
@@ -527,14 +528,14 @@ export function apply(s: GameState, a: Action): GameEvent[] {
       advance(s, pi, RULES.COST_ATTACK, ev);
       const t = attackTarget(s, pi, a.lane);
       ev.push({ e: 'attack', pi, lane: a.lane, target: t });
-      if (!t) damageBase(s, qi, u.atk, ev);
+      if (!t) damageBase(s, qi, u.atk, ev, true);
       else {
         const v = s.players[qi].field[t.lane]!;
         const over = u.atk - v.hp;
         const back = v.atk;
         damageUnit(s, qi, t.lane, u.atk, ev);
         damageUnit(s, pi, a.lane, back, ev);
-        if (u.pierce && over > 0) damageBase(s, qi, over, ev);
+        if (u.pierce && over > 0) damageBase(s, qi, over, ev, true);
         reap(s, ev);
       }
       const still = p.field[a.lane];

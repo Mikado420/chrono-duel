@@ -101,7 +101,7 @@ function intentBonus(s: GameState, pi: PlayerIndex, a: Action): number {
   const wait = a.T - s.players[pi].time;
   let b = 0;
   switch (d.effect) {
-    case 'bolt': b = 3.5 + (a.T >= RULES.DOOM_AT ? 1.5 : 0); break;
+    case 'bolt': b = 3.5; break;
     case 'arrow': b = 2 + enemies * 0.8; break;
     case 'collapse': b = 1 + enemies * 1.5; break;
     case 'cage': b = 1.5 + enemies * 0.6; break;
@@ -117,7 +117,7 @@ function intentBonus(s: GameState, pi: PlayerIndex, a: Action): number {
     case 'eDraw': b = 2.5; break;
     case 'eReverse': b = 3.5; break;
     case 'eStorm': b = 1 + enemies * 1.3; break;
-    case 'eEternal': b = 3.5 + (a.T >= RULES.DOOM_AT ? 1.5 : 0); break;
+    case 'eEternal': b = 3.5; break;
   }
   return b - wait * 0.12;
 }

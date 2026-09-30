@@ -72,7 +72,7 @@ export const CARDS: Record<string, CardDef> = {
   // ---- spells ---------------------------------------------------------
   arrow: { id: 'arrow', name: '時の矢', kind: 'spell', rarity: 'C', cost: 2, effect: 'arrow', text: '攻撃力が最も高い敵ユニットに3ダメージ。いなければ敵拠点に2。', resvText: '4ダメージ（拠点なら3）。', flavor: '放たれた矢は、戻らない。', motif: 'hand' },
   cage: { id: 'cage', name: '停滞の檻', kind: 'spell', rarity: 'C', cost: 1, effect: 'cage', text: '攻撃力が最も高い敵ユニットの準備を6刻遅らせる。', resvText: '8刻遅らせる。', flavor: 'その一瞬を、永遠に。', motif: 'hourglass' },
-  bolt: { id: 'bolt', name: '刻印の雷', kind: 'spell', rarity: 'R', cost: 3, effect: 'bolt', text: '敵拠点に4ダメージ。', resvText: '敵拠点に5ダメージ。', flavor: '刻まれた時刻に、雷は落ちる。', motif: 'flame' },
+  bolt: { id: 'bolt', name: '刻印の雷', kind: 'spell', rarity: 'R', cost: 2, effect: 'bolt', text: '敵拠点に4ダメージ。', resvText: '敵拠点に5ダメージ。', flavor: '刻まれた時刻に、雷は落ちる。', motif: 'flame' },
   collapse: { id: 'collapse', name: '崩落の刻', kind: 'spell', rarity: 'R', cost: 4, effect: 'collapse', text: '敵ユニット全てに2ダメージ。', resvText: '全てに3ダメージ。', flavor: '時計塔が崩れる音がした。', motif: 'gear' },
   rewind: { id: 'rewind', name: '巻き戻し', kind: 'spell', rarity: 'C', cost: 2, effect: 'rewind', text: '自拠点を3回復し、カードを1枚引く。', resvText: '4回復し、2枚引く。', flavor: '少しだけ、昨日へ。', motif: 'spiral' },
   haste: { id: 'haste', name: '加速', kind: 'spell', rarity: 'C', cost: 1, effect: 'haste', text: '自分のユニット全てを準備完了にし、攻撃+1。', resvText: '攻撃+2。', flavor: '針よ、走れ。', motif: 'hand' },
