@@ -16,7 +16,7 @@ import { VERSION } from '../version';
 import { pwa } from '../pwa';
 import { store } from './storage';
 import { AI_LEVEL_NAMES, type AiLevel } from '../core/ai';
-import { AI_RATING, EXPERT_ONLY, PLACEMENT_GAMES, opponentPool, tierOf, type RatedGame, type Tier } from '../meta/rating';
+import { PLACEMENT_GAMES, tierOf, type Opponent, type RatedGame, type Tier } from '../meta/rating';
 import { fetchRanking, rankingAvailable, syncRated } from '../net/api';
 
 type Child = Node | string | null | undefined | false;
@@ -293,12 +293,10 @@ export class Screens {
     const render = (reload = true) => {
       const r = store.rated;
       const t = tierOf(r.rating);
-      const pool = opponentPool(r.rating);
-      const foes = pool.map(([lv, w]) => `${AI_LEVEL_NAMES[lv]}${pool.length > 1 ? ` ${Math.round(w * 100)}%` : ''}`).join('・');
       const deckOpts = decks.map((d) => h('button', { class: 'opt', 'aria-pressed': String(d.id === mine.id), disabled: !d.valid, onclick: () => { mine = d; audio.play('select'); render(false); } },
         h('div', {}, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, d.blurb ?? `${d.cards.length}枚・自作デッキ`)), !d.valid ? h('span', { class: 'badge' }, d.missing.length ? '未所持あり' : '未完成') : null));
       const hist = r.history.slice(0, 8).map((g) => h('div', { class: `rh ${g.score === 1 ? 'w' : g.score === 0 ? 'l' : 'd'}` },
-        h('b', {}, g.score === 1 ? '勝' : g.score === 0 ? '敗' : '分'), h('span', {}, `AI（${AI_LEVEL_NAMES[g.ai]}）`), h('span', { class: 'dl' }, `${g.after - g.before >= 0 ? '+' : ''}${g.after - g.before}`), h('span', { class: 'rt' }, String(g.after))));
+        h('b', {}, g.score === 1 ? '勝' : g.score === 0 ? '敗' : '分'), h('span', { class: 'foe' }, g.foe ? `${g.foe}（${g.foeRating}）` : '対戦相手'), h('span', { class: 'dl' }, `${g.after - g.before >= 0 ? '+' : ''}${g.after - g.before}`), h('span', { class: 'rt' }, String(g.after))));
       board ??= h('div', { class: 'ranking' });
       this.mount(h('div', { class: 'screen dim' }, h('div', { class: 'panel rated' },
         h('div', { class: 'head' }, h('h2', {}, 'レート戦'), h('button', { class: 'btn small', onclick: () => this.battleTab() }, '戻る')),
@@ -307,12 +305,11 @@ export class Screens {
           h('div', { class: 'rating' }, h('small', {}, 'RATING'), h('b', {}, String(r.rating))),
           h('div', { class: 'progress tier-prog' }, h('i', { style: `width:${t.next ? (t.into / t.span) * 100 : 100}%` })),
           h('div', { class: 'small' }, t.next ? `次の段位「${t.next.name}」まで ${t.next.min - r.rating}` : '最高段位', `　・　最高 ${r.peak}　・　${r.games}戦${r.wins}勝`)),
-        h('div', { class: 'foe-info' }, h('span', {}, '対戦相手'), h('b', {}, `AI（${foes}）`)),
-        r.rating >= EXPERT_ONLY ? h('p', { class: 'small warn' }, `「${tierOf(EXPERT_ONLY).tier.name}」以上では超つよいAIとしか当たりません。`) : h('p', { class: 'small' }, `レート${EXPERT_ONLY}（${tierOf(EXPERT_ONLY).tier.name}）からは超つよいAIのみになります。`),
         h('ul', { class: 'earn' },
-          h('li', {}, `強いAIに勝つほど大きく上がり、弱いAIに負けるほど大きく下がります（AIのレート：${(['easy', 'normal', 'hard', 'expert'] as AiLevel[]).map((l) => `${AI_LEVEL_NAMES[l]}${AI_RATING[l]}`).join('・')}）`),
+          h('li', {}, 'レートの近い相手とマッチングします。段位が上がるほど手強い相手が待っています'),
+          h('li', {}, '自分よりレートの高い相手に勝つほど大きく上がり、低い相手に負けるほど大きく下がります'),
           h('li', {}, `はじめの${PLACEMENT_GAMES}戦は変動が大きくなります`),
-          h('li', {}, '降参・途中でアプリを閉じた場合は敗北になります')),
+          h('li', {}, '1手45秒の持ち時間があります。降参・途中でアプリを閉じた場合は敗北になります')),
         h('h3', {}, 'デッキ'), h('div', { class: 'opt-list' }, ...deckOpts),
         h('button', { class: 'btn primary big-cta', disabled: !mine.valid, onclick: () => { store.settings.lastDeck = mine.id; store.saveSettings(); audio.play('summon'); this.host.startRated(mine); } }, 'レート戦を開始'),
         hist.length ? h('h3', {}, '最近の結果') : null,
@@ -322,6 +319,38 @@ export class Screens {
       if (reload) void loadRanking();
     };
     render();
+  }
+
+  /**
+   * Matchmaking: a short search, then the opponent's card. The wait is a few seconds, like finding a player
+   * online; cancelling during the search does not count as a game.
+   */
+  matching(o: Opponent, start: () => void, cancel: () => void) {
+    const me = store.rated, mt = tierOf(me.rating).tier, ot = tierOf(o.rating).tier;
+    let cancelled = false;
+    const secs = h('span', {}, '0');
+    const t0 = performance.now();
+    const tick = window.setInterval(() => { secs.textContent = String(Math.floor((performance.now() - t0) / 1000)); }, 250);
+    const stop = () => clearInterval(tick);
+    const card = (name: string, rating: number, t: Tier, you: boolean) => h('div', { class: `vs-card${you ? ' you' : ' foe'}`, style: `--tier:${t.color}` },
+      tierBadge(t), h('b', { class: 'nm' }, name), h('span', { class: 'rt' }, `レート ${rating}`));
+    const search = h('div', { class: 'screen dim title' }, h('div', { class: 'panel wait matching' },
+      h('div', { class: 'radar', 'aria-hidden': 'true' }, h('i', {}), h('i', {}), h('i', {})),
+      h('h2', {}, '対戦相手を探しています'),
+      h('p', { class: 'small' }, `レート ${me.rating} 付近 ・ 経過 `, secs, ' 秒'),
+      h('button', { class: 'btn small', onclick: () => { cancelled = true; stop(); cancel(); } }, 'やめる')));
+    this.mount(search);
+    const wait = 1800 + Math.random() * 3800;
+    setTimeout(() => {
+      if (cancelled || !search.isConnected) return;
+      stop();
+      audio.play('bell');
+      this.mount(h('div', { class: 'screen dim title' }, h('div', { class: 'panel matched' },
+        h('div', { class: 'step' }, 'MATCH'),
+        h('h2', {}, '対戦相手が見つかりました'),
+        h('div', { class: 'vs' }, card(store.settings.name || 'あなた', me.rating, mt, true), h('span', { class: 'vs-x' }, 'VS'), card(o.name, o.rating, ot, false)))));
+      setTimeout(() => { if (!cancelled) start(); }, 2200);
+    }, wait);
   }
 
   /** Rating change on the result screen, counted up, with a promotion/demotion line. */
@@ -341,9 +370,9 @@ export class Screens {
     if (up) setTimeout(() => audio.play('rareE'), 900);
     return h('div', { class: `rated-res ${d >= 0 ? 'up' : 'down'}`, style: `--tier:${t1.color}` },
       h('div', { class: 'rr-row' }, tierBadge(t1), h('span', { class: 'lbl' }, 'レート'), num, h('span', { class: 'delta' }, `${d >= 0 ? '+' : ''}${d}`)),
-      h('div', { class: 'small' }, `対戦相手：AI（${AI_LEVEL_NAMES[g.ai]}・レート${AI_RATING[g.ai]}）`),
+      h('div', { class: 'small' }, `対戦相手：${g.foe || '対戦相手'}（レート ${g.foeRating}）`),
       up ? h('div', { class: 'promo' }, `昇格！「${t1.name}」になりました`) : down ? h('div', { class: 'demo' }, `「${t1.name}」に降格しました`) : null,
-      g.after >= EXPERT_ONLY && g.before < EXPERT_ONLY ? h('div', { class: 'promo' }, 'ここからは超つよいAIだけが相手です') : null);
+      null);
   }
 
   // ---------------------------------------------------------------- battle tab
@@ -356,7 +385,7 @@ export class Screens {
     const rt = store.rated, tr = tierOf(rt.rating);
     this.hub('battle', h('div', { class: 'tab-page' },
       h('h2', { class: 'page-title' }, 'バトル'),
-      mode('m-rated', 'レート戦', `AIと真剣勝負。レートが上がるほど相手が強くなる`, 'e_verna', () => this.rated(), `${tr.tier.name} ・ レート ${rt.rating} ・ ${rt.games}戦${rt.wins}勝`),
+      mode('m-rated', 'レート戦', 'レートの近い相手と真剣勝負。勝って段位を上げよう', 'e_verna', () => this.rated(), `${tr.tier.name} ・ レート ${rt.rating} ・ ${rt.games}戦${rt.wins}勝`),
       mode('m-ai', 'フリー対戦', 'AIの強さを選んで練習・腕試し（レートは変わりません）', 'gear', () => this.setup(), `戦績 ${r.win}勝 ${r.lose}敗 ・ 勝利でコイン${MATCH_REWARD['ai-normal'][0]}〜${MATCH_REWARD['ai-hard'][0]}`),
       mode('m-online', 'フレンド対戦', 'あいことば・招待リンクで友達とオンライン対戦', 'e_atra', flow.available ? () => this.onlineMenu() : null, flow.available ? `戦績 ${o.win}勝 ${o.lose}敗 ・ 勝利でコイン${MATCH_REWARD['online'][0]}` : '準備中'),
       mode('m-guide', '遊び方', 'ルールと操作をおさらい', 'oracle', () => this.rules(() => this.battleTab())),
@@ -873,7 +902,7 @@ export class Screens {
 
   result(r: BattleResult, again: () => void, leave: () => void, rw?: Reward, xp?: XpGain, rated?: RatedGame | null) {
     if (rated) {
-      this.mount(this.resultView(r, 'AI', [
+      this.mount(this.resultView(r, rated.foe || '相手', [
         h('button', { class: 'btn primary', onclick: again }, '次のレート戦へ'),
         h('button', { class: 'btn', onclick: () => { leave(); this.rated(); } }, 'レート戦の画面へ'),
         this.shopLink(leave),

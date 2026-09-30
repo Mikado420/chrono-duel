@@ -494,3 +494,22 @@ body.log-open #log-back { display: block; }
 .rated-res .demo { font-size: 14px; color: var(--mute); }
 .prof-rated { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; }
 .mode.m-rated { border-color: #ffd66e; background: linear-gradient(100deg, #2a2210, #16303d); }
+
+/* matchmaking */
+.matching { align-items: center; text-align: center; }
+.radar { position: relative; width: 120px; height: 120px; }
+.radar i { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--brass); opacity: 0; animation: ping 2.4s ease-out infinite; }
+.radar i:nth-child(2) { animation-delay: .8s; } .radar i:nth-child(3) { animation-delay: 1.6s; }
+.radar::after { content: ''; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px; border-radius: 50%; background: var(--brass); box-shadow: 0 0 16px var(--brass); }
+@keyframes ping { 0% { transform: scale(.2); opacity: .9; } 100% { transform: scale(1); opacity: 0; } }
+.matched { align-items: center; text-align: center; width: min(460px, 100%); }
+.matched .step { font: 700 13px var(--f-num); letter-spacing: .5em; color: var(--brass); }
+.vs { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; width: 100%; }
+.vs-card { display: grid; justify-items: center; gap: 6px; padding: 14px 8px; border-radius: 14px; border: 1.5px solid var(--tier); background: rgba(10, 24, 32, .9); animation: slideVs .5s cubic-bezier(.2, .8, .2, 1) both; min-width: 0; }
+.vs-card.foe { animation-name: slideVsR; }
+.vs-card .nm { font: 800 18px var(--f-display); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vs-card .rt { font: 700 13px var(--f-num); color: var(--mute); }
+.vs-x { font: 800 28px var(--f-num); color: var(--brass); text-shadow: 0 0 18px rgba(224, 178, 92, .6); }
+@keyframes slideVs { from { transform: translateX(-40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes slideVsR { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+.rh .foe { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

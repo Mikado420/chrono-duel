@@ -7,7 +7,7 @@
  */
 import type { AiLevel } from '../core/ai';
 import { cleanName } from '../core/net';
-import { START_RATING, nextRating, tierOf, type SubmitReq } from '../meta/rating';
+import { AI_RATING, OPP_SPREAD, START_RATING, nextRating, tierOf, type SubmitReq } from '../meta/rating';
 
 export interface KV { get<T>(k: string): Promise<T | undefined>; put(k: string, v: unknown): Promise<void>; list<T>(prefix: string): Promise<T[]> }
 export interface PlayerRec { id: string; key: string; name: string; rating: number; games: number; wins: number; peak: number; lastAt: number; lastGids: string[]; created: number }
@@ -53,7 +53,9 @@ export class Leaderboard {
       // losses always count (quitting early must not dodge one); wins and draws need a real game, spaced out
       const ok = wellFormed && (g.score === 0 || (g.actions >= MIN_ACTIONS && g.ms >= MIN_GAME_MS && g.at - rec.lastAt >= MIN_GAME_MS));
       if (!ok) { if (g && typeof g.gid === 'string') refused.push(g.gid); continue; }
-      rec.rating = nextRating(rec.rating, rec.games, g.ai, g.score);
+      // the opponent's shown rating must fit its level, so a client cannot invent a very strong opponent
+      const opp = typeof g.opp === 'number' && Math.abs(g.opp - AI_RATING[g.ai]) <= OPP_SPREAD ? g.opp : AI_RATING[g.ai];
+      rec.rating = nextRating(rec.rating, rec.games, opp, g.score);
       rec.games++;
       if (g.score === 1) rec.wins++;
       rec.peak = Math.max(rec.peak, rec.rating);

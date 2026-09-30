@@ -79,7 +79,7 @@ export function craft(w: Wallet, id: string): boolean {
 }
 
 // ------------------------------------------------------------------ rewards
-export interface RewardInput { mode: 'ai' | 'online'; level: AiLevel; winner: 0 | 1 | -1; reason: string; myActions: number; today: string }
+export interface RewardInput { mode: 'ai' | 'online' | 'rated'; level: AiLevel; winner: 0 | 1 | -1; reason: string; myActions: number; today: string }
 export interface Reward { lines: { label: string; coins: number }[]; total: number; capped?: boolean }
 
 /** [win, loss, draw] coins per match type. */
@@ -100,7 +100,7 @@ export function reward(w: Wallet, r: RewardInput): Reward {
   const room = Math.max(0, DAILY_MATCH_CAP - used);
   const base = r.winner === 0 ? win : r.winner === -1 ? draw : r.reason !== 'surrender' ? lose : 0;
   const pay = Math.min(base, room);
-  if (r.winner === 0) lines.push({ label: r.mode === 'online' ? 'オンライン勝利' : r.level === 'normal' ? '勝利' : `勝利（${AI_LEVEL_NAMES[r.level]}）`, coins: pay });
+  if (r.winner === 0) lines.push({ label: r.mode === 'online' ? 'オンライン勝利' : r.mode === 'rated' ? 'レート戦勝利' : r.level === 'normal' ? '勝利' : `勝利（${AI_LEVEL_NAMES[r.level]}）`, coins: pay });
   else if (r.winner === -1) lines.push({ label: '引き分け', coins: pay });
   else lines.push({ label: '対戦に参加', coins: pay });
   if (r.winner === 0 && w.dailyWin !== r.today) lines.push({ label: '本日の初勝利ボーナス', coins: DAILY_BONUS });

@@ -1,6 +1,6 @@
 /* Rated play and the friends' ranking: `npm run test:rating` */
 import assert from 'node:assert/strict';
-import { AI_RATING, EXPERT_ONLY, NEW_RATED, START_RATING, TIERS, finishRated, nextRating, opponentPool, pickOpponent, startRated, tierOf } from '../meta/rating';
+import { AI_RATING, EXPERT_ONLY, NEW_RATED, OPP_SPREAD, PLAYER_NAMES, START_RATING, TIERS, finishRated, makeOpponent, nextRating, opponentPool, pickOpponent, startRated, tierOf } from '../meta/rating';
 import { Leaderboard, MIN_GAME_MS, type KV } from '../server/leaderboard';
 import { mulberry32 } from '../core/engine';
 
@@ -19,24 +19,33 @@ assert.ok(Array.from({ length: 200 }, () => pickOpponent(800, rand)).every((l) =
 assert.equal(TIERS.find((t) => t.min === EXPERT_ONLY)?.name, '時の賢者');
 
 // Elo: beating a stronger AI is worth more; every result moves the number
-const upHard = nextRating(1000, 50, 'hard', 1) - 1000, upEasy = nextRating(1000, 50, 'easy', 1) - 1000;
+const upHard = nextRating(1000, 50, AI_RATING.hard, 1) - 1000, upEasy = nextRating(1000, 50, AI_RATING.easy, 1) - 1000;
 assert.ok(upHard > upEasy && upEasy >= 1, 'bigger gain against a stronger AI');
-assert.ok(nextRating(1000, 50, 'easy', 0) < 1000);
-assert.ok(nextRating(1000, 0, 'normal', 1) - 1000 > nextRating(1000, 50, 'normal', 1) - 1000, 'placement games swing more');
-assert.ok(nextRating(2400, 50, 'expert', 1) > 2400, 'a win always gains');
-assert.equal(nextRating(100, 50, 'expert', 0), 100, 'floor');
+assert.ok(nextRating(1000, 50, AI_RATING.easy, 0) < 1000);
+assert.ok(nextRating(1000, 0, AI_RATING.normal, 1) - 1000 > nextRating(1000, 50, AI_RATING.normal, 1) - 1000, 'placement games swing more');
+assert.ok(nextRating(2400, 50, AI_RATING.expert, 1) > 2400, 'a win always gains');
+assert.equal(nextRating(100, 50, AI_RATING.expert, 0), 100, 'floor');
 // where does a player settle who wins 60% against 超つよい? (sanity: above the AI's own rating)
 let r = START_RATING, g = 0;
 const rr = mulberry32(9);
-for (let i = 0; i < 3000; i++) { r = nextRating(r, g++, 'expert', rr() < 0.6 ? 1 : 0); }
+for (let i = 0; i < 3000; i++) { r = nextRating(r, g++, AI_RATING.expert, rr() < 0.6 ? 1 : 0); }
 assert.ok(r > AI_RATING.expert && r < AI_RATING.expert + 200, `60% vs 超つよい settles near ${r}`);
 
 // local record: pending → finished, outbox
+// opponents look like players: a name from the pool, a rating near their level, never the player's own name
+for (let i = 0; i < 300; i++) {
+  const o = makeOpponent(1000 + i * 3, 'ときのすけ', ['Rei_0423'], rand);
+  assert.ok(PLAYER_NAMES.includes(o.name) && o.name !== 'ときのすけ' && o.name !== 'Rei_0423');
+  assert.ok(Math.abs(o.rating - AI_RATING[o.ai]) <= OPP_SPREAD);
+  assert.ok(!/AI|つよい|やさしい|ふつう/.test(o.name), 'names never give the AI away');
+}
 const me = NEW_RATED();
 assert.equal(finishRated(me, 1, 10, 1000, 'x'), null, 'nothing to finish without a start');
-startRated(me, 'normal', 'balance', 1000);
+startRated(me, { ai: 'normal', name: 'みなと', rating: 1010 }, 'balance', 1000);
 const done = finishRated(me, 1, 12, 1000 + 5 * 60_000, 'g1')!;
 assert.ok(done.after > done.before && me.games === 1 && me.wins === 1 && me.outbox.length === 1 && !me.pending);
+assert.equal(done.after, nextRating(1000, 0, 1010, 1), 'the shown rating is the one used');
+assert.equal(done.foe, 'みなと');
 
 // ranking server replays the same rules and never trusts a client number
 const mem = new Map<string, unknown>();
@@ -45,11 +54,16 @@ let now = 10_000_000;
 const lb = new Leaderboard(kv, () => now);
 const A = { id: 'aaaaaaaaaaaaaaaaaaaa', secret: 'sssssssssssssssssssss', name: 'アリス' };
 const B = { id: 'bbbbbbbbbbbbbbbbbbbb', secret: 'tttttttttttttttttttttt', name: 'ボブ' };
-const game = (gid: string, score: 0 | 0.5 | 1, at: number, ms = 5 * 60_000, actions = 15) => ({ gid, ai: 'hard' as const, score, actions, ms, at });
+const game = (gid: string, score: 0 | 0.5 | 1, at: number, ms = 5 * 60_000, actions = 15, opp?: number) => ({ gid, ai: 'hard' as const, opp, score, actions, ms, at });
 let res = await lb.submit({ ...A, games: [game('a1', 1, now)] });
 assert.equal(res.status, 200);
 const r1 = (res.body as { rating: number }).rating;
-assert.equal(r1, nextRating(START_RATING, 0, 'hard', 1), 'server uses the shared rules');
+assert.equal(r1, nextRating(START_RATING, 0, AI_RATING.hard, 1), 'server uses the shared rules');
+// a made-up very strong opponent falls back to the level's rating
+{ const lb2 = new Leaderboard(kv, () => now); const C = { id: 'cccccccccccccccccccc', secret: 'uuuuuuuuuuuuuuuuuuuuuu', name: 'c' };
+  const x = await lb2.submit({ ...C, games: [game('c1', 1, now, 5 * 60_000, 15, 2400)] });
+  assert.equal((x.body as { rating: number }).rating, nextRating(START_RATING, 0, AI_RATING.hard, 1), 'opponent rating is bounded by its level');
+  mem.delete(`p:${C.id}`); }
 res = await lb.submit({ ...A, games: [game('a1', 1, now + 70_000)] });
 assert.deepEqual((res.body as { refused: string[] }).refused, ['a1'], 'the same game counts once');
 res = await lb.submit({ ...A, games: [game('a2', 1, now + 10_000)] });

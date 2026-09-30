@@ -5,7 +5,7 @@ import {
   actor, apply, attackTarget, cardCost, createGame, legalActions, other, resvCount, resvRange,
   type Action, type GameEvent, type GameState, type PlayerIndex, type Target,
 } from '../core/engine';
-import type { NetLink, NetResult, ServerMsg } from '../core/net';
+import { NET, type NetLink, type NetResult, type ServerMsg } from '../core/net';
 import { RULES } from '../core/rules';
 import { audio } from './audio';
 import { Dial } from './dial';
@@ -22,8 +22,10 @@ export interface BattleConfig {
   aiDeckName: string;
   level: AiLevel;
   seed?: number;
-  /** Rated game against the AI (surrendering or leaving counts as a loss). */
+  /** Rated game (surrendering or leaving counts as a loss). The opponent is shown only by `foeName`. */
   rated?: boolean;
+  /** Name shown for the opponent instead of "AI" (rated play). */
+  foeName?: string;
   /** Online match: the opponent is a person and the server owns the game state. */
   net?: NetLink;
 }
@@ -90,12 +92,15 @@ export class BattleScene extends Container {
   private myActs = 0;
   private stats = { spells: 0, summons: 0, reserves: 0, attacks: 0 };
 
-  private get foe(): string { return this.cfg.net?.foeName ?? 'AI'; }
+  private get foe(): string { return this.cfg.net?.foeName ?? this.cfg.foeName ?? 'AI'; }
+  /** Online and rated games run a move timer (45s, then an automatic wait; three in a row forfeits). */
+  private get timed() { return !!this.cfg.net || !!this.cfg.rated; }
+  private strikes = 0;
 
   constructor(private tw: Tweener, private fx: Fx, private ticker: Ticker, private cfg: BattleConfig, private onEnd: (r: BattleResult) => void, private onMenu: () => void, private onLog: (text: string, side: PlayerIndex | -1) => void = () => {}, private onLogToggle: () => void = () => {}) {
     super();
     this.dial = new Dial(tw);
-    this.huds = [new Hud(0, 'あなた'), new Hud(1, cfg.net ? cfg.net.foeName : `AI（${AI_LEVEL_NAMES[cfg.level]}）・ ${cfg.aiDeckName}`)];
+    this.huds = [new Hud(0, 'あなた'), new Hud(1, cfg.net ? cfg.net.foeName : cfg.foeName ?? `AI（${AI_LEVEL_NAMES[cfg.level]}）・ ${cfg.aiDeckName}`)];
     this.huds[1].x = 16; this.huds[1].y = 44;
     this.huds[0].x = 16;
     this.drawBtn = new Button('ドロー', 124, 66, 'plain', `${RULES.COST_DRAW}刻`, () => this.tryAction({ t: 'draw' }));
@@ -129,7 +134,12 @@ export class BattleScene extends Container {
     this.dial.tick(t.deltaMS);
     for (const v of this.unitViews.values()) v.tick(t.deltaMS);
     this.huds[0].tick(t.deltaMS); this.huds[1].tick(t.deltaMS);
-    if (this.cfg.net) this.drawTimer(false);
+    if (this.timed) {
+      // the clock stops while the game is paused (menu, log, rotated phone)
+      if (this.timerEnd !== null && this.tw.speed === 0) this.timerEnd += t.deltaMS;
+      if (!this.cfg.net) this.checkTimeout();
+      this.drawTimer(false);
+    }
   };
 
   override destroy() {
@@ -206,6 +216,7 @@ export class BattleScene extends Container {
     this.s = state;
     this.syncAll(false);
     await this.dealIntro(first);
+    this.ready = true; // lets the move timer show
     await this.loop();
   }
 
@@ -226,19 +237,32 @@ export class BattleScene extends Container {
   }
 
   // ------------------------------------------------------------------ turn loop
+  private checkTimeout() {
+    if (this.timerEnd === null || this.busy || this.finished || actor(this.s) !== 0 || performance.now() < this.timerEnd) return;
+    this.timerEnd = null;
+    this.strikes++;
+    if (this.strikes >= NET.MAX_AFK) { this.surrender('timeout'); return; }
+    this.toast('時間切れ：待機しました');
+    void this.tryAction({ t: 'wait' }, true);
+  }
+
   private async loop() {
     while (!this.destroyed_ && !this.s.over) {
       const a = actor(this.s);
       if (a === 1) {
         this.busy = true;
+        if (this.cfg.rated) this.setTimer(NET.TURN_MS);
         this.refreshControls();
-        await this.tw.wait(420);
+        // a person takes a moment to decide; rated opponents do too
+        await this.tw.wait(this.cfg.rated ? 700 + Math.random() * 1900 : 420);
+        if (this.destroyed_) return;
         const act = await chooseActionAsync(this.s, 1, this.cfg.level);
         if (this.destroyed_) return;
         const ev = apply(this.s, act);
         await this.play(ev);
       } else if (a === 0) {
         this.busy = false;
+        if (this.cfg.rated) this.setTimer(NET.TURN_MS);
         this.refreshControls();
         return;
       } else break;
@@ -246,8 +270,10 @@ export class BattleScene extends Container {
     if (this.s.over && !this.destroyed_) await this.finish();
   }
 
-  private async tryAction(a: Action) {
+  private async tryAction(a: Action, auto = false) {
     if (this.busy || actor(this.s) !== 0) { audio.play('deny'); return; }
+    if (!auto) this.strikes = 0;
+    if (this.cfg.rated) this.timerEnd = null;
     this.setMode({ k: 'idle' });
     this.closeModal();
     this.busy = true;
@@ -363,11 +389,13 @@ export class BattleScene extends Container {
 
   /** Test hook (only exposed with #debug in the URL). */
   debug() { return { s: this.s, busy: this.busy, mode: this.mode.k, use: (uid: number, lane: number | null) => this.use(uid, lane), act: (a: Action) => this.tryAction(a), auto: () => (this.cfg.net ? legalActions(this.s, 0).filter((x) => x.t !== 'wait' && x.t !== 'draw')[0] ?? { t: 'wait' } : chooseAction(this.s, 0, 'normal')), finished: this.finished }; }
-  surrender() {
+  surrender(reason: 'surrender' | 'timeout' = 'surrender') {
     if (this.cfg.net) { this.cfg.net.send({ t: 'surrender' }); return; }
-    if (this.s.over) return;
+    if (this.s.over || this.finished) return;
+    this.finished = true;
     this.busy = true;
-    this.onEnd({ winner: 1, reason: 'surrender', myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats } });
+    this.timerEnd = null;
+    this.onEnd({ winner: 1, reason, myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats } });
   }
 
   // ------------------------------------------------------------------ sync
