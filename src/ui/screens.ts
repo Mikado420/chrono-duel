@@ -632,26 +632,47 @@ export class Screens {
       )));
   }
 
+  /**
+   * Deck editor, laid out like the big digital TCGs but for a phone held upright: a slim header with the deck's
+   * numbers, one tool row, then the card list and the deck side by side. Only those two columns scroll.
+   * Tap a card to add it, tap a deck row to take one out, long-press either (or right-click) for the full card.
+   */
   editor(deck: DeckDef) {
     const cards = deck.cards.slice();
     let name = deck.name;
-    let filter: 'all' | 'unit' | 'spell' = 'all';
+    let kind: 'all' | 'unit' | 'spell' = 'all';
     let setF: 'all' | CardSet = 'all';
+    let ownedOnly = false;
+    let sort: 'cost' | 'costDesc' | 'name' | 'rarity' = 'cost';
+    let query = '';
+    let dirty = false;
+    let lastAdded = '';
     const fresh = new Set(store.wallet.fresh);
     if (fresh.size) { store.wallet.fresh = []; store.saveWallet(); }
     const own = (id: string) => ownedCount(store.wallet, id);
-    let tab: 'pool' | 'deck' = 'pool';
-    let confirmDelete = false;
-    const exists = store.customDecks.some((d) => d.id === deck.id);
     const count = (id: string) => cards.filter((c) => c === id).length;
-    let flash = '';
-    let lastAdded = '';
+    const exists = store.customDecks.some((d) => d.id === deck.id);
+    const RANK = { C: 0, R: 1, E: 2, L: 3 } as const;
+
     const add = (id: string) => {
-      if (count(id) >= own(id)) { audio.play('deny'); flash = own(id) === 0 ? `「${cardDef(id).name}」は持っていません。ショップのパックで手に入ります` : `「${cardDef(id).name}」は${own(id)}枚しか持っていません`; render(); return; }
-      if (count(id) >= maxCopies(id) || cards.length >= RULES.DECK_SIZE) { audio.play('deny'); return; }
-      flash = ''; lastAdded = id; cards.push(id); audio.play('draw'); render();
+      if (count(id) >= own(id)) { audio.play('deny'); this.toast(own(id) === 0 ? `「${cardDef(id).name}」は持っていません（ショップのパックで入手）` : `「${cardDef(id).name}」は${own(id)}枚しか持っていません`); return; }
+      if (count(id) >= maxCopies(id)) { audio.play('deny'); this.toast(`「${cardDef(id).name}」は${maxCopies(id)}枚までです`); return; }
+      if (cards.length >= RULES.DECK_SIZE) { audio.play('deny'); this.toast(`デッキは${RULES.DECK_SIZE}枚までです`); return; }
+      cards.push(id); lastAdded = id; dirty = true; audio.play('draw'); paint();
     };
-    const remove = (id: string) => { const i = cards.lastIndexOf(id); if (i >= 0) { cards.splice(i, 1); audio.play('select'); render(); } };
+    const remove = (id: string) => { const i = cards.lastIndexOf(id); if (i >= 0) { cards.splice(i, 1); dirty = true; audio.play('select'); paint(); } };
+    /** Tap and long-press on one element; the tap that ends a long press is swallowed. */
+    const pressable = <T extends HTMLElement>(el: T, tap: () => void, long: () => void): T => {
+      let timer = 0, longed = false, sx = 0, sy = 0;
+      const stop = () => clearTimeout(timer);
+      el.addEventListener('touchstart', (e) => { longed = false; stop(); sx = e.touches[0].clientX; sy = e.touches[0].clientY; timer = window.setTimeout(() => { longed = true; navigator.vibrate?.(12); long(); }, 450); }, { passive: true });
+      el.addEventListener('touchmove', (e) => { if (Math.hypot(e.touches[0].clientX - sx, e.touches[0].clientY - sy) > 10) stop(); }, { passive: true });
+      el.addEventListener('touchend', (e) => { stop(); if (longed) e.preventDefault(); });
+      el.addEventListener('touchcancel', stop);
+      el.addEventListener('click', () => { if (longed) { longed = false; return; } audio.unlock(); tap(); });
+      el.addEventListener('contextmenu', (e) => { e.preventDefault(); if (!longed) long(); });
+      return el;
+    };
     const zoom = (id: string) => {
       const d = cardDef(id);
       const z = h('div', { class: 'zoom', onclick: (e: Event) => { if (e.target === z) z.remove(); } },
@@ -659,92 +680,146 @@ export class Screens {
           h('img', { src: cardImg(id), alt: d.name }),
           ...keywordsOf(d).filter((k) => KEYWORD_HELP[k]).map((k) => h('p', { class: 'kw' }, h('b', {}, k), `：${KEYWORD_HELP[k]}`)),
           setOf(d) !== 'base' ? h('p', { class: 'kw' }, `${SET_NAMES[setOf(d)]} ・ ${RARITY_NAMES[d.rarity]} ・ 所持 ${own(id)}枚`) : null,
-          craftBox(id, () => { z.remove(); flash = `「${d.name}」を欠片で作成しました`; render(); zoom(id); }),
+          craftBox(id, () => { z.remove(); this.toast(`「${d.name}」を欠片で作成しました`); paint(); zoom(id); }),
           h('div', { class: 'row' },
-            h('button', { class: 'btn', onclick: () => { remove(id); z.remove(); } }, '1枚抜く'),
+            h('button', { class: 'btn', disabled: !count(id), onclick: () => { remove(id); z.remove(); } }, '1枚抜く'),
             h('button', { class: 'btn primary', onclick: () => { add(id); z.remove(); } }, '1枚入れる'),
             h('button', { class: 'btn', onclick: () => z.remove() }, '閉じる'),
           )));
       this.host.root.append(z);
     };
-    const render = () => {
+    const save = () => {
+      const d: DeckDef = { id: deck.id, name: name.trim() || '名前のないデッキ', cards: cards.slice() };
+      const i = store.customDecks.findIndex((x) => x.id === d.id);
+      if (i >= 0) store.customDecks[i] = d; else store.customDecks.push(d);
+      store.saveDecks();
+      track(store.meta, 'deck', 1, localDate()); store.saveMeta();
+      audio.play('reserve');
+      this.decks();
+    };
+    const back = () => {
+      if (!dirty) { this.decks(); return; }
+      const m = this.modal('保存していません', [h('p', {}, '変更を保存せずに戻りますか？')], {
+        foot: [h('button', { class: 'btn', onclick: () => { m.close(); this.decks(); } }, '保存せず戻る'), h('button', { class: 'btn primary', onclick: () => { m.close(); save(); } }, '保存して戻る')],
+      });
+    };
+
+    // ---- the parts that change
+    const stats = h('div', { class: 'de-stats' });
+    const pool = h('div', { class: 'de-pool', role: 'list' });
+    const list = h('div', { class: 'de-list', role: 'list' });
+    const poolCap = h('span', { class: 'n' });
+    const deckCap = h('span', { class: 'n' });
+    const filterBtn = h('button', { class: 'de-ic', 'aria-label': '絞り込み', onclick: () => filters() });
+    const kindSeg = h('div', { class: 'de-kind' });
+    const curveOf = () => Array.from({ length: 7 }, (_, i) => cards.filter((c) => (i === 6 ? cardDef(c).cost >= 7 : Math.max(1, cardDef(c).cost) === i + 1)).length);
+
+    const paintStats = () => {
       const v = validateDeck(cards);
-      const pool = CARD_LIST.filter((c) => (filter === 'all' || c.kind === filter) && (setF === 'all' || setOf(c) === setF))
-        .sort((a, b) => Number(own(b.id) > 0) - Number(own(a.id) > 0) || a.cost - b.cost || a.kind.localeCompare(b.kind));
-      const sbtn = (f: typeof setF, t: string) => h('button', { 'aria-pressed': String(setF === f), onclick: () => { setF = f; render(); } }, t);
-      const grouped = [...new Set(cards)].map((id) => cardDef(id)).sort((a, b) => a.cost - b.cost);
-      const curve = Array.from({ length: 8 }, (_, i) => cards.filter((c) => Math.min(7, cardDef(c).cost) === i + 1 || (i === 0 && cardDef(c).cost === 0)).length);
-      const maxC = Math.max(1, ...curve);
+      const curve = curveOf(), maxC = Math.max(1, ...curve);
       const units = cards.filter((c) => cardDef(c).kind === 'unit').length;
-      const fbtn = (f: typeof filter, t: string) => h('button', { 'aria-pressed': String(filter === f), onclick: () => { filter = f; render(); } }, t);
-      const tbtn = (t: typeof tab, s: string) => h('button', { 'aria-pressed': String(tab === t), onclick: () => { tab = t; render(); } }, s);
-      const save = () => {
-        const d: DeckDef = { id: deck.id, name: name.trim() || '名前のないデッキ', cards: cards.slice() };
-        const i = store.customDecks.findIndex((x) => x.id === d.id);
-        if (i >= 0) store.customDecks[i] = d; else store.customDecks.push(d);
-        store.saveDecks();
-        track(store.meta, 'deck', 1, localDate()); store.saveMeta();
-        audio.play('reserve');
-        this.decks();
-      };
-      const scrollY = this.host.root.firstElementChild?.scrollTop ?? 0;
-      this.mount(h('div', { class: 'screen dim' },
-        h('div', { class: 'editor', 'data-tab': tab },
-          h('div', { class: 'tabs seg', style: 'grid-column:1/-1' }, tbtn('pool', 'カード一覧'), tbtn('deck', `デッキ ${cards.length}/${RULES.DECK_SIZE}`)),
-          h('div', { class: 'panel pool' },
-            h('div', { class: 'head' }, h('h2', {}, 'カード一覧'), h('button', { class: 'btn small', onclick: () => this.decks() }, '戻る')),
-            h('div', { class: 'filters seg' }, fbtn('all', 'すべて'), fbtn('unit', 'ユニット'), fbtn('spell', '術')),
-            h('div', { class: 'filters seg' }, sbtn('all', '全セット'), sbtn('base', '基本'), sbtn('echo', '第1弾')),
-            flash ? h('div', { class: 'note warn' }, flash) : null,
-            h('p', { style: 'font-size:13px;color:var(--mute)' }, 'タップで1枚追加。長押しか ⓘ でカードの詳しい説明。'),
-            h('div', { class: 'grid' }, ...pool.map((c) => {
-              const n = count(c.id);
-              const o = own(c.id);
-              // long press shows the card; the tap that ends it must not also add a copy
-              let timer = 0, longed = false;
-              const t = h('button', { class: `tile${n >= Math.min(o, maxCopies(c.id)) ? ' maxed' : ''}${o === 0 ? ' locked' : ''}`, 'aria-label': o ? `${c.name}を追加` : `${c.name}（未所持）`,
-                onclick: () => { if (longed) { longed = false; return; } add(c.id); },
-                oncontextmenu: (e: Event) => { e.preventDefault(); if (!longed) zoom(c.id); } },
-                h('img', { src: cardImg(c.id), alt: c.name, loading: 'lazy', draggable: 'false' }),
-                n ? h('span', { class: 'cnt' }, String(n)) : null,
-                setOf(c) !== 'base' ? h('span', { class: 'own' }, o ? `所持 ${o}` : '未所持') : null,
-                fresh.has(c.id) ? h('span', { class: 'new' }, 'NEW') : null,
-                h('span', { class: 'info', role: 'button', 'aria-label': `${c.name}の説明`, onclick: (e: Event) => { e.stopPropagation(); zoom(c.id); } }, 'i'));
-              const stop = () => clearTimeout(timer);
-              t.addEventListener('touchstart', () => { longed = false; stop(); timer = window.setTimeout(() => { longed = true; navigator.vibrate?.(12); zoom(c.id); }, 450); }, { passive: true });
-              t.addEventListener('touchend', (e) => { stop(); if (longed) e.preventDefault(); });
-              t.addEventListener('touchmove', stop, { passive: true });
-              t.addEventListener('touchcancel', stop);
-              return t;
-            })),
-          ),
-          h('div', { class: 'deckbar' },
-            h('button', { class: `db-count ${v.ok ? 'ok' : 'bad'}`, 'aria-label': 'デッキを見る', onclick: () => { tab = 'deck'; render(); } }, h('b', {}, `${cards.length}/${RULES.DECK_SIZE}`), h('small', {}, 'デッキ ›')),
-            h('div', { class: 'db-strip' }, ...(grouped.length ? grouped.map((c) => h('button', { class: `chip${c.id === lastAdded ? ' pop' : ''}${count(c.id) > own(c.id) ? ' short' : ''}`, 'data-id': c.id, onclick: () => zoom(c.id) },
-              h('b', {}, String(c.cost)), h('span', {}, c.name), h('i', {}, `×${count(c.id)}`))) : [h('span', { class: 'db-empty' }, 'カードをタップするとここに入ります')])),
-            h('button', { class: 'btn small primary', onclick: save }, '保存')),
-          h('div', { class: 'panel decklist' },
-            h('input', { id: 'deck-name', value: name, maxlength: '20', 'aria-label': 'デッキ名', oninput: (e: Event) => { name = (e.target as HTMLInputElement).value; } }),
-            h('div', { class: 'row' }, h('span', { class: `count ${v.ok ? 'ok' : 'bad'}` }, `${cards.length} / ${RULES.DECK_SIZE}`), h('span', { class: 'spacer' }), h('span', { style: 'font-size:13px;color:var(--mute)' }, `ユニット ${units}・術 ${cards.length - units}`)),
-            h('div', { class: 'curve', 'aria-label': 'コスト分布' }, ...curve.map((n, i) => h('div', {}, n ? String(n) : '', h('i', { style: `height:${(n / maxC) * 100}%` }), i === 7 ? '7+' : String(i + 1)))),
-            h('div', { class: 'dl-rows' }, ...grouped.map((c) => h('div', { class: 'dl-row' },
-              h('span', { class: 'c' }, String(c.cost)), h('span', { class: 'n', onclick: () => zoom(c.id) }, c.name), h('span', { class: 'x' }, `×${count(c.id)}`),
-              h('button', { 'aria-label': `${c.name}を1枚抜く`, onclick: () => remove(c.id) }, '−')))),
-            !v.ok && cards.length ? h('div', { class: 'problems' }, ...v.problems.map((p) => h('div', {}, p))) : null,
-            (() => { const miss = [...new Set(cards)].filter((c) => count(c) > own(c)); return miss.length ? h('div', { class: 'problems' }, ...miss.map((c) => h('div', {}, `「${cardDef(c).name}」が足りません（所持${own(c)}枚）`))) : null; })(),
-            h('button', { class: 'btn primary', onclick: save }, '保存'),
-            exists ? (confirmDelete
-              ? h('div', { class: 'confirm' }, h('div', {}, 'このデッキを削除しますか？'), h('div', { class: 'row' }, h('button', { class: 'btn small', onclick: () => { confirmDelete = false; render(); } }, 'やめる'), h('button', { class: 'btn small danger', onclick: () => { store.customDecks = store.customDecks.filter((d) => d.id !== deck.id); store.saveDecks(); this.decks(); } }, '削除する')))
-              : h('button', { class: 'btn small', onclick: () => { confirmDelete = true; render(); } }, 'デッキを削除')) : null,
-          ),
-        )));
-      const sc = this.host.root.firstElementChild;
-      if (sc) sc.scrollTop = scrollY;
-      const pop = sc?.querySelector('.db-strip .pop') as HTMLElement | null;
-      if (pop) { const st = pop.parentElement!; st.scrollLeft = pop.offsetLeft - st.clientWidth / 2 + pop.clientWidth / 2; }
+      stats.replaceChildren(
+        h('div', { class: `de-count ${v.ok ? 'ok' : 'bad'}` }, h('b', {}, String(cards.length)), h('small', {}, `/${RULES.DECK_SIZE}`)),
+        h('div', { class: 'de-curve', 'aria-label': 'コスト分布' }, ...curve.map((n, i) => h('div', {}, h('em', {}, n ? String(n) : ''), h('i', { style: `--r:${n / maxC}` }), h('span', {}, i === 6 ? '7+' : String(i + 1))))),
+        h('div', { class: 'de-kinds' }, h('div', {}, h('span', {}, 'ユニット'), h('b', {}, String(units))), h('div', {}, h('span', {}, '術'), h('b', {}, String(cards.length - units)))));
+    };
+    const matches = (c: (typeof CARD_LIST)[number]) => {
+      if (kind !== 'all' && c.kind !== kind) return false;
+      if (setF !== 'all' && setOf(c) !== setF) return false;
+      if (ownedOnly && !own(c.id)) return false;
+      if (!query) return true;
+      const q = query.toLowerCase();
+      return [c.name, c.text, c.resvText ?? '', ...keywordsOf(c)].some((t) => t.toLowerCase().includes(q));
+    };
+    const paintPool = () => {
+      const shown = CARD_LIST.filter(matches).sort((a, b) =>
+        sort === 'name' ? a.name.localeCompare(b.name, 'ja')
+          : sort === 'rarity' ? RANK[b.rarity] - RANK[a.rarity] || a.cost - b.cost
+            : (sort === 'costDesc' ? b.cost - a.cost : a.cost - b.cost) || a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name, 'ja'));
+      poolCap.textContent = `${shown.length}種`;
+      pool.replaceChildren(...(shown.length ? shown.map((c) => {
+        const n = count(c.id), o = own(c.id);
+        const full = n >= Math.min(o, maxCopies(c.id));
+        return pressable(h('button', { class: `de-card${o ? '' : ' locked'}${full ? ' full' : ''}`, role: 'listitem', 'aria-label': `${c.name}（所持${o}・デッキ${n}）` },
+          h('div', { class: 'top' }, fresh.has(c.id) ? h('span', { class: 'new' }, 'NEW') : h('span', {}), h('span', { class: `own${o ? '' : ' zero'}` }, `×${o}`)),
+          h('div', { class: 'pic' },
+            h('img', { src: cardImg(c.id), alt: '', loading: 'lazy', draggable: 'false' }),
+            n ? h('span', { class: 'in' }, String(n)) : null)),
+          () => add(c.id), () => zoom(c.id));
+      }) : [h('p', { class: 'de-empty' }, '条件に合うカードがありません')]));
+    };
+    const paintDeck = () => {
+      const grouped = [...new Set(cards)].map((id) => cardDef(id)).sort((a, b) => a.cost - b.cost || a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name, 'ja'));
+      deckCap.textContent = `${grouped.length}種`;
+      list.replaceChildren(...(grouped.length ? grouped.map((c) => pressable(
+        h('button', { class: `de-row${c.id === lastAdded ? ' pop' : ''}${count(c.id) > own(c.id) ? ' short' : ''}`, role: 'listitem', 'data-id': c.id, 'aria-label': `${c.name} ×${count(c.id)}（タップで1枚抜く）`, style: `--art:url("${cardImg(c.id)}")` },
+          h('b', { class: 'c' }, String(c.cost)),
+          h('span', { class: 'nm' }, h('span', {}, c.name), c.kind === 'unit' ? h('small', {}, `${c.atk}/${c.hp}`) : h('small', {}, '術')),
+          h('b', { class: 'x' }, `×${count(c.id)}`)),
+        () => remove(c.id), () => zoom(c.id))) : [h('p', { class: 'de-empty' }, '左のカードをタップするとここに入ります。デッキのカードはタップで1枚抜けます。長押しで説明。')]));
+      const pop = list.querySelector('.pop') as HTMLElement | null;
+      if (pop) { const top = pop.offsetTop - list.offsetTop; if (top < list.scrollTop || top + pop.offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = top - list.clientHeight / 2; }
       lastAdded = '';
     };
-    render();
+    const paintTools = () => {
+      const active = Number(kind !== 'all') + Number(setF !== 'all') + Number(ownedOnly);
+      filterBtn.innerHTML = svg('<path d="M4 5h16l-6 8v5l-4 2v-7z"/>') + (setF !== 'all' || ownedOnly ? `<i>${Number(setF !== 'all') + Number(ownedOnly)}</i>` : '');
+      filterBtn.classList.toggle('on', active > 0);
+      kindSeg.replaceChildren(...([['all', 'すべて'], ['unit', 'ユニット'], ['spell', '術']] as const).map(([k, t]) => h('button', { 'aria-pressed': String(kind === k), onclick: () => { kind = k; paintTools(); paintPool(); } }, t)));
+    };
+    const paint = () => { paintStats(); paintPool(); paintDeck(); };
+
+    const filters = () => {
+      const seg = <T extends string>(opts: [T, string][], get: () => T, set: (v: T) => void) => {
+        const row = h('div', { class: 'seg fit' });
+        const draw = () => row.replaceChildren(...opts.map(([v, t]) => h('button', { 'aria-pressed': String(get() === v), onclick: () => { set(v); draw(); paintTools(); paintPool(); } }, t)));
+        draw();
+        return row;
+      };
+      const m = this.modal('絞り込み', [
+        h('p', { class: 'de-fl' }, '種類'), seg<typeof kind>([['all', 'すべて'], ['unit', 'ユニット'], ['spell', '術']], () => kind, (v) => { kind = v; }),
+        h('p', { class: 'de-fl' }, 'セット'), seg<string>([['all', 'すべて'], ['base', '基本'], ['echo', '第1弾']], () => setF, (v) => { setF = v as typeof setF; }),
+        h('p', { class: 'de-fl' }, '所持'), seg<string>([['all', 'すべて'], ['own', '持っているカードだけ']], () => (ownedOnly ? 'own' : 'all'), (v) => { ownedOnly = v === 'own'; }),
+      ], { foot: [
+        h('button', { class: 'btn', onclick: () => { kind = 'all'; setF = 'all'; ownedOnly = false; query = ''; search.value = ''; paintTools(); paintPool(); m.close(); } }, 'リセット'),
+        h('button', { class: 'btn primary', onclick: () => m.close() }, '決定')] });
+    };
+    const check = () => {
+      const v = validateDeck(cards);
+      const miss = [...new Set(cards)].filter((c) => count(c) > own(c));
+      const curve = curveOf(), maxC = Math.max(1, ...curve);
+      const m = this.modal('デッキ確認', [
+        h('div', { class: `de-verdict ${v.ok && !miss.length ? 'ok' : 'bad'}` }, v.ok && !miss.length ? 'このデッキで対戦できます' : 'このままでは対戦に使えません'),
+        ...v.problems.map((t) => h('p', { class: 'problems' }, t)),
+        ...miss.map((c) => h('p', { class: 'problems' }, `「${cardDef(c).name}」が足りません（所持${own(c)}枚）`)),
+        h('div', { class: 'curve' }, ...curve.map((n, i) => h('div', {}, n ? String(n) : '', h('i', { style: `height:${(n / maxC) * 100}%` }), i === 6 ? '7+' : String(i + 1)))),
+        h('div', { class: 'de-thumbs' }, ...cards.slice().sort((a, b) => cardDef(a).cost - cardDef(b).cost).map((c) => h('img', { src: cardImg(c), alt: cardDef(c).name }))),
+        exists ? h('button', { class: 'btn small danger', style: 'margin-top:12px', onclick: () => {
+          m.close();
+          const k = this.modal('デッキを削除', [h('p', {}, `「${name}」を削除しますか？`)], { foot: [
+            h('button', { class: 'btn', onclick: () => k.close() }, 'やめる'),
+            h('button', { class: 'btn danger', onclick: () => { k.close(); store.customDecks = store.customDecks.filter((d) => d.id !== deck.id); store.saveDecks(); this.decks(); } }, '削除する')] });
+        } }, 'このデッキを削除') : null,
+      ], { cls: 'de-check' });
+    };
+
+    const search = h('input', { type: 'search', placeholder: 'カード名・効果で検索', enterkeyhint: 'search', 'aria-label': '検索', oninput: (e: Event) => { query = (e.target as HTMLInputElement).value.trim(); paintPool(); } });
+    const sortSel = h('select', { 'aria-label': '並び順', onchange: (e: Event) => { sort = (e.target as HTMLSelectElement).value as typeof sort; paintPool(); } },
+      ...([['cost', 'コスト↑'], ['costDesc', 'コスト↓'], ['rarity', 'レア度順'], ['name', '名前順']] as const).map(([v, t]) => h('option', { value: v }, t)));
+    this.mount(h('div', { class: 'screen deck-edit' },
+      h('div', { class: 'de-wrap' },
+        h('div', { class: 'de-head' },
+          h('button', { class: 'de-back', 'aria-label': '戻る', onclick: back, html: svg('<path d="M15 5l-7 7 7 7"/>') }),
+          h('label', { class: 'de-name' }, h('input', { value: name, maxlength: '20', 'aria-label': 'デッキ名', oninput: (e: Event) => { name = (e.target as HTMLInputElement).value; dirty = true; } }), h('span', { html: svg('<path d="M4 20h4L19 9l-4-4L4 16z"/>') })),
+          h('button', { class: 'btn small', onclick: check }, '確認'),
+          h('button', { class: 'btn small primary', onclick: save }, '保存')),
+        stats,
+        h('div', { class: 'de-tools' }, h('label', { class: 'de-search', html: svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>') }, search), sortSel, filterBtn),
+        h('div', { class: 'de-main' },
+          h('section', { class: 'de-side pool-side' }, h('div', { class: 'de-cap' }, h('span', {}, 'カード一覧'), poolCap, kindSeg), pool),
+          h('section', { class: 'de-side deck-side' }, h('div', { class: 'de-cap mine' }, h('span', {}, 'マイデッキ'), deckCap), list)))));
+    paintTools();
+    paint();
   }
 
   // ---------------------------------------------------------------- rules
