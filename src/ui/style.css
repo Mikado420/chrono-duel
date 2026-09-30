@@ -444,3 +444,13 @@ body.log-open #log-back { display: block; }
   .hub-top { padding-left: max(12px, calc(50vw - 380px)); padding-right: max(12px, calc(50vw - 380px)); }
   .hub-nav { padding-left: max(4px, calc(50vw - 380px)); padding-right: max(4px, calc(50vw - 380px)); }
 }
+
+/* 欠片 (shards) and card creation */
+.purse .shard i, .shard-ic { display: inline-block; width: 14px; height: 18px; clip-path: polygon(50% 0, 100% 35%, 80% 100%, 20% 100%, 0 35%); background: linear-gradient(160deg, #f0e0ff, #b28cff 45%, #5a2f94); vertical-align: -3px; }
+.craft { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; width: min(420px, 86vw); padding: 10px 12px; border: 1px solid #7d5bb8; border-radius: 12px; background: rgba(90, 47, 148, .18); }
+.craft-info { display: flex; align-items: center; gap: 6px; font: 700 14px var(--f-body); font-variant-numeric: tabular-nums; color: #e6d6ff; }
+.craft-info .sep { color: var(--mute); }
+.craft .btn:disabled { font-size: 12px; }
+.card-zoom .craft { width: 100%; }
+.reward .cap-note { font-size: 12px; color: var(--brass); text-align: center; }
+.kw.center { text-align: center; }

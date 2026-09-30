@@ -315,10 +315,10 @@ export class PackOpenScene extends Container {
       b.x = -58; b.y = -128;
       b.scale.set(0.2);
       void this.tw.to(b.scale, { x: 1, y: 1 }, 300, ease.outBack);
-    } else if (s.pull.dupeCoins) {
-      const t = label(`+${s.pull.dupeCoins} コイン`, 20, COLORS.brass, { weight: '700', align: 'center' });
+    } else if (s.pull.dupeShards) {
+      const t = label(`+${s.pull.dupeShards} 欠片`, 20, 0xc9a8ff, { weight: '700', align: 'center' });
       t.anchor.set(0.5); t.y = 140;
-      const sub = label('上限枚数のためコインに', 14, COLORS.mute, { align: 'center' });
+      const sub = label('上限枚数のため欠片に', 14, COLORS.mute, { align: 'center' });
       sub.anchor.set(0.5); sub.y = 162;
       b.addChild(t, sub);
       audio.play('coin');
@@ -414,8 +414,8 @@ export class PackOpenScene extends Container {
     this.allBtn?.destroy(); this.allBtn = null;
     this.ui.getChildByLabel('tip')?.destroy();
     const news = this.o.pulls.filter((p) => p.isNew).length;
-    const coins = this.o.pulls.reduce((n, p) => n + p.dupeCoins, 0);
-    const line = [news ? `新しいカード ${news}種` : '新しいカードはありませんでした', coins ? `コイン +${coins}` : ''].filter(Boolean).join('　・　');
+    const coins = this.o.pulls.reduce((n, p) => n + p.dupeShards, 0);
+    const line = [news ? `新しいカード ${news}種` : '新しいカードはありませんでした', coins ? `欠片 +${coins}` : ''].filter(Boolean).join('　・　');
     const t = label(line, 22, COLORS.ivory, { align: 'center' });
     t.anchor.set(0.5); t.x = 360; t.y = this.rowY[1] + 185; t.alpha = 0;
     this.ui.addChild(t);

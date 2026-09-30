@@ -7,7 +7,7 @@ import type { OnlineFlow } from '../net/flow';
 import { audio } from '../render/audio';
 import type { BattleResult } from '../render/battle';
 import { cardFace, packArt } from '../render/cardArt';
-import { DAILY_BONUS, DUPE_COINS, LAST_SLOT, MIN_ACTIONS, PACKS, PITY, canOpen, localDate, ownedCount, setProgress, type Reward } from '../meta/economy';
+import { CRAFT_COST, DAILY_BONUS, DAILY_MATCH_CAP, DUPE_SHARDS, LAST_SLOT, MATCH_REWARD, MIN_ACTIONS, PACKS, PITY, canOpen, craft, craftBlock, craftable, localDate, ownedCount, setProgress, type Reward } from '../meta/economy';
 import {
   DAILY_ALL_BONUS, LOGIN_CALENDAR, NEWS, beginnerView, track, checkLogin, claimMission, claimPresents, claimable, dailyView, prizeText, rankOf, unreadNews,
   type MissionView, type News, type Prize,
@@ -41,7 +41,18 @@ function purse() {
   const w = store.wallet;
   return h('div', { class: 'purse' },
     h('span', { class: 'coin', 'aria-label': `コイン ${w.coins}` }, h('i', {}), String(w.coins)),
-    w.tickets ? h('span', { class: 'ticket', 'aria-label': `パックチケット ${w.tickets}枚` }, h('i', {}), `×${w.tickets}`) : null);
+    w.tickets ? h('span', { class: 'ticket', 'aria-label': `パックチケット ${w.tickets}枚` }, h('i', {}), `×${w.tickets}`) : null,
+    w.shards ? h('span', { class: 'shard', 'aria-label': `欠片 ${w.shards}` }, h('i', {}), String(w.shards)) : null);
+}
+/** 欠片 balance and a "create" button for one card. `done` runs after a card is created. */
+function craftBox(id: string, done: () => void) {
+  if (!craftable(id)) return null;
+  const w = store.wallet;
+  const cost = CRAFT_COST[cardDef(id).rarity];
+  const block = craftBlock(w, id);
+  return h('div', { class: 'craft' },
+    h('div', { class: 'craft-info' }, h('span', { class: 'shard-ic' }), h('span', {}, `所持 ${w.shards}`), h('span', { class: 'sep' }, '／'), h('span', {}, `作成に ${cost}`)),
+    h('button', { class: `btn small${block ? '' : ' primary'}`, disabled: !!block, onclick: () => { if (craft(store.wallet, id)) { store.saveWallet(); audio.play('rareR'); done(); } } }, block ?? '欠片で作成'));
 }
 type Tab = 'home' | 'battle' | 'deck' | 'shop' | 'menu';
 export interface XpGain { exp: number; before: number; after: number }
@@ -246,8 +257,8 @@ export class Screens {
         h('img', { src: cardImg(art), alt: '' }), h('div', { class: 'txt' }, h('b', {}, title), h('span', {}, sub), note ? h('small', {}, note) : null));
     this.hub('battle', h('div', { class: 'tab-page' },
       h('h2', { class: 'page-title' }, 'バトル'),
-      mode('m-ai', 'AI対戦', '4種類のAIデッキと練習・腕試し', 'gear', () => this.setup(), `戦績 ${r.win}勝 ${r.lose}敗 ・ 勝利でコイン40〜60`),
-      mode('m-online', 'フレンド対戦', 'あいことば・招待リンクで友達とオンライン対戦', 'e_atra', flow.available ? () => this.onlineMenu() : null, flow.available ? `戦績 ${o.win}勝 ${o.lose}敗 ・ 勝利でコイン50` : '準備中'),
+      mode('m-ai', 'AI対戦', '4種類のAIデッキと練習・腕試し', 'gear', () => this.setup(), `戦績 ${r.win}勝 ${r.lose}敗 ・ 勝利でコイン${MATCH_REWARD['ai-normal'][0]}〜${MATCH_REWARD['ai-hard'][0]}`),
+      mode('m-online', 'フレンド対戦', 'あいことば・招待リンクで友達とオンライン対戦', 'e_atra', flow.available ? () => this.onlineMenu() : null, flow.available ? `戦績 ${o.win}勝 ${o.lose}敗 ・ 勝利でコイン${MATCH_REWARD['online'][0]}` : '準備中'),
       mode('m-guide', '遊び方', 'ルールと操作をおさらい', 'oracle', () => this.rules(() => this.battleTab())),
     ));
   }
@@ -402,9 +413,16 @@ export class Screens {
     ], { onClose: () => this.refreshHub() });
   }
 
-  zoomCard(id: string) {
+  zoomCard(id: string, after?: () => void) {
     const d = cardDef(id);
-    this.modal(d.name, [h('img', { class: 'zoom-img', src: cardImg(id), alt: d.name }), ...keywordsOf(d).filter((k) => KEYWORD_HELP[k]).map((k) => h('p', { class: 'kw' }, h('b', {}, k), `：${KEYWORD_HELP[k]}`))], { cls: 'card-zoom' });
+    let ref: { wrap: HTMLElement; close: () => void };
+    const body = () => [
+      h('img', { class: 'zoom-img', src: cardImg(id), alt: d.name }),
+      craftable(id) ? h('p', { class: 'kw center' }, `${RARITY_NAMES[d.rarity]} ・ 所持 ${ownedCount(store.wallet, id)} / ${maxCopies(id)}枚`) : null,
+      craftBox(id, () => { this.toast(`「${d.name}」を作成しました`); ref.wrap.querySelector('.modal-body')!.replaceChildren(...(body().filter(Boolean) as HTMLElement[])); }),
+      ...keywordsOf(d).filter((k) => KEYWORD_HELP[k]).map((k) => h('p', { class: 'kw' }, h('b', {}, k), `：${KEYWORD_HELP[k]}`)),
+    ];
+    ref = this.modal(d.name, body(), { cls: 'card-zoom', onClose: after });
   }
 
   // ---------------------------------------------------------------- collection
@@ -425,7 +443,7 @@ export class Screens {
         seg(rar, (v) => (rar = v), [['all', 'すべて'], ['C', '通常'], ['R', '希少'], ['E', '秘宝'], ['L', '伝説']]),
         h('div', { class: 'grid' }, ...list.map((c) => {
           const o = ownedCount(w, c.id);
-          return h('button', { class: `tile${o ? '' : ' locked'}`, 'aria-label': `${c.name}${o ? '' : '（未所持）'}`, onclick: () => this.zoomCard(c.id) },
+          return h('button', { class: `tile${o ? '' : ' locked'}`, 'aria-label': `${c.name}${o ? '' : '（未所持）'}`, onclick: () => this.zoomCard(c.id, render) },
             h('img', { src: cardImg(c.id), alt: c.name, loading: 'lazy' }), setOf(c) !== 'base' ? h('span', { class: 'own' }, o ? `所持 ${o}` : '未所持') : null);
         })))));
     };
@@ -509,6 +527,7 @@ export class Screens {
           h('img', { src: cardImg(id), alt: d.name }),
           ...keywordsOf(d).filter((k) => KEYWORD_HELP[k]).map((k) => h('p', { class: 'kw' }, h('b', {}, k), `：${KEYWORD_HELP[k]}`)),
           setOf(d) !== 'base' ? h('p', { class: 'kw' }, `${SET_NAMES[setOf(d)]} ・ ${RARITY_NAMES[d.rarity]} ・ 所持 ${own(id)}枚`) : null,
+          craftBox(id, () => { z.remove(); flash = `「${d.name}」を欠片で作成しました`; render(); zoom(id); }),
           h('div', { class: 'row' },
             h('button', { class: 'btn', onclick: () => { remove(id); z.remove(); } }, '1枚抜く'),
             h('button', { class: 'btn primary', onclick: () => { add(id); z.remove(); } }, '1枚入れる'),
@@ -692,11 +711,12 @@ export class Screens {
   /** Coins earned, counted up so the reward registers. */
   private rewardView(rw?: Reward) {
     if (!rw) return null;
-    if (!rw.total) return h('div', { class: 'reward none' }, `コインは短すぎる対戦（自分の行動${MIN_ACTIONS}回未満）や降参では得られません`);
+    if (!rw.total) return h('div', { class: 'reward none' }, rw.capped ? `本日の対戦報酬は上限（${DAILY_MATCH_CAP}コイン）に達しました。ミッションやログインボーナスは引き続き受け取れます` : `コインは短すぎる対戦（自分の行動${MIN_ACTIONS}回未満）や降参では得られません`);
     const total = h('b', {}, '+0');
     const box = h('div', { class: 'reward' },
       h('div', { class: 'lines' }, ...rw.lines.map((l) => h('div', {}, h('span', {}, l.label), h('span', {}, `+${l.coins}`)))),
-      h('div', { class: 'total' }, h('i', { class: 'coin-ic' }), total, h('span', {}, ` コイン（所持 ${store.wallet.coins}）`)));
+      h('div', { class: 'total' }, h('i', { class: 'coin-ic' }), total, h('span', {}, ` コイン（所持 ${store.wallet.coins}）`)),
+      rw.capped ? h('div', { class: 'cap-note' }, `本日の対戦報酬は上限（${DAILY_MATCH_CAP}コイン）に達しました`) : null);
     const t0 = performance.now(), dur = 900;
     const stepFn = () => {
       const k = Math.min(1, (performance.now() - t0) / dur);
@@ -889,10 +909,14 @@ export class Screens {
             )),
           h('h3', {}, 'コインの集め方'),
           h('ul', { class: 'earn' },
-            h('li', {}, 'AI（ふつう）に勝利 40 ・ AI（つよい）に勝利 60 ・ オンラインで勝利 50'),
-            h('li', {}, '負けても参加で 15〜20、引き分け 25〜35'),
-            h('li', {}, `その日はじめての勝利で +${DAILY_BONUS}`),
-            h('li', {}, `上限枚数を超えて出たカードはコインに（通常${DUPE_COINS.C}・希少${DUPE_COINS.R}・秘宝${DUPE_COINS.E}・伝説${DUPE_COINS.L}）`)),
+            h('li', {}, `AI（ふつう）に勝利 ${MATCH_REWARD['ai-normal'][0]} ・ AI（つよい）に勝利 ${MATCH_REWARD['ai-hard'][0]} ・ オンラインで勝利 ${MATCH_REWARD.online[0]}`),
+            h('li', {}, `負けても参加で ${MATCH_REWARD['ai-normal'][1]}〜${MATCH_REWARD.online[1]}、引き分け ${MATCH_REWARD['ai-normal'][2]}〜${MATCH_REWARD.online[2]}`),
+            h('li', {}, `その日はじめての勝利で +${DAILY_BONUS}（対戦の報酬は1日${DAILY_MATCH_CAP}コインまで）`),
+            h('li', {}, 'ログインボーナス・デイリーミッション・ランクアップでも手に入ります')),
+          h('h3', {}, '欠片とカード作成'),
+          h('ul', { class: 'earn' },
+            h('li', {}, `上限枚数を超えて出たカードは欠片に（通常${DUPE_SHARDS.C}・希少${DUPE_SHARDS.R}・秘宝${DUPE_SHARDS.E}・伝説${DUPE_SHARDS.L}）`),
+            h('li', {}, `欠片で好きなカードを作成できます（通常${CRAFT_COST.C}・希少${CRAFT_COST.R}・秘宝${CRAFT_COST.E}・伝説${CRAFT_COST.L}）。図鑑かデッキ編集でカードを開いてください`)),
           h('button', { class: 'btn small toggle', 'aria-expanded': String(showOdds), onclick: () => { showOdds = !showOdds; render(); } }, `提供割合 ${showOdds ? '▲' : '▼'}`),
           showOdds ? h('div', { class: 'odds' },
             h('p', {}, '1パック5枚：1〜3枚目は通常、4枚目は希少、5枚目は下の割合で決まります。同じレア度の中では各カードが等しい確率で出ます（伝説は未所持のカードを優先）。'),
