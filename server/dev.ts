@@ -9,6 +9,7 @@ import type { Duplex } from 'node:stream';
 import { normalizeCode, type ClientMsg, type ServerMsg } from '../src/core/net';
 import { Room, type Conn, type RoomEnv } from '../src/server/room';
 import { Leaderboard, handleApi, type KV } from '../src/server/leaderboard';
+import { PlayStats } from '../src/server/stats';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const env: RoomEnv = { now: () => Date.now(), uuid: () => randomUUID(), seed: () => Math.floor(Math.random() * 2 ** 32) };
@@ -87,6 +88,7 @@ const kv: KV = {
   list: async <T>(prefix: string) => [...mem.entries()].filter(([k]) => k.startsWith(prefix)).map(([, v]) => structuredClone(v) as T),
 };
 const board = new Leaderboard(kv, () => Date.now());
+const stats = new PlayStats(kv, () => Date.now());
 const server = createServer((req, res) => {
   const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST, OPTIONS', 'access-control-allow-headers': 'content-type' };
   const path = (req.url ?? '/').split('?')[0];
@@ -97,7 +99,7 @@ const server = createServer((req, res) => {
   req.on('end', async () => {
     let body: unknown = {};
     try { body = text ? JSON.parse(text) : {}; } catch { /* handled below as an empty body */ }
-    const r = await handleApi(board, path, req.method ?? 'GET', body);
+    const r = await handleApi(board, path, req.method ?? 'GET', body, stats);
     res.writeHead(r.status, { ...cors, 'content-type': 'application/json' });
     res.end(JSON.stringify(r.body));
   });

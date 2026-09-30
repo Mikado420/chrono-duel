@@ -21,6 +21,8 @@ const RESUME_MS = 10 * 60_000;
 export class OnlineFlow {
   code = '';
   myName = '';
+  /** The deck this player brought (empty when resuming a game after a reload). */
+  myDeck: string[] = [];
   foe: Presence | null = null;
   rematch: RematchState = { me: false, foe: false };
   phase: Phase = 'lobby';
@@ -51,6 +53,7 @@ export class OnlineFlow {
   private lastCreate: { name: string; deck: string[]; tries: number } | null = null;
   private enter(code: string, name: string, deck: string[], mode: 'create' | 'join') {
     this.myName = cleanName(name);
+    this.myDeck = deck.slice();
     this.resuming = false;
     // the mode only matters for the first hello; reconnects carry the seat token instead
     this.connect(code, (token) => (token ? { t: 'hello', name: this.myName, deck, token } : { t: 'hello', name: this.myName, deck, mode }), null);

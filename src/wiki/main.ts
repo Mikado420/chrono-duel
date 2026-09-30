@@ -9,6 +9,8 @@ import { PACK_TEST_DECKS } from '../sim/packDecks';
 import { VERSION } from '../version';
 import { DECK_NOTE, GLOSS, KW_TIPS, MEMO } from './content';
 import { STATS } from './stats';
+import { serverUrl } from '../net/config';
+import { impacts, type StatsAgg } from '../server/stats';
 
 const RN: Record<Rarity, string> = { C: '通常', R: '希少', E: '秘宝', L: '伝説' };
 const RO: Record<Rarity, number> = { C: 0, R: 1, E: 2, L: 3 };
@@ -25,6 +27,7 @@ const V: Record<string, string | number> = {
   ...Object.fromEntries(Object.entries(RULES).filter(([, v]) => typeof v === 'number')),
   BELLS: RULES.BELLS.join('・'),
   DOOM_LIST: doomLevels.join('、'),
+  REAL_MIN: '20試合',
   CARD_COUNT: CARD_LIST.length,
   BASE_COUNT: CARD_LIST.filter((c) => setOf(c) === 'base').length,
   ECHO_COUNT: CARD_LIST.filter((c) => setOf(c) === 'echo').length,
@@ -155,6 +158,36 @@ function initPacks() {
   $('shards').innerHTML = '<tr><th>レアリティ</th><th class="num">もらえる欠片</th><th class="num">作成に必要</th></tr>' +
     (['C', 'R', 'E', 'L'] as Rarity[]).map((r) => `<tr><td><span class="rar ${r}">${RN[r]}</span></td><td class="num tick">${DUPE_SHARDS[r]}</td><td class="num tick">${CRAFT_COST[r]}</td></tr>`).join('');
 }
+// ------------------------------------------------------------------ play statistics from real games
+const REAL_MIN = 20;
+const MODE_NAMES: Record<string, string> = { 'free-easy': 'フリー（やさしい）', 'free-normal': 'フリー（ふつう）', 'free-hard': 'フリー（つよい）', 'free-expert': 'フリー（超つよい）', rated: 'レート戦', online: 'フレンド対戦' };
+async function initReal(ver?: string) {
+  const body = $('real-body'), sel = $('real-ver') as HTMLSelectElement, sum = $('real-sum');
+  const base = serverUrl()?.replace(/^ws/, 'http');
+  if (!base) { body.innerHTML = '<p class="mute">この環境では実戦データのサーバーにつながっていません。</p>'; return; }
+  let res: { versions: string[]; agg: StatsAgg | null } | null = null;
+  try {
+    const r = await fetch(base + '/api/stats', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(ver ? { v: ver } : {}) });
+    if (r.ok) res = await r.json();
+  } catch { /* offline */ }
+  if (!document.body.contains(body)) return; // the reader moved to another tab meanwhile
+  if (!res) { body.innerHTML = '<p class="mute">実戦データを読み込めませんでした。通信状態を確かめてください。</p>'; return; }
+  sel.innerHTML = res.versions.map((v) => `<option value="${esc(v)}"${v === res!.agg?.v ? ' selected' : ''}>Ver. ${esc(v)}${v === VERSION ? '（最新）' : ''}</option>`).join('');
+  sel.onchange = () => void initReal(sel.value);
+  const agg = res.agg;
+  if (!agg) { body.innerHTML = '<p class="mute">まだ対戦データがありません。遊ぶと自動で集まります。</p>'; sum.textContent = ''; return; }
+  const total = Object.values(agg.games).reduce((n, [g]) => n + g, 0);
+  sum.textContent = `${total}試合 ・ ` + Object.entries(agg.games).map(([k, [g]]) => `${MODE_NAMES[k] ?? k} ${g}`).join(' / ');
+  const rows = impacts(agg).filter((x) => C[x.id] && x.used > 0).sort((a, b) => (b.used >= REAL_MIN ? 1 : 0) - (a.used >= REAL_MIN ? 1 : 0) || b.lift - a.lift);
+  const sign = (n: number) => `${n > 0 ? '+' : ''}${n.toFixed(1)}`;
+  body.innerHTML = `<div style="overflow-x:auto"><table><tr><th>カード</th><th class="num">使用</th><th class="num">勝率</th><th class="num">影響</th><th class="num">AI戦</th></tr>` +
+    rows.map((x) => {
+      const ai = STATS.win[x.id];
+      const faint = x.used < REAL_MIN ? ' style="opacity:.45"' : '';
+      const col = x.used < REAL_MIN ? '' : x.lift >= 5 ? ' style="color:var(--you)"' : x.lift <= -5 ? ' style="color:var(--foe)"' : '';
+      return `<tr${faint}><td style="white-space:nowrap"><a href="#cards" data-card="${x.id}">${esc(C[x.id].name)}</a></td><td class="num">${x.used}</td><td class="num">${x.winUsed.toFixed(0)}%</td><td class="num"${col}><b>${sign(x.lift)}</b></td><td class="num">${ai !== undefined ? ai + '%' : '—'}</td></tr>`;
+    }).join('') + '</table></div><p class="small mute">使用＝使われた試合数、勝率＝使ったときの勝率、AI戦＝AI同士の対戦での採用時勝率（参考）。</p>';
+}
 function drawClock() {
   const svg = $('clocksvg') as unknown as SVGSVGElement;
   const E = RULES.END, x0 = 30, x1 = 770, y = 70, X = (t: number) => x0 + ((x1 - x0) * t) / E;
@@ -189,6 +222,7 @@ const TABS: [string, string, string][] = [
   ['decks', 'デッキ', '基本デッキ、参考構築、相性表'],
   ['tips', '立ち回り', '時間の使い方の定石9つ'],
   ['packs', 'パック', '提供割合、報酬、欠片、効率のよい集め方'],
+  ['real', '実戦データ', 'みんなの対戦から集計したカード別の成績'],
   ['gloss', '用語集', '刻、世界の時刻、燃える、天井など'],
 ];
 
@@ -206,6 +240,7 @@ function show(id: string, cardId?: string) {
   }
   if (id === 'decks') initDecks();
   if (id === 'packs') initPacks();
+  if (id === 'real') void initReal();
   if (id === 'gloss') $('gloss').innerHTML = GLOSS.map(([t, d]) => `<dt>${t}</dt><dd>${esc(d)}</dd>`).join('');
   fillValues(main);
   const title = TABS.find((t) => t[0] === id)![1];

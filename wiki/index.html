@@ -253,6 +253,21 @@
       </section>
     </template>
 
+    <template id="t-real">
+      <section class="page">
+        <div class="block prose">
+          <h2>実戦データ</h2>
+          <p>みんなが実際に遊んだ対戦（フリー対戦・レート戦・フレンド対戦）から集計した、カードごとの成績です。AI同士の統計では分からない「人が使ったときの強さ」が見えます。バージョンごとに集計するので、調整前の数字は混ざりません。</p>
+          <p class="small mute">「影響」＝そのカードを使った試合の勝率 − 同じ対戦モードでの平均勝率。AIの強さの違いなどを差し引いた、カードそのものの効き目の目安です。使われた試合が<span data-v="REAL_MIN"></span>未満のカードは参考値として薄く表示します。</p>
+          <div class="row" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <label>バージョン <select id="real-ver"></select></label>
+            <span id="real-sum" class="small mute"></span>
+          </div>
+          <div id="real-body" style="margin-top:12px"><p class="mute">読み込み中…</p></div>
+        </div>
+      </section>
+    </template>
+
     <template id="t-gloss">
       <section class="page">
         <div class="block prose">

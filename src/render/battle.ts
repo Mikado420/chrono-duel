@@ -29,7 +29,9 @@ export interface BattleConfig {
   /** Online match: the opponent is a person and the server owns the game state. */
   net?: NetLink;
 }
-export interface BattleResult { winner: PlayerIndex | -1; reason: 'ko' | 'time' | 'surrender' | 'timeout' | 'disconnect'; myHp: number; foeHp: number; actions: number; myActions: number; stats: { spells: number; summons: number; reserves: number; attacks: number } }
+export interface BattleResult { winner: PlayerIndex | -1; reason: 'ko' | 'time' | 'surrender' | 'timeout' | 'disconnect'; myHp: number; foeHp: number; actions: number; myActions: number; stats: { spells: number; summons: number; reserves: number; attacks: number };
+  /** Every card the player used (summoned, cast or reserved) this game, for the play statistics. */
+  played: string[] }
 
 const LANE_X = [150, 360, 570];
 /** Vertical layout in design units. Tall phones get extra height, which is shared out by `applyLayout`. */
@@ -93,6 +95,7 @@ export class BattleScene extends Container {
   /** Actions the player took (rewards need a real match, not an instant surrender). */
   private myActs = 0;
   private stats = { spells: 0, summons: 0, reserves: 0, attacks: 0 };
+  private played = new Set<string>();
 
   private get foe(): string { return this.cfg.net?.foeName ?? this.cfg.foeName ?? 'AI'; }
   /** Online and rated games run a move timer (45s, then an automatic wait; three in a row forfeits). */
@@ -303,7 +306,7 @@ export class BattleScene extends Container {
     const o = this.netResult ?? this.s.over!;
     await this.tw.wait(500);
     if (this.destroyed_) return;
-    this.onEnd({ winner: o.winner, reason: o.reason, myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats } });
+    this.onEnd({ winner: o.winner, reason: o.reason, myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats }, played: [...this.played] });
   }
   // ------------------------------------------------------------------ online play
   private async startOnline(net: NetLink) {
@@ -395,14 +398,14 @@ export class BattleScene extends Container {
   }
 
   /** Test hook (only exposed with #debug in the URL). */
-  debug() { return { s: this.s, busy: this.busy, mode: this.mode.k, use: (uid: number, lane: number | null) => this.use(uid, lane), act: (a: Action) => this.tryAction(a), auto: () => (this.cfg.net ? legalActions(this.s, 0).filter((x) => x.t !== 'wait' && x.t !== 'draw')[0] ?? { t: 'wait' } : chooseAction(this.s, 0, 'normal')), finished: this.finished, hand: () => [...this.handViews].map(([uid, v]) => ({ uid, card: v.card, x: v.x, y: v.y })), lanes: { x: [...LANE_X], y: ROW_Y[0] }, redraw: () => this.syncAll(false) }; }
+  debug() { return { s: this.s, busy: this.busy, mode: this.mode.k, use: (uid: number, lane: number | null) => this.use(uid, lane), act: (a: Action) => this.tryAction(a), auto: () => (this.cfg.net ? legalActions(this.s, 0).filter((x) => x.t !== 'wait' && x.t !== 'draw')[0] ?? { t: 'wait' } : chooseAction(this.s, 0, 'normal')), finished: this.finished, hand: () => [...this.handViews].map(([uid, v]) => ({ uid, card: v.card, x: v.x, y: v.y })), lanes: { x: [...LANE_X], y: ROW_Y[0] }, redraw: () => this.syncAll(false), giveUp: () => this.surrender('surrender') }; }
   surrender(reason: 'surrender' | 'timeout' = 'surrender') {
     if (this.cfg.net) { this.cfg.net.send({ t: 'surrender' }); return; }
     if (this.s.over || this.finished) return;
     this.finished = true;
     this.busy = true;
     this.timerEnd = null;
-    this.onEnd({ winner: 1, reason, myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats } });
+    this.onEnd({ winner: 1, reason, myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats }, played: [...this.played] });
   }
 
   // ------------------------------------------------------------------ sync
@@ -968,6 +971,8 @@ export class BattleScene extends Container {
         }
         if (e.pi === 0 && (a.t === 'play' || a.t === 'cast' || a.t === 'reserve')) {
           const v = this.handViews.get(a.hand);
+          const card = v?.card ?? this.s.players[0].hand.find((h) => h.uid === a.hand)?.card;
+          if (card) this.played.add(card);
           if (v) { this.flyFrom ??= { x: v.x, y: v.y }; v.destroy({ children: true }); this.handViews.delete(a.hand); this.layoutHand(); }
         }
         if (e.pi === 1 && (a.t === 'play' || a.t === 'cast' || a.t === 'reserve')) {

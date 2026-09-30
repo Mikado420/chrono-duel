@@ -15,7 +15,10 @@
     "test:econ": "tsx src/sim/econtest.ts",
     "test:meta": "tsx src/sim/metatest.ts",
     "test:rating": "tsx src/sim/ratingtest.ts",
-    "dev:server": "tsx server/dev.ts"
+    "dev:server": "tsx server/dev.ts",
+    "test:stats": "tsx src/sim/statstest.ts",
+    "stats:real": "tsx src/sim/realstats.ts",
+    "balance": "tsx src/sim/balance.ts"
   },
   "dependencies": {
     "pixi.js": "8.6.6"

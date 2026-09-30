@@ -8,6 +8,7 @@
 import type { AiLevel } from '../core/ai';
 import { cleanName } from '../core/net';
 import { AI_RATING, OPP_SPREAD, START_RATING, nextRating, tierOf, type SubmitReq } from '../meta/rating';
+import type { PlayStats } from './stats';
 
 export interface KV { get<T>(k: string): Promise<T | undefined>; put(k: string, v: unknown): Promise<void>; list<T>(prefix: string): Promise<T[]> }
 export interface PlayerRec { id: string; key: string; name: string; rating: number; games: number; wins: number; peak: number; lastAt: number; lastGids: string[]; created: number }
@@ -84,10 +85,12 @@ export class Leaderboard {
 }
 
 /** Routes /api/* requests to the leaderboard. Shared by the Worker and the dev server. */
-export async function handleApi(lb: Leaderboard, path: string, method: string, body: unknown): Promise<ApiResult> {
+export async function handleApi(lb: Leaderboard, path: string, method: string, body: unknown, stats?: PlayStats): Promise<ApiResult> {
   const b = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
   if (method !== 'POST') return bad(405, 'use POST');
   if (path === '/api/rated') return lb.submit(b);
   if (path === '/api/ranking') return lb.ranking(b);
+  if (stats && path === '/api/match') return stats.record(b);
+  if (stats && path === '/api/stats') return stats.summary(b);
   return bad(404, 'not found');
 }

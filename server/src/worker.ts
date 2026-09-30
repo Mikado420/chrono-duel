@@ -9,6 +9,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { normalizeCode, type ClientMsg, type ServerMsg } from '../../src/core/net';
 import { Room, type Conn, type RoomEnv, type RoomSnapshot } from '../../src/server/room';
 import { Leaderboard, handleApi, type KV } from '../../src/server/leaderboard';
+import { PlayStats } from '../../src/server/stats';
 
 export interface Env {
   ROOMS: DurableObjectNamespace<RoomDO>;
@@ -59,6 +60,7 @@ async function api(req: Request, env: Env): Promise<Response> {
 
 export class RankingDO extends DurableObject<Env> {
   private lb: Leaderboard;
+  private stats: PlayStats;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     const kv: KV = {
@@ -67,13 +69,14 @@ export class RankingDO extends DurableObject<Env> {
       list: async <T>(prefix: string) => [...(await ctx.storage.list<T>({ prefix })).values()],
     };
     this.lb = new Leaderboard(kv, () => Date.now());
+    this.stats = new PlayStats(kv, () => Date.now());
   }
   async fetch(req: Request): Promise<Response> {
     const text = await req.text();
     if (text.length > 16_384) return Response.json({ error: 'too large' }, { status: 413 });
     let body: unknown = null;
     try { body = text ? JSON.parse(text) : {}; } catch { return Response.json({ error: 'bad json' }, { status: 400 }); }
-    const r = await handleApi(this.lb, new URL(req.url).pathname, req.method, body);
+    const r = await handleApi(this.lb, new URL(req.url).pathname, req.method, body, this.stats);
     return Response.json(r.body, { status: r.status });
   }
 }

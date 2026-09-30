@@ -13,7 +13,8 @@ import { recordBattle, track } from './meta/progress';
 import { finishRated, makeOpponent, startRated, type RatedGame } from './meta/rating';
 import { PRESET_DECKS } from './core/decks';
 import { PACK_TEST_DECKS } from './sim/packDecks';
-import { syncRated } from './net/api';
+import { reportMatch, syncRated } from './net/api';
+import { VERSION } from './version';
 import { codeFromHash } from './net/config';
 import { OnlineFlow } from './net/flow';
 import { registerServiceWorker } from './pwa';
@@ -134,6 +135,7 @@ async function boot() {
     if (battle) { shake.removeChild(battle); battle.destroy(); battle = null; }
     fx.layer.removeChildren();
   };
+  let battleStartedAt = Date.now();
   const onResult = (r: BattleResult) => {
     const online = !!lastCfg?.net;
     const rec = online ? store.onlineRecord : store.record;
@@ -159,6 +161,13 @@ async function boot() {
       store.saveRated();
       void syncRated();
     }
+    // play statistics: this seat's deck, the cards it used and the result (anonymous, fails soft)
+    void reportMatch({
+      gid: newId(), id: store.account().id, v: VERSION,
+      mode: online ? 'online' : lastCfg?.rated ? 'rated' : 'free', ai: online ? undefined : lastCfg?.level,
+      deck: online ? flow.myDeck : lastCfg?.myDeck ?? [], played: r.played,
+      score: r.winner === 0 ? 1 : r.winner === -1 ? 0.5 : 0, reason: r.reason, actions: r.myActions, ms: Date.now() - battleStartedAt,
+    });
     // the final board stays visible behind the result screen until the player moves on
     if (online) screens.resultOnline(r, endBattle, rw, xp);
     else if (rated) {
@@ -192,6 +201,7 @@ async function boot() {
     if (g) pendingNotice = `前回のレート戦は途中で終了したため敗北として記録されました（レート ${g.before} → ${g.after}）`;
   }
   void syncRated();
+  void reportMatch();
 
   // ---- booster packs
   let packScene: PackOpenScene | null = null;
@@ -218,6 +228,7 @@ async function boot() {
   const run = (cfg: BattleConfig) => {
     endBattle();
     lastCfg = cfg;
+    battleStartedAt = Date.now();
     audio.bgm('battle', true);
     battle = new BattleScene(tw, fx, app.ticker, cfg, onResult, () => {
       const speed = tw.speed;

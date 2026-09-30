@@ -1,5 +1,6 @@
 /** Ranking server calls (same host as online play, over HTTPS). Every call fails soft: the game works offline. */
 import type { RankRow } from '../server/leaderboard';
+import type { MatchReport, StatsAgg } from '../server/stats';
 import { serverUrl } from './config';
 import { store } from '../ui/storage';
 
@@ -33,6 +34,30 @@ export async function syncRated(): Promise<boolean> {
   store.saveRated();
   return r.outbox.length === 0;
 }
+
+// ------------------------------------------------------------------ play statistics
+const OUTBOX = 'cd.matchOutbox';
+function readOutbox(): MatchReport[] { try { return JSON.parse(localStorage.getItem(OUTBOX) ?? '[]') as MatchReport[]; } catch { return []; } }
+function writeOutbox(l: MatchReport[]) { try { localStorage.setItem(OUTBOX, JSON.stringify(l.slice(-30))); } catch { /* storage full or blocked */ } }
+/** Queues one finished game for the play statistics and sends everything waiting. Fails soft (kept for next time). */
+export async function reportMatch(r?: MatchReport): Promise<void> {
+  const box = readOutbox();
+  if (r) { box.push(r); writeOutbox(box); }
+  if (!httpBase()) return;
+  const left: MatchReport[] = [];
+  for (const m of box) {
+    // no answer: keep it for later. Any answer from the server (even a refusal) means it is handled.
+    try {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 8000);
+      await fetch(httpBase() + '/api/match', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(m), signal: ctl.signal });
+      clearTimeout(t);
+    } catch { left.push(m); }
+  }
+  writeOutbox(left);
+}
+export interface StatsRes { versions: string[]; agg: StatsAgg | null }
+export const fetchStats = (v?: string) => post<StatsRes>('/api/stats', v ? { v } : {});
 
 export interface RankingRes { total: number; top: RankRow[]; me: (RankRow & { place: number }) | null }
 export async function fetchRanking(): Promise<RankingRes | null> {
