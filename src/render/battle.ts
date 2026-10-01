@@ -29,6 +29,8 @@ export interface BattleConfig {
   foeName?: string;
   /** Online match: the opponent is a person and the server owns the game state. */
   net?: NetLink;
+  /** Games against the AI: called after every action with the record so far (kept in case the app is closed mid-game). */
+  onProgress?: (log: GameLog, myActions: number) => void;
 }
 export interface BattleResult { winner: PlayerIndex | -1; reason: 'ko' | 'time' | 'surrender' | 'timeout' | 'disconnect'; myHp: number; foeHp: number; actions: number; myActions: number; stats: { spells: number; summons: number; reserves: number; attacks: number };
   /** Every card the player used (summoned, cast or reserved) this game, for the play statistics. */
@@ -277,6 +279,7 @@ export class BattleScene extends Container {
         if (this.destroyed_) return;
         const ev = apply(this.s, act);
         this.log?.actions.push(act);
+        if (this.log) this.cfg.onProgress?.(this.log, this.myActs);
         await this.play(ev);
       } else if (a === 0) {
         this.busy = false;
@@ -303,6 +306,7 @@ export class BattleScene extends Container {
     }
     const ev = apply(this.s, a);
     this.log?.actions.push(a);
+    if (this.log) this.cfg.onProgress?.(this.log, this.myActs + 1);
     await this.play(ev);
     await this.loop();
   }

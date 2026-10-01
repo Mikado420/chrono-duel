@@ -57,6 +57,8 @@ export interface StoredLog {
   reason: string;
   ms?: number;
   log: GameLog;
+  /** Set when the record did not check out against its report (it is kept anyway). */
+  problem?: string;
 }
 /** What an online room hands over when a game ends. */
 export interface RoomLog { gid: string; v: string; at: number; names: [string, string]; winner: PlayerIndex | -1; reason: string; ms: number; log: GameLog }
@@ -97,13 +99,18 @@ export class PlayStats {
     if (![0, 0.5, 1].includes(r.score as number) || !REASONS.includes(r.reason as string)) return bad(400, 'bad result');
     if (!Array.isArray(r.deck) || r.deck.length > 20 || !r.deck.every(isCard)) return bad(400, 'bad deck');
     if (!Array.isArray(r.played) || r.played.length > 40 || !r.played.every(isCard)) return bad(400, 'bad cards');
-    if (typeof r.actions !== 'number' || r.actions < MIN_REPORT_ACTIONS) return { status: 200, body: { ok: false, why: 'short' } };
+    if (typeof r.actions !== 'number') return bad(400, 'bad actions');
 
     // one report per game and device
     const seenKey = `sdev:${r.id}`;
     const seen = (await this.kv.get<string[]>(seenKey)) ?? [];
     if (seen.includes(r.gid)) return { status: 200, body: { ok: true, dup: true } };
     await this.kv.put(seenKey, [r.gid, ...seen].slice(0, 100));
+    const versions = (await this.kv.get<string[]>('sver')) ?? [];
+    if (!versions.includes(r.v)) await this.kv.put('sver', [...versions, r.v]);
+    // every game against the AI is kept in full, even a very short one; the totals skip games that say nothing
+    const logged = r.mode !== 'online' && r.log !== undefined ? await this.keepReport(r as MatchReport) : false;
+    if (r.actions < MIN_REPORT_ACTIONS) return { status: 200, body: { ok: false, why: 'short', logged } };
 
     const key = `sagg:${r.v}`;
     const agg = (await this.kv.get<StatsAgg>(key)) ?? { v: r.v, games: {}, cards: {}, updated: 0 };
@@ -115,29 +122,30 @@ export class PlayStats {
     for (const c of new Set(r.played)) { const x = cell(c); x[2]++; x[3] += r.score!; }
     agg.updated = this.now();
     await this.kv.put(key, agg);
-    const versions = (await this.kv.get<string[]>('sver')) ?? [];
-    if (!versions.includes(r.v)) await this.kv.put('sver', [...versions, r.v]);
-    const logged = r.mode !== 'online' && r.log !== undefined ? await this.keepReport(r as MatchReport) : false;
     return { status: 200, body: { ok: true, logged } };
   }
 
   /**
-   * Keeps the full record of a game against the AI, if it holds up: the actions must replay legally from the seed,
-   * seat 0 must be the reported deck, and the replay must end the way the report says (a game that was given up
-   * simply stops early).
+   * Keeps the full record of a game against the AI. It is checked first: the actions must replay legally from the
+   * seed, seat 0 must be the reported deck, and the replay must end the way the report says (a game that was given
+   * up simply stops early). A record that fails the check is still kept, marked with `problem` — a mismatch can
+   * point at a bug (or a tampered client) and is worth a look. Only a malformed record is dropped.
    */
   private async keepReport(r: MatchReport): Promise<boolean> {
-    if (!isGameLog(r.log) || !sameCards(r.log.decks[0], r.deck)) return false;
-    const end = replay(r.log);
-    if (!end) return false;
+    if (!isGameLog(r.log)) return false;
     const winner: PlayerIndex | -1 = r.score === 1 ? 0 : r.score === 0 ? 1 : -1;
-    if (r.reason === 'ko' || r.reason === 'time') { if (!end.over || end.over.reason !== r.reason || end.over.winner !== winner) return false; }
-    else if (end.over || winner !== 1) return false;
+    let problem: string | undefined;
+    const end = replay(r.log);
+    if (!sameCards(r.log.decks[0], r.deck)) problem = 'デッキが報告と違う';
+    else if (!end) problem = '途中から再現できない';
+    else if (r.reason === 'ko' || r.reason === 'time') { if (!end.over || end.over.reason !== r.reason || end.over.winner !== winner) problem = '結果が再現と違う'; }
+    else if (end.over || winner !== 1) problem = '結果が再現と違う';
     const at = this.now();
     const rec: StoredLog = {
       gid: r.gid, v: r.v, at, src: 'report', mode: r.mode, ...(r.ai ? { ai: r.ai } : {}), id: r.id,
       deckNames: [shortText(r.deckName) ?? '', shortText(r.foe) ?? ''], winner, reason: r.reason, ms: r.ms,
       log: { seed: r.log.seed, first: r.log.first, decks: [r.log.decks[0].slice(), r.log.decks[1].slice()], actions: r.log.actions },
+      ...(problem ? { problem } : {}),
     };
     await this.kv.put(logKey(r.v, at, r.gid), rec);
     return true;

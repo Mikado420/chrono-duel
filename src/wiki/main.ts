@@ -199,6 +199,7 @@ function initAdmin() {
   try { tok.value = localStorage.getItem(ADM_KEY) ?? ''; } catch { /* storage blocked */ }
   if (!base) { sum.textContent = 'この環境ではサーバーにつながっていません。'; return; }
   let items: StoredLog[] = [];
+  let versions: string[] = [];
   const seatNames = (r: StoredLog): [string, string] => [r.names?.[0] || (r.src === 'report' ? `未登録(${(r.id ?? '').slice(-6)})` : '?'), r.src === 'report' ? `AI（${r.deckNames?.[1] || '?'}・${r.ai ?? ''}）` : r.names?.[1] || '?'];
   const copy = async (text: string, btn: HTMLButtonElement) => {
     try { await navigator.clipboard.writeText(text); btn.textContent = 'コピーしました'; }
@@ -212,7 +213,7 @@ function initAdmin() {
       const [a, b] = seatNames(r);
       const res = r.winner === -1 ? '引き分け' : `${r.winner === 0 ? a : b}の勝ち`;
       const t = new Date(r.at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-      return `<div class="panel" style="padding:8px 10px;margin:6px 0"><div><b>${esc(a)}</b> vs <b>${esc(b)}</b></div><div class="small mute">${t} ・ ${r.src === 'room' ? 'オンライン' : r.mode === 'rated' ? 'レート戦' : 'フリー'} ・ ${esc(res)}（${REASON_JA[r.reason] ?? esc(r.reason)}） ・ ${r.log.actions.length}手</div><button type="button" data-g="${esc(r.gid)}" style="margin-top:4px">経過を見る</button></div>`;
+      return `<div class="panel" style="padding:8px 10px;margin:6px 0"><div><b>${esc(a)}</b> vs <b>${esc(b)}</b></div><div class="small mute">${t} ・ ${r.src === 'room' ? 'オンライン' : r.mode === 'rated' ? 'レート戦' : 'フリー'} ・ ${esc(res)}（${REASON_JA[r.reason] ?? esc(r.reason)}） ・ ${r.log.actions.length}手 ・ Ver. ${esc(r.v)}${r.problem ? ` ・ <span style="color:var(--foe)">⚠ ${esc(r.problem)}</span>` : ''}</div><button type="button" data-g="${esc(r.gid)}" style="margin-top:4px">経過を見る</button></div>`;
     }).join('');
   };
   list.onclick = (e) => {
@@ -232,26 +233,31 @@ function initAdmin() {
   const load = async () => {
     try { localStorage.setItem(ADM_KEY, tok.value.trim()); } catch { /* storage blocked */ }
     sum.textContent = '読み込み中…'; items = []; game.innerHTML = ''; list.style.display = '';
-    let after: string | null = null;
+    // one version, or all of them (oldest first, so the list ends with the newest)
+    const want = ver.value === '*' ? versions.slice().reverse() : [ver.value || undefined];
     try {
-      for (;;) {
-        const res = await fetch(base + '/api/logs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: tok.value.trim(), v: ver.value || undefined, after, limit: 200 }) });
-        if (res.status === 403) { sum.textContent = 'トークンが違います。'; return; }
-        if (!res.ok) { sum.textContent = `サーバーエラー（${res.status}）`; return; }
-        const page = (await res.json()) as { v: string | null; items: StoredLog[]; next: string | null };
-        items.push(...page.items); after = page.next;
-        sum.textContent = `${items.length}試合を読み込み中…`;
-        if (!after) break;
+      for (const v of want) {
+        let after: string | null = null;
+        for (;;) {
+          const res = await fetch(base + '/api/logs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: tok.value.trim(), v, after, limit: 200 }) });
+          if (res.status === 403) { sum.textContent = 'トークンが違います。'; return; }
+          if (!res.ok) { sum.textContent = `サーバーエラー（${res.status}）`; return; }
+          const page = (await res.json()) as { v: string | null; items: StoredLog[]; next: string | null };
+          items.push(...page.items); after = page.next;
+          sum.textContent = `${items.length}試合を読み込み中…`;
+          if (!after) break;
+        }
       }
     } catch { sum.textContent = '読み込めませんでした。通信状態を確かめてください。'; return; }
+    items.sort((a, b) => a.at - b.at);
     render();
   };
   ($('adm-load') as HTMLButtonElement).onclick = () => void load();
   void (async () => {
     try {
       const r = await fetch(base + '/api/stats', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
-      const vs = r.ok ? ((await r.json()) as { versions: string[] }).versions : [];
-      ver.innerHTML = vs.map((v) => `<option value="${esc(v)}">Ver. ${esc(v)}</option>`).join('');
+      versions = r.ok ? ((await r.json()) as { versions: string[] }).versions : [];
+      ver.innerHTML = '<option value="*">すべてのバージョン</option>' + versions.map((v, i) => `<option value="${esc(v)}"${i === 0 ? ' selected' : ''}>Ver. ${esc(v)}</option>`).join('');
     } catch { /* offline: the newest version is used */ }
     if (tok.value) void load();
   })();

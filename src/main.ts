@@ -13,7 +13,7 @@ import { recordBattle, track } from './meta/progress';
 import { finishRated, makeOpponent, startRated, type RatedGame } from './meta/rating';
 import { PRESET_DECKS } from './core/decks';
 import { PACK_TEST_DECKS } from './sim/packDecks';
-import { reportMatch, syncRated } from './net/api';
+import { reportMatch, saveLiveGame, syncRated, takeLiveGame } from './net/api';
 import { VERSION } from './version';
 import { codeFromHash } from './net/config';
 import { OnlineFlow } from './net/flow';
@@ -136,8 +136,11 @@ async function boot() {
     fx.layer.removeChildren();
   };
   let battleStartedAt = Date.now();
+  /** The id of the game against the AI in progress (the same id is used if it has to be reported as abandoned). */
+  let liveGid = '';
   const onResult = (r: BattleResult) => {
     const online = !!lastCfg?.net;
+    saveLiveGame(null);
     const rec = online ? store.onlineRecord : store.record;
     if (r.winner === 0) rec.win++;
     else if (r.winner === 1) rec.lose++;
@@ -163,7 +166,7 @@ async function boot() {
     }
     // play statistics: this seat's deck, the cards it used, the result and the game record (anonymous, fails soft)
     void reportMatch({
-      gid: newId(), id: store.account().id, v: VERSION,
+      gid: !online && liveGid ? liveGid : newId(), id: store.account().id, v: VERSION,
       mode: online ? 'online' : lastCfg?.rated ? 'rated' : 'free', ai: online ? undefined : lastCfg?.level,
       deck: online ? flow.myDeck : lastCfg?.myDeck ?? [], played: r.played,
       score: r.winner === 0 ? 1 : r.winner === -1 ? 0.5 : 0, reason: r.reason, actions: r.myActions, ms: Date.now() - battleStartedAt,
@@ -203,7 +206,9 @@ async function boot() {
     if (g) pendingNotice = `前回のレート戦は途中で終了したため敗北として記録されました（レート ${g.before} → ${g.after}）`;
   }
   void syncRated();
-  void reportMatch();
+  // a game against the AI left unfinished last time (app closed) is still recorded, as abandoned
+  const leftOver = takeLiveGame();
+  void reportMatch(leftOver ?? undefined);
 
   // ---- booster packs
   let packScene: PackOpenScene | null = null;
@@ -231,8 +236,17 @@ async function boot() {
     endBattle();
     lastCfg = cfg;
     battleStartedAt = Date.now();
+    liveGid = cfg.net ? '' : newId();
+    const gid = liveGid;
+    const live: BattleConfig = cfg.net ? cfg : {
+      ...cfg,
+      onProgress: (log, n) => saveLiveGame({
+        gid, id: store.account().id, v: VERSION, mode: cfg.rated ? 'rated' : 'free', ai: cfg.level, deck: cfg.myDeck, played: [],
+        score: 0, reason: 'disconnect', actions: n, ms: Date.now() - battleStartedAt, log, deckName: cfg.myDeckName, foe: cfg.aiDeckName,
+      }),
+    };
     audio.bgm('battle', true);
-    battle = new BattleScene(tw, fx, app.ticker, cfg, onResult, () => {
+    battle = new BattleScene(tw, fx, app.ticker, live, onResult, () => {
       const speed = tw.speed;
       if (!cfg.net) tw.speed = 0; // pause animations and the AI while the menu is open (a live match cannot wait)
       const resume = () => { tw.speed = store.settings.speed || speed; };
