@@ -10,7 +10,8 @@ import { VERSION } from '../version';
 import { DECK_NOTE, GLOSS, KW_TIPS, MEMO } from './content';
 import { STATS } from './stats';
 import { serverUrl } from '../net/config';
-import { impacts, type StatsAgg } from '../server/stats';
+import { impacts, type StatsAgg, type StoredLog } from '../server/stats';
+import { narrate } from '../core/narrate';
 
 const RN: Record<Rarity, string> = { C: '通常', R: '希少', E: '秘宝', L: '伝説' };
 const RO: Record<Rarity, number> = { C: 0, R: 1, E: 2, L: 3 };
@@ -188,6 +189,73 @@ async function initReal(ver?: string) {
       return `<tr${faint}><td style="white-space:nowrap"><a href="#cards" data-card="${x.id}">${esc(C[x.id].name)}</a></td><td class="num">${x.used}</td><td class="num">${x.winUsed.toFixed(0)}%</td><td class="num"${col}><b>${sign(x.lift)}</b></td><td class="num">${ai !== undefined ? ai + '%' : '—'}</td></tr>`;
     }).join('') + '</table></div><p class="small mute">使用＝使われた試合数、勝率＝使ったときの勝率、AI戦＝AI同士の対戦での採用時勝率（参考）。</p>';
 }
+// ------------------------------------------------------------------ game records (admin only, #admin; not in the menu)
+const ADM_KEY = 'cd.adminToken';
+const REASON_JA: Record<string, string> = { ko: '拠点破壊', time: '時間切れ', surrender: '降参', timeout: '放置', disconnect: '切断' };
+function initAdmin() {
+  const base = serverUrl()?.replace(/^ws/, 'http');
+  const tok = $('adm-token') as HTMLInputElement, ver = $('adm-ver') as HTMLSelectElement, q = $('adm-q') as HTMLInputElement;
+  const list = $('adm-list'), sum = $('adm-sum'), game = $('adm-game');
+  try { tok.value = localStorage.getItem(ADM_KEY) ?? ''; } catch { /* storage blocked */ }
+  if (!base) { sum.textContent = 'この環境ではサーバーにつながっていません。'; return; }
+  let items: StoredLog[] = [];
+  const seatNames = (r: StoredLog): [string, string] => [r.names?.[0] || (r.src === 'report' ? `未登録(${(r.id ?? '').slice(-6)})` : '?'), r.src === 'report' ? `AI（${r.deckNames?.[1] || '?'}・${r.ai ?? ''}）` : r.names?.[1] || '?'];
+  const copy = async (text: string, btn: HTMLButtonElement) => {
+    try { await navigator.clipboard.writeText(text); btn.textContent = 'コピーしました'; }
+    catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); btn.textContent = 'コピーしました'; }
+  };
+  const render = () => {
+    const f = q.value.trim();
+    const rows = items.filter((r) => !f || seatNames(r).some((n) => n.includes(f))).slice().reverse();
+    sum.textContent = `${items.length}試合中 ${rows.length}試合を表示（新しい順）`;
+    list.innerHTML = rows.slice(0, 200).map((r) => {
+      const [a, b] = seatNames(r);
+      const res = r.winner === -1 ? '引き分け' : `${r.winner === 0 ? a : b}の勝ち`;
+      const t = new Date(r.at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      return `<div class="panel" style="padding:8px 10px;margin:6px 0"><div><b>${esc(a)}</b> vs <b>${esc(b)}</b></div><div class="small mute">${t} ・ ${r.src === 'room' ? 'オンライン' : r.mode === 'rated' ? 'レート戦' : 'フリー'} ・ ${esc(res)}（${REASON_JA[r.reason] ?? esc(r.reason)}） ・ ${r.log.actions.length}手</div><button type="button" data-g="${esc(r.gid)}" style="margin-top:4px">経過を見る</button></div>`;
+    }).join('');
+  };
+  list.onclick = (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-g]');
+    const r = b && items.find((x) => x.gid === b.dataset.g);
+    if (!r) return;
+    const [na, nb] = seatNames(r);
+    const text = `試合 ${r.gid}（Ver. ${r.v}）${na} vs ${nb}\n` + narrate(r.log, [na, r.src === 'report' ? 'AI' : nb]);
+    game.innerHTML = `<h3>試合の経過</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="adm-ct">経過をコピー</button><button type="button" id="adm-cj">記録（JSON）をコピー</button><button type="button" id="adm-back">一覧へ戻る</button></div><pre style="white-space:pre-wrap;font-size:12px;line-height:1.5;margin-top:8px">${esc(text)}</pre>`;
+    list.style.display = 'none';
+    ($('adm-ct') as HTMLButtonElement).onclick = (ev) => void copy(text, ev.currentTarget as HTMLButtonElement);
+    ($('adm-cj') as HTMLButtonElement).onclick = (ev) => void copy(JSON.stringify(r), ev.currentTarget as HTMLButtonElement);
+    ($('adm-back') as HTMLButtonElement).onclick = () => { game.innerHTML = ''; list.style.display = ''; };
+    window.scrollTo({ top: game.offsetTop - 10 });
+  };
+  q.oninput = render;
+  const load = async () => {
+    try { localStorage.setItem(ADM_KEY, tok.value); } catch { /* storage blocked */ }
+    sum.textContent = '読み込み中…'; items = []; game.innerHTML = ''; list.style.display = '';
+    let after: string | null = null;
+    try {
+      for (;;) {
+        const res = await fetch(base + '/api/logs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: tok.value, v: ver.value || undefined, after, limit: 200 }) });
+        if (res.status === 403) { sum.textContent = 'トークンが違います。'; return; }
+        if (!res.ok) { sum.textContent = `サーバーエラー（${res.status}）`; return; }
+        const page = (await res.json()) as { v: string | null; items: StoredLog[]; next: string | null };
+        items.push(...page.items); after = page.next;
+        sum.textContent = `${items.length}試合を読み込み中…`;
+        if (!after) break;
+      }
+    } catch { sum.textContent = '読み込めませんでした。通信状態を確かめてください。'; return; }
+    render();
+  };
+  ($('adm-load') as HTMLButtonElement).onclick = () => void load();
+  void (async () => {
+    try {
+      const r = await fetch(base + '/api/stats', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+      const vs = r.ok ? ((await r.json()) as { versions: string[] }).versions : [];
+      ver.innerHTML = vs.map((v) => `<option value="${esc(v)}">Ver. ${esc(v)}</option>`).join('');
+    } catch { /* offline: the newest version is used */ }
+    if (tok.value) void load();
+  })();
+}
 function drawClock() {
   const svg = $('clocksvg') as unknown as SVGSVGElement;
   const E = RULES.END, x0 = 30, x1 = 770, y = 70, X = (t: number) => x0 + ((x1 - x0) * t) / E;
@@ -227,6 +295,14 @@ const TABS: [string, string, string][] = [
 ];
 
 function show(id: string, cardId?: string) {
+  if (id === 'admin') {
+    document.querySelectorAll('#tabs button').forEach((b) => b.setAttribute('aria-selected', 'false'));
+    main.innerHTML = '';
+    main.appendChild(($('t-admin') as HTMLTemplateElement).content.cloneNode(true));
+    document.title = '対戦の記録 | クロノ・デュエル攻略wiki';
+    initAdmin();
+    return;
+  }
   if (!TABS.some((t) => t[0] === id)) id = 'home';
   document.querySelectorAll('#tabs button').forEach((b) => b.setAttribute('aria-selected', String((b as HTMLElement).dataset.id === id)));
   main.innerHTML = '';

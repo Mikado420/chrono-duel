@@ -253,6 +253,23 @@
       </section>
     </template>
 
+    <template id="t-admin">
+      <section class="page">
+        <div class="block prose">
+          <h2>対戦の記録（管理用）</h2>
+          <p class="small mute">サーバーの管理用トークン（ADMIN_TOKEN）がある人だけが読めます。トークンはこの端末にだけ保存されます。</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input id="adm-token" type="password" placeholder="管理用トークン" autocomplete="off" style="flex:1;min-width:160px;padding:8px">
+            <select id="adm-ver"></select>
+            <button type="button" id="adm-load">読み込む</button>
+          </div>
+          <input id="adm-q" type="search" placeholder="名前で絞り込み（例：レジあいす）" style="width:100%;margin-top:8px;padding:8px">
+          <p id="adm-sum" class="small mute"></p>
+          <div id="adm-list"></div>
+          <div id="adm-game"></div>
+        </div>
+      </section>
+    </template>
     <template id="t-real">
       <section class="page">
         <div class="block prose">

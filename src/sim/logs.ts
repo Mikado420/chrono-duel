@@ -6,6 +6,7 @@
  *
  * Options
  *   --player <name>   that player's games one by one, and the decks they used
+ *   --game <id>       one game move by move (the id is shown by --player)
  *   --file <path>     read a saved logs/<version>.jsonl instead of downloading
  *   --csv <path>      one row per human seat (for a spreadsheet)
  *
@@ -17,13 +18,14 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { cardDef } from '../core/cards';
 import { replay } from '../core/gamelog';
+import { narrate } from '../core/narrate';
 import type { PlayerIndex } from '../core/engine';
 import type { StoredLog } from '../server/stats';
 
 const proc = process as unknown as { argv: string[]; exit(c: number): never };
 const args = proc.argv.slice(2);
 const opt = (k: string) => { const i = args.indexOf(k); if (i < 0) return undefined; const v = args[i + 1]; args.splice(i, 2); return v; };
-const player = opt('--player'), file = opt('--file'), csv = opt('--csv');
+const player = opt('--player'), gameId = opt('--game'), file = opt('--file'), csv = opt('--csv');
 const [url, token, version] = args;
 
 interface Seat {
@@ -105,6 +107,12 @@ const groupBy = (xs: Seat[], key: (x: Seat) => string) => { const m = new Map<st
   const { v, items } = file
     ? { v: file.replace(/^.*\//, '').replace(/\.jsonl$/, ''), items: readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as StoredLog) }
     : await download();
+  if (gameId) {
+    const r = items.find((x) => x.gid === gameId);
+    if (!r) { console.error(`試合 ${gameId} が見つかりません`); proc.exit(1); }
+    console.log(narrate(r.log, [r.names?.[0] || '席0', r.src === 'report' ? 'AI' : r.names?.[1] || '席1']));
+    return;
+  }
   const seats = items.flatMap(seatsOf);
   const broken = items.length - new Set(seats.map((s) => s.rec.gid)).size;
   console.log(`\nバージョン ${v}：${items.length}試合（AI戦 ${items.filter((x) => x.src === 'report').length}・オンライン ${items.filter((x) => x.src === 'room').length}）、人間の席 ${seats.length}${broken ? `、再現できない記録 ${broken}` : ''}`);
@@ -122,7 +130,7 @@ const groupBy = (xs: Seat[], key: (x: Seat) => string) => { const m = new Map<st
     console.log(`\n■ ${player} の試合（${mine.length}）`);
     for (const x of mine) {
       const d = new Date(x.rec.at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
-      console.log(`${d}  ${x.won === 1 ? '勝ち' : x.won === 0 ? '負け' : '引分'}（${x.reason}）  ${x.deck} vs ${x.foe}  攻撃${x.attacks}（拠点へ${x.attacksOnBase}） 拠点ダメ ユニット${x.baseDmgUnits}/その他${x.baseDmgOther} 回復${x.heals} 予約${x.reserves}  残り体力 ${x.hpLeft}-${x.foeHpLeft}`);
+      console.log(`${d}  [${x.rec.gid}]  ${x.won === 1 ? '勝ち' : x.won === 0 ? '負け' : '引分'}（${x.reason}）  ${x.deck} vs ${x.foe}  攻撃${x.attacks}（拠点へ${x.attacksOnBase}） 拠点ダメ ユニット${x.baseDmgUnits}/その他${x.baseDmgOther} 回復${x.heals} 予約${x.reserves}  残り体力 ${x.hpLeft}-${x.foeHpLeft}`);
     }
     // the decks they actually used (seat 0 decks of their reports, card counts)
     const decks = groupBy(mine, (x) => x.rec.log.decks[x.seat].slice().sort().join(','));
