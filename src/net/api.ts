@@ -38,7 +38,13 @@ export async function syncRated(): Promise<boolean> {
 // ------------------------------------------------------------------ play statistics
 const OUTBOX = 'cd.matchOutbox';
 function readOutbox(): MatchReport[] { try { return JSON.parse(localStorage.getItem(OUTBOX) ?? '[]') as MatchReport[]; } catch { return []; } }
-function writeOutbox(l: MatchReport[]) { try { localStorage.setItem(OUTBOX, JSON.stringify(l.slice(-30))); } catch { /* storage full or blocked */ } }
+function writeOutbox(l: MatchReport[]) {
+  try { localStorage.setItem(OUTBOX, JSON.stringify(l.slice(-30))); }
+  catch {
+    // storage full: keep the totals, drop the bulky game records
+    try { localStorage.setItem(OUTBOX, JSON.stringify(l.slice(-30).map((m) => { const c = { ...m }; delete c.log; return c; }))); } catch { /* blocked */ }
+  }
+}
 /** Queues one finished game for the play statistics and sends everything waiting. Fails soft (kept for next time). */
 export async function reportMatch(r?: MatchReport): Promise<void> {
   const box = readOutbox();

@@ -6,21 +6,30 @@
  * engine's legal actions and answers each player with a redacted view (see core/net.ts).
  */
 import { validateDeck } from '../core/decks';
-import { actor, apply, createGame, legalActions, other, type GameState, type PlayerIndex } from '../core/engine';
+import { actor, apply, createGame, legalActions, other, type Action, type GameState, type PlayerIndex } from '../core/engine';
+import { VERSION } from '../version';
+import type { RoomLog } from './stats';
 import {
   NET, cleanName, sameAction, viewEvents, viewResult, viewState,
   type ClientMsg, type EndKind, type ErrCode, type Phase, type Presence, type RematchState, type ServerMsg,
 } from '../core/net';
 
 export interface Conn { cid: string; send(m: ServerMsg): void; close(code: number, reason: string): void }
-export interface RoomEnv { now(): number; uuid(): string; seed(): number }
+export interface RoomEnv {
+  now(): number; uuid(): string; seed(): number;
+  /** Called once when a game ends, with its full record (kept by the statistics). */
+  onLog?(r: RoomLog): void;
+}
 
 interface PlayerRec { token: string; name: string; deck: string[]; cid: string | null; offlineSince: number | null; strikes: number; rematch: boolean }
 interface Outcome { winner: PlayerIndex | -1; reason: EndKind }
 export interface RoomSnapshot {
   v: 1; code: string; phase: Phase; players: [PlayerRec | null, PlayerRec | null]; game: GameState | null;
   first: PlayerIndex; deadline: number | null; result: Outcome | null; emptySince: number | null;
+  /** The record of the current game (added later, so optional in older snapshots). */
+  rec?: GameRec;
 }
+interface GameRec { seed: number; startedAt: number; actions: Action[]; logged: boolean }
 
 /** An empty lobby or finished room is dropped after this long. */
 const IDLE_MS = 10 * 60_000;
@@ -34,17 +43,18 @@ export class Room {
   private result: Outcome | null = null;
   private emptySince: number | null;
   private conns: [Conn | null, Conn | null] = [null, null];
+  private rec: GameRec | null = null;
 
   constructor(readonly code: string, private env: RoomEnv, snap?: RoomSnapshot) {
     this.emptySince = env.now();
     if (snap) {
       this.phase = snap.phase; this.players = snap.players; this.game = snap.game; this.first = snap.first;
-      this.deadline = snap.deadline; this.result = snap.result; this.emptySince = snap.emptySince;
+      this.deadline = snap.deadline; this.result = snap.result; this.emptySince = snap.emptySince; this.rec = snap.rec ?? null;
     }
   }
 
   snapshot(): RoomSnapshot {
-    return structuredClone({ v: 1 as const, code: this.code, phase: this.phase, players: this.players, game: this.game, first: this.first, deadline: this.deadline, result: this.result, emptySince: this.emptySince });
+    return structuredClone({ v: 1 as const, code: this.code, phase: this.phase, players: this.players, game: this.game, first: this.first, deadline: this.deadline, result: this.result, emptySince: this.emptySince, ...(this.rec ? { rec: this.rec } : {}) });
   }
 
   // ------------------------------------------------------------------ queries
@@ -179,6 +189,7 @@ export class Room {
     const seed = this.env.seed() >>> 0;
     this.first = this.game ? other(this.first) : ((seed & 1) as PlayerIndex);
     this.game = createGame([this.players[0]!.deck, this.players[1]!.deck], seed, this.first).state;
+    this.rec = { seed, startedAt: this.env.now(), actions: [], logged: false };
     this.phase = 'playing'; this.result = null;
     for (const p of this.players) if (p) { p.strikes = 0; p.rematch = false; }
     this.arm(14); // the opening deal takes a moment to play
@@ -199,21 +210,33 @@ export class Room {
     const g = this.game;
     if (m.n !== g.actions) { this.err(conn, 'stale', '状態がずれています'); this.send(s, this.gameMsg(s, false)); return; }
     if (actor(g) !== s) return this.err(conn, 'turn', 'あなたの番ではありません');
-    const legal = legalActions(g, s).some((x) => sameAction(x, m.a));
+    const legal = legalActions(g, s).find((x) => sameAction(x, m.a));
     if (!legal) return this.err(conn, 'illegal', 'その行動はできません');
     this.players[s]!.strikes = 0;
-    this.applyAndSend(m.a, false);
+    this.applyAndSend(legal, false);
   }
 
   private applyAndSend(a: Parameters<typeof apply>[1], auto: boolean) {
     const g = this.game!;
+    this.rec?.actions.push(a);
     const ev = apply(g, a);
     if (g.over) {
       this.result = { winner: g.over.winner, reason: g.over.reason };
       this.phase = 'over'; this.deadline = null;
     } else this.arm(ev.length);
     this.both((s) => ({ t: 'events', events: viewEvents(ev, s), state: viewState(g, s), left: this.left(), auto }));
-    if (this.result) this.both((s) => ({ t: 'over', result: viewResult(this.result!, s) }));
+    if (this.result) { this.both((s) => ({ t: 'over', result: viewResult(this.result!, s) })); this.emitLog(); }
+  }
+
+  /** Hands the finished game's record to the statistics, once. */
+  private emitLog() {
+    const r = this.rec, res = this.result, [a, b] = this.players;
+    if (!r || r.logged || !res || !a || !b || !this.env.onLog) return;
+    r.logged = true;
+    this.env.onLog({
+      gid: `${this.code}-${r.startedAt}`, v: VERSION, at: this.env.now(), names: [a.name, b.name], winner: res.winner, reason: res.reason,
+      ms: this.env.now() - r.startedAt, log: { seed: r.seed, first: this.first, decks: [a.deck.slice(), b.deck.slice()], actions: r.actions.slice() },
+    });
   }
 
   private finish(winner: PlayerIndex, reason: EndKind) {
@@ -222,6 +245,7 @@ export class Room {
     this.phase = 'over'; this.deadline = null;
     for (const p of this.players) if (p) p.rematch = false;
     this.both((s) => ({ t: 'over', result: viewResult(this.result!, s) }));
+    this.emitLog();
   }
 
   private rematch(s: PlayerIndex, conn: Conn) {

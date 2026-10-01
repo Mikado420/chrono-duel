@@ -4,10 +4,13 @@ import { PRESET_DECKS } from '../core/decks';
 import { legalActions, mulberry32, type GameState } from '../core/engine';
 import { NET, viewState, type ClientMsg, type ServerMsg } from '../core/net';
 import { Room, type Conn, type RoomEnv } from '../server/room';
+import type { RoomLog } from '../server/stats';
+import { replay } from '../core/gamelog';
 
 let clock = 1_000_000;
 let uid = 0;
-const env: RoomEnv = { now: () => clock, uuid: () => `tok${++uid}`, seed: (() => { const r = mulberry32(42); return () => Math.floor(r() * 2 ** 32); })() };
+const roomLogs: RoomLog[] = [];
+const env: RoomEnv = { now: () => clock, uuid: () => `tok${++uid}`, seed: (() => { const r = mulberry32(42); return () => Math.floor(r() * 2 ** 32); })(), onLog: (r) => roomLogs.push(r) };
 
 class Client {
   inbox: ServerMsg[] = [];
@@ -88,6 +91,15 @@ const truth = () => (room as unknown as { game: GameState }).game;
   const ra = (a.result as Extract<ServerMsg, { t: 'over' }>).result, rb = (b.result as Extract<ServerMsg, { t: 'over' }>).result;
   assert.equal(ra.winner === -1 ? -1 : 1 - ra.winner, rb.winner, 'winners mirror each other');
   console.log(`full game ok: ${truth().actions} actions, ${ra.reason}, winner ${ra.winner}`);
+  // the room hands over the whole game once, and it replays to the same end
+  assert.equal(roomLogs.length, 1, 'one record per game');
+  const rl = roomLogs[0];
+  assert.deepEqual(rl.names, ['アリス', 'ボブ']);
+  assert.equal(rl.log.actions.length, truth().actions);
+  const re = replay(rl.log);
+  assert.ok(re?.over, 'the record replays to the end');
+  assert.deepEqual(re.over, truth().over, 'the replay ends the same way');
+  assert.equal(rl.winner, truth().over!.winner);
   a.send({ t: 'act', n: 0, a: { t: 'wait' } });
   assert.ok(a.errors().includes('phase'));
 

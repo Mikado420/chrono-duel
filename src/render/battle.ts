@@ -5,6 +5,7 @@ import {
   actor, apply, attackTarget, canShift, cardCost, createGame, isReady, legalActions, other, resvCount, resvRange,
   type Action, type GameEvent, type GameState, type PlayerIndex, type Target,
 } from '../core/engine';
+import type { GameLog } from '../core/gamelog';
 import { NET, type NetLink, type NetResult, type ServerMsg } from '../core/net';
 import { RULES } from '../core/rules';
 import { audio } from './audio';
@@ -31,7 +32,9 @@ export interface BattleConfig {
 }
 export interface BattleResult { winner: PlayerIndex | -1; reason: 'ko' | 'time' | 'surrender' | 'timeout' | 'disconnect'; myHp: number; foeHp: number; actions: number; myActions: number; stats: { spells: number; summons: number; reserves: number; attacks: number };
   /** Every card the player used (summoned, cast or reserved) this game, for the play statistics. */
-  played: string[] }
+  played: string[];
+  /** The full game record (games against the AI; online games are recorded by the server). */
+  log?: GameLog }
 
 const LANE_X = [150, 360, 570];
 /** Vertical layout in design units. Tall phones get extra height, which is shared out by `applyLayout`. */
@@ -98,6 +101,7 @@ export class BattleScene extends Container {
   private myActs = 0;
   private stats = { spells: 0, summons: 0, reserves: 0, attacks: 0 };
   private played = new Set<string>();
+  private log: GameLog | null = null;
 
   private get foe(): string { return this.cfg.net?.foeName ?? this.cfg.foeName ?? 'AI'; }
   /** Online and rated games run a move timer (45s, then an automatic wait; three in a row forfeits). */
@@ -226,6 +230,7 @@ export class BattleScene extends Container {
     const first = (Math.random() < 0.5 ? 0 : 1) as PlayerIndex;
     const { state } = createGame([this.cfg.myDeck, this.cfg.aiDeck], seed, first);
     this.s = state;
+    this.log = { seed, first, decks: [this.cfg.myDeck.slice(), this.cfg.aiDeck.slice()], actions: [] };
     this.syncAll(false);
     await this.dealIntro(first);
     this.ready = true; // lets the move timer show
@@ -271,6 +276,7 @@ export class BattleScene extends Container {
         const act = await chooseActionAsync(this.s, 1, this.cfg.level);
         if (this.destroyed_) return;
         const ev = apply(this.s, act);
+        this.log?.actions.push(act);
         await this.play(ev);
       } else if (a === 0) {
         this.busy = false;
@@ -296,6 +302,7 @@ export class BattleScene extends Container {
       return;
     }
     const ev = apply(this.s, a);
+    this.log?.actions.push(a);
     await this.play(ev);
     await this.loop();
   }
@@ -308,7 +315,7 @@ export class BattleScene extends Container {
     const o = this.netResult ?? this.s.over!;
     await this.tw.wait(500);
     if (this.destroyed_) return;
-    this.onEnd({ winner: o.winner, reason: o.reason, myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats }, played: [...this.played] });
+    this.onEnd({ winner: o.winner, reason: o.reason, myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats }, played: [...this.played], ...(this.log ? { log: this.log } : {}) });
   }
   // ------------------------------------------------------------------ online play
   private async startOnline(net: NetLink) {
@@ -407,7 +414,7 @@ export class BattleScene extends Container {
     this.finished = true;
     this.busy = true;
     this.timerEnd = null;
-    this.onEnd({ winner: 1, reason, myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats }, played: [...this.played] });
+    this.onEnd({ winner: 1, reason, myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats }, played: [...this.played], ...(this.log ? { log: this.log } : {}) });
   }
 
   // ------------------------------------------------------------------ sync

@@ -161,12 +161,14 @@ async function boot() {
       store.saveRated();
       void syncRated();
     }
-    // play statistics: this seat's deck, the cards it used and the result (anonymous, fails soft)
+    // play statistics: this seat's deck, the cards it used, the result and the game record (anonymous, fails soft)
     void reportMatch({
       gid: newId(), id: store.account().id, v: VERSION,
       mode: online ? 'online' : lastCfg?.rated ? 'rated' : 'free', ai: online ? undefined : lastCfg?.level,
       deck: online ? flow.myDeck : lastCfg?.myDeck ?? [], played: r.played,
       score: r.winner === 0 ? 1 : r.winner === -1 ? 0.5 : 0, reason: r.reason, actions: r.myActions, ms: Date.now() - battleStartedAt,
+      // games against the AI carry the whole record (online games are recorded by the server)
+      ...(!online && r.log ? { log: r.log, deckName: lastCfg?.myDeckName, foe: lastCfg?.aiDeckName } : {}),
     });
     // the final board stays visible behind the result screen until the player moves on
     if (online) screens.resultOnline(r, endBattle, rw, xp);

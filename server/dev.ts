@@ -86,9 +86,13 @@ const kv: KV = {
   get: async <T>(k: string) => structuredClone(mem.get(k)) as T | undefined,
   put: async (k, v) => { mem.set(k, structuredClone(v)); },
   list: async <T>(prefix: string) => [...mem.entries()].filter(([k]) => k.startsWith(prefix)).map(([, v]) => structuredClone(v) as T),
+  page: async <T>(prefix: string, after: string | undefined, limit: number) =>
+    [...mem.entries()].filter(([k]) => k.startsWith(prefix) && (!after || k > after)).sort(([a], [b]) => (a < b ? -1 : 1)).slice(0, limit).map(([k, v]) => [k, structuredClone(v) as T] as [string, T]),
 };
 const board = new Leaderboard(kv, () => Date.now());
-const stats = new PlayStats(kv, () => Date.now());
+// game records: read them with `npm run logs -- http://localhost:8787 dev`
+const stats = new PlayStats(kv, () => Date.now(), process.env.ADMIN_TOKEN ?? 'dev');
+env.onLog = (r) => { void stats.keepRoom(r); };
 const server = createServer((req, res) => {
   const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST, OPTIONS', 'access-control-allow-headers': 'content-type' };
   const path = (req.url ?? '/').split('?')[0];

@@ -9,7 +9,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { normalizeCode, type ClientMsg, type ServerMsg } from '../../src/core/net';
 import { Room, type Conn, type RoomEnv, type RoomSnapshot } from '../../src/server/room';
 import { Leaderboard, handleApi, type KV } from '../../src/server/leaderboard';
-import { PlayStats } from '../../src/server/stats';
+import { PlayStats, type RoomLog } from '../../src/server/stats';
 
 export interface Env {
   ROOMS: DurableObjectNamespace<RoomDO>;
@@ -17,6 +17,8 @@ export interface Env {
   RANKING: DurableObjectNamespace<RankingDO>;
   /** Comma separated list of allowed Origin headers. Empty or unset allows any origin. */
   ALLOWED_ORIGINS?: string;
+  /** Secret for reading the game records (POST /api/logs). Set with `wrangler secret put ADMIN_TOKEN`; unset = no reading. */
+  ADMIN_TOKEN?: string;
 }
 
 const roomEnv: RoomEnv = {
@@ -67,13 +69,17 @@ export class RankingDO extends DurableObject<Env> {
       get: async <T>(k: string) => (await ctx.storage.get<T>(k)) ?? undefined,
       put: async (k, v) => { await ctx.storage.put(k, v); },
       list: async <T>(prefix: string) => [...(await ctx.storage.list<T>({ prefix })).values()],
+      page: async <T>(prefix: string, after: string | undefined, limit: number) => [...(await ctx.storage.list<T>({ prefix, limit, ...(after ? { startAfter: after } : {}) })).entries()],
     };
     this.lb = new Leaderboard(kv, () => Date.now());
-    this.stats = new PlayStats(kv, () => Date.now());
+    this.stats = new PlayStats(kv, () => Date.now(), env.ADMIN_TOKEN);
   }
+  /** Called by the rooms (RPC) when an online game ends. */
+  async keepRoom(r: RoomLog): Promise<void> { await this.stats.keepRoom(r); }
   async fetch(req: Request): Promise<Response> {
     const text = await req.text();
-    if (text.length > 16_384) return Response.json({ error: 'too large' }, { status: 413 });
+    // a game record (actions of both sides) makes a report a few KB; leave room for long games
+    if (text.length > 131_072) return Response.json({ error: 'too large' }, { status: 413 });
     let body: unknown = null;
     try { body = text ? JSON.parse(text) : {}; } catch { return Response.json({ error: 'bad json' }, { status: 400 }); }
     const r = await handleApi(this.lb, new URL(req.url).pathname, req.method, body, this.stats);
@@ -85,15 +91,18 @@ interface Attachment { cid: string }
 
 export class RoomDO extends DurableObject<Env> {
   private room: Room | null = null;
+  /** Like `roomEnv`, plus handing finished games to the statistics (in the background). */
+  private env2: RoomEnv;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    this.env2 = { ...roomEnv, onLog: (r) => ctx.waitUntil(env.RANKING.get(env.RANKING.idFromName('friends')).keepRoom(r).catch(() => {})) };
     // keep-alive pings are answered without waking the object
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
     ctx.blockConcurrencyWhile(async () => {
       const snap = await ctx.storage.get<RoomSnapshot>('room');
       if (!snap) return;
-      this.room = new Room(snap.code, roomEnv, snap);
+      this.room = new Room(snap.code, this.env2, snap);
       for (const ws of ctx.getWebSockets()) this.room.attach(this.conn(ws));
     });
   }
@@ -114,7 +123,7 @@ export class RoomDO extends DurableObject<Env> {
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment({ cid: crypto.randomUUID() } satisfies Attachment);
-    this.room ??= new Room(code, roomEnv);
+    this.room ??= new Room(code, this.env2);
     return new Response(null, { status: 101, webSocket: client });
   }
 
