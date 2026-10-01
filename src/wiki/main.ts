@@ -230,12 +230,12 @@ function initAdmin() {
   };
   q.oninput = render;
   const load = async () => {
-    try { localStorage.setItem(ADM_KEY, tok.value); } catch { /* storage blocked */ }
+    try { localStorage.setItem(ADM_KEY, tok.value.trim()); } catch { /* storage blocked */ }
     sum.textContent = '読み込み中…'; items = []; game.innerHTML = ''; list.style.display = '';
     let after: string | null = null;
     try {
       for (;;) {
-        const res = await fetch(base + '/api/logs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: tok.value, v: ver.value || undefined, after, limit: 200 }) });
+        const res = await fetch(base + '/api/logs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: tok.value.trim(), v: ver.value || undefined, after, limit: 200 }) });
         if (res.status === 403) { sum.textContent = 'トークンが違います。'; return; }
         if (!res.ok) { sum.textContent = `サーバーエラー（${res.status}）`; return; }
         const page = (await res.json()) as { v: string | null; items: StoredLog[]; next: string | null };
