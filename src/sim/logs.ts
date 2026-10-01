@@ -109,7 +109,7 @@ const groupBy = (xs: Seat[], key: (x: Seat) => string) => { const m = new Map<st
     : await download();
   if (gameId) {
     const r = items.find((x) => x.gid === gameId);
-    if (!r) { console.error(`試合 ${gameId} が見つかりません`); proc.exit(1); }
+    if (!r) { console.error(`試合 ${gameId} が見つかりません`); proc.exit(1); return; }
     console.log(narrate(r.log, [r.names?.[0] || '席0', r.src === 'report' ? 'AI' : r.names?.[1] || '席1']));
     return;
   }
