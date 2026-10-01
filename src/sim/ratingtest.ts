@@ -1,6 +1,6 @@
 /* Rated play and the friends' ranking: `npm run test:rating` */
 import assert from 'node:assert/strict';
-import { AI_RATING, EXPERT_ONLY, NEW_RATED, OPP_SPREAD, PLAYER_NAMES, START_RATING, TIERS, finishRated, makeOpponent, nextRating, opponentPool, pickOpponent, startRated, tierOf } from '../meta/rating';
+import { AI_RATING, NEW_RATED, OPP_SPREAD, PLAYER_NAMES, RATED_FOES, START_RATING, finishRated, foeById, makeOpponent, nextRating, opponentPool, pickOpponent, startRated, tierOf } from '../meta/rating';
 import { Leaderboard, MIN_GAME_MS, type KV } from '../server/leaderboard';
 import { mulberry32 } from '../core/engine';
 
@@ -8,15 +8,21 @@ import { mulberry32 } from '../core/engine';
 assert.equal(tierOf(START_RATING).tier.name, '刻守');
 assert.equal(tierOf(0).tier.id, 'novice');
 assert.equal(tierOf(99999).tier.id, 'eternal');
+const top = RATED_FOES[RATED_FOES.length - 1].rating, bottom = RATED_FOES[0].rating;
 for (let r = 0; r < 2200; r += 25) {
   const pool = opponentPool(r);
   assert.ok(Math.abs(pool.reduce((a, [, w]) => a + w, 0) - 1) < 1e-9, `weights sum to 1 at ${r}`);
-  if (r >= EXPERT_ONLY) assert.deepEqual(pool.map(([l]) => l), ['expert'], 'only 超つよい at the top');
+  assert.ok(pool.every(([id]) => foeById(id)), 'known opponents only');
+  // inside the range of opponents, the expected gap stays small
+  const gap = pool.reduce((a, [id, w]) => a + w * Math.abs(foeById(id)!.rating - r), 0);
+  if (r >= bottom && r <= top) assert.ok(gap <= 70, `opponents near ${r} (average gap ${gap.toFixed(0)})`);
 }
+assert.deepEqual(opponentPool(3000), [[RATED_FOES[RATED_FOES.length - 1].id, 1]], 'the strongest above the top');
+assert.ok(RATED_FOES.every((f, i) => i === 0 || f.rating > RATED_FOES[i - 1].rating), 'steps in order');
+assert.deepEqual(['easy', 'normal', 'hard', 'expert'].map((id) => foeById(id)!.rating), [AI_RATING.easy, AI_RATING.normal, AI_RATING.hard, AI_RATING.expert], 'the old ids keep their ratings');
 const rand = mulberry32(1);
-assert.ok(Array.from({ length: 200 }, () => pickOpponent(1400, rand)).some((l) => l === 'expert'), 'expert already appears in 刻匠');
-assert.ok(Array.from({ length: 200 }, () => pickOpponent(800, rand)).every((l) => l === 'easy' || l === 'normal'), 'beginners meet the weaker AIs');
-assert.equal(TIERS.find((t) => t.min === EXPERT_ONLY)?.name, '時の賢者');
+assert.ok(Array.from({ length: 200 }, () => pickOpponent(1290, rand)).every((l) => l !== 'normal' && l !== 'easy'), 'no weak opponent for a 1290 player any more');
+assert.ok(Array.from({ length: 200 }, () => pickOpponent(800, rand)).every((l) => l === 'easy' || l === 'easy+'), 'beginners meet the weaker AIs');
 
 // Elo: beating a stronger AI is worth more; every result moves the number
 const upHard = nextRating(1000, 50, AI_RATING.hard, 1) - 1000, upEasy = nextRating(1000, 50, AI_RATING.easy, 1) - 1000;
@@ -36,7 +42,7 @@ assert.ok(r > AI_RATING.expert && r < AI_RATING.expert + 200, `60% vs 超つよ�
 for (let i = 0; i < 300; i++) {
   const o = makeOpponent(1000 + i * 3, 'ときのすけ', ['Rei_0423'], rand);
   assert.ok(PLAYER_NAMES.includes(o.name) && o.name !== 'ときのすけ' && o.name !== 'Rei_0423');
-  assert.ok(Math.abs(o.rating - AI_RATING[o.ai]) <= OPP_SPREAD);
+  assert.ok(Math.abs(o.rating - foeById(o.ai)!.rating) <= OPP_SPREAD);
   assert.ok(!/AI|つよい|やさしい|ふつう/.test(o.name), 'names never give the AI away');
 }
 const me = NEW_RATED();
@@ -63,6 +69,11 @@ assert.equal(r1, nextRating(START_RATING, 0, AI_RATING.hard, 1), 'server uses th
 { const lb2 = new Leaderboard(kv, () => now); const C = { id: 'cccccccccccccccccccc', secret: 'uuuuuuuuuuuuuuuuuuuuuu', name: 'c' };
   const x = await lb2.submit({ ...C, games: [game('c1', 1, now, 5 * 60_000, 15, 2400)] });
   assert.equal((x.body as { rating: number }).rating, nextRating(START_RATING, 0, AI_RATING.hard, 1), 'opponent rating is bounded by its level');
+  mem.delete(`p:${C.id}`);
+  // the steps between levels are known to the server; an unknown opponent is refused
+  const y = await lb2.submit({ ...C, games: [{ ...game('c2', 1, now), ai: 'hard+' }, { ...game('c3', 1, now + 2 * MIN_GAME_MS), ai: 'super' }] });
+  assert.equal((y.body as { rating: number }).rating, nextRating(START_RATING, 0, foeById('hard+')!.rating, 1), 'a step has its own rating');
+  assert.deepEqual((y.body as { refused: string[] }).refused, ['c3']);
   mem.delete(`p:${C.id}`); }
 res = await lb.submit({ ...A, games: [game('a1', 1, now + 70_000)] });
 assert.deepEqual((res.body as { refused: string[] }).refused, ['a1'], 'the same game counts once');

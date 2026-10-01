@@ -10,7 +10,7 @@ import { Tweener } from './render/tween';
 import { PackOpenScene } from './render/packOpen';
 import { MIN_ACTIONS, applyReward, canOpen, localDate, openPack, packById, reward, type Reward } from './meta/economy';
 import { recordBattle, track } from './meta/progress';
-import { finishRated, makeOpponent, startRated, type RatedGame } from './meta/rating';
+import { finishRated, foeById, foeLevel, makeOpponent, startRated, type RatedGame } from './meta/rating';
 import { PRESET_DECKS } from './core/decks';
 import { PACK_TEST_DECKS } from './sim/packDecks';
 import { reportMatch, saveLiveGame, syncRated, takeLiveGame } from './net/api';
@@ -188,7 +188,8 @@ async function boot() {
   const startRatedGame = (deck: DeckDef) => {
     const recent = store.rated.history.slice(0, 5).map((g) => g.foe);
     const o = makeOpponent(store.rated.rating, store.settings.name, recent);
-    const pool = o.ai === 'easy' || o.ai === 'normal' ? PRESET_DECKS : [...PRESET_DECKS, ...PACK_TEST_DECKS];
+    const level = foeLevel(o.ai);
+    const pool = level === 'easy' || level === 'normal' ? PRESET_DECKS : [...PRESET_DECKS, ...PACK_TEST_DECKS];
     const aiDeck = pool[Math.floor(Math.random() * pool.length)];
     endBattle();
     screens.matching(o, () => {
@@ -196,7 +197,7 @@ async function boot() {
       startRated(store.rated, o, deck.id, Date.now());
       store.saveRated();
       screens.clear();
-      run({ myDeck: deck.cards, myDeckName: deck.name, aiDeck: aiDeck.cards, aiDeckName: aiDeck.name, level: o.ai, rated: true, foeName: o.name });
+      run({ myDeck: deck.cards, myDeckName: deck.name, aiDeck: aiDeck.cards, aiDeckName: aiDeck.name, level, aiSpec: foeById(o.ai)?.spec, rated: true, foeName: o.name });
     }, () => screens.rated());
   };
   // a rated game left unfinished last time (app closed, tab killed) counts as a loss

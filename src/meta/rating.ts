@@ -1,10 +1,10 @@
 /**
  * Rated play. Opponents are AI players presented as ordinary players (a name and a rating, never "AI" or a
- * difficulty). Their strength follows the player's rating, and from 時の賢者 up only the strongest AI is left.
+ * difficulty). Their strength is picked near the player's rating from nine steps (RATED_FOES).
  * Pure logic: the client uses it for instant feedback and the ranking server runs the same code to keep the
  * authoritative number, so both always agree.
  */
-import type { AiLevel } from '../core/ai';
+import type { AiLevel, AiSpec } from '../core/ai';
 
 export const START_RATING = 1000;
 export const MIN_RATING = 100;
@@ -24,8 +24,31 @@ export const TIERS: Tier[] = [
   { id: 'sage', name: '時の賢者', min: 1500, color: '#ffd66e' },
   { id: 'eternal', name: '永劫', min: 1700, color: '#ff9f7a' },
 ];
-/** From this rating on, only 超つよい is matched. */
-export const EXPERT_ONLY = 1500;
+
+/**
+ * Rated opponents: the four AI levels plus steps between and above them, so there is always one near the player.
+ * A step between two levels plays each move at one or the other (half and half); the steps above 超つよい search
+ * harder. Ratings keep the scale of the four levels; the steps are placed by AI-vs-AI games (scripts in README):
+ * easy→normal +127, normal→hard +40, hard→expert +108 Elo in AI games, mapped onto the existing 850/1000/1200/1450.
+ * The ids are stored in players' records and sent to the ranking server, so existing ids never change meaning.
+ */
+export interface RatedFoe { id: string; rating: number; spec: AiSpec }
+export const RATED_FOES: RatedFoe[] = [
+  { id: 'easy', rating: 850, spec: { level: 'easy' } },
+  { id: 'easy+', rating: 925, spec: { level: 'easy', mix: { level: 'normal', p: 0.5 } } },
+  { id: 'normal', rating: 1000, spec: { level: 'normal' } },
+  { id: 'normal+', rating: 1100, spec: { level: 'normal', mix: { level: 'hard', p: 0.5 } } },
+  { id: 'hard', rating: 1200, spec: { level: 'hard' } },
+  { id: 'hard+', rating: 1325, spec: { level: 'hard', mix: { level: 'expert', p: 0.5 } } },
+  { id: 'expert', rating: 1450, spec: { level: 'expert' } },
+  { id: 'expert+', rating: 1530, spec: { level: 'expert', search: { candidates: 8, rollouts: 24, depth: 30 } } },
+  { id: 'expert++', rating: 1600, spec: { level: 'expert', search: { candidates: 12, rollouts: 40, depth: 30 } } },
+];
+export const foeById = (id: string): RatedFoe | undefined => RATED_FOES.find((f) => f.id === id);
+/** The plain level a rated opponent is closest to (rewards, statistics, which decks it may use). */
+export const foeLevel = (id: string): AiLevel => foeById(id)?.spec.level ?? 'normal';
+/** How wide the choice around the player's rating is: steps further away than this are rare. */
+export const MATCH_WIDTH = 90;
 
 export function tierOf(rating: number): { tier: Tier; next: Tier | null; into: number; span: number } {
   let i = 0;
@@ -34,18 +57,21 @@ export function tierOf(rating: number): { tier: Tier; next: Tier | null; into: n
   return { tier, next, into: rating - tier.min, span: next ? next.min - tier.min : 0 };
 }
 
-/** Which AI levels can appear at a rating, with their weights. */
-export function opponentPool(rating: number): [AiLevel, number][] {
-  if (rating >= EXPERT_ONLY) return [['expert', 1]];
-  if (rating >= 1300) return [['hard', 0.65], ['expert', 0.35]];
-  if (rating >= 1100) return [['normal', 0.3], ['hard', 0.7]];
-  if (rating >= 900) return [['normal', 1]];
-  return [['easy', 0.7], ['normal', 0.3]];
+/**
+ * Which rated opponents can appear at a rating, with their weights: the nearest steps, more likely the nearer they
+ * are. Below the weakest or above the strongest step, that step.
+ */
+export function opponentPool(rating: number): [string, number][] {
+  const raw = RATED_FOES.map((f) => [f.id, Math.exp(-(((rating - f.rating) / MATCH_WIDTH) ** 2))] as [string, number]).filter(([, w]) => w > 0.05);
+  if (!raw.length) return [[(rating < RATED_FOES[0].rating ? RATED_FOES[0] : RATED_FOES[RATED_FOES.length - 1]).id, 1]];
+  const sum = raw.reduce((a, [, w]) => a + w, 0);
+  return raw.map(([id, w]) => [id, w / sum]);
 }
-export function pickOpponent(rating: number, rand: () => number = Math.random): AiLevel {
+export function pickOpponent(rating: number, rand: () => number = Math.random): string {
+  const pool = opponentPool(rating);
   let r = rand();
-  for (const [lv, w] of opponentPool(rating)) { if (r < w) return lv; r -= w; }
-  return opponentPool(rating)[0][0];
+  for (const [id, w] of pool) { if (r < w) return id; r -= w; }
+  return pool[pool.length - 1][0];
 }
 
 export const expected = (me: number, them: number) => 1 / (1 + Math.pow(10, (them - me) / 400));
@@ -69,18 +95,19 @@ export const PLAYER_NAMES = [
   'ちひろ', 'Shiro', 'かなで', 'まっちゃ', 'Kei', 'いぶき', 'ひろと', 'ruri', 'つむぎ', '終焉の鐘', 'Haru', 'れん',
   'のぞみ', 'Aki', 'ゆうと', 'しずく', 'Natsu', 'けいた', 'ことは', 'Mugi', 'はやて', 'すず', 'Ryo', 'あかね',
 ];
-export interface Opponent { ai: AiLevel; name: string; rating: number }
+/** `ai` is the rated opponent's id (RATED_FOES). */
+export interface Opponent { ai: string; name: string; rating: number }
 /** Draws the next rated opponent: an AI level for the player's rating, dressed as a player. */
 export function makeOpponent(rating: number, myName: string, recent: string[], rand: () => number = Math.random): Opponent {
   const ai = pickOpponent(rating, rand);
   const pool = PLAYER_NAMES.filter((n) => n !== myName && !recent.includes(n));
   const name = pool[Math.floor(rand() * pool.length)] ?? PLAYER_NAMES[0];
-  const shown = Math.round(AI_RATING[ai] + (rand() * 2 - 1) * OPP_SPREAD);
+  const shown = Math.round(foeById(ai)!.rating + (rand() * 2 - 1) * OPP_SPREAD);
   return { ai, name, rating: Math.max(MIN_RATING, shown) };
 }
 
 // ------------------------------------------------------------------ the player's rated record
-export interface RatedGame { at: number; ai: AiLevel; score: 0 | 0.5 | 1; before: number; after: number; deck: string; foe: string; foeRating: number }
+export interface RatedGame { at: number; ai: string; score: 0 | 0.5 | 1; before: number; after: number; deck: string; foe: string; foeRating: number }
 export interface Rated {
   rating: number;
   games: number;
@@ -88,14 +115,14 @@ export interface Rated {
   peak: number;
   history: RatedGame[];
   /** A rated game that was started and not finished yet. If the app is closed mid-game, it counts as a loss. */
-  pending: { at: number; ai: AiLevel; deck: string; foe: string; foeRating: number } | null;
+  pending: { at: number; ai: string; deck: string; foe: string; foeRating: number } | null;
   /** Results not yet accepted by the ranking server. */
   outbox: SubmitReq[];
 }
 export const NEW_RATED = (): Rated => ({ rating: START_RATING, games: 0, wins: 0, peak: START_RATING, history: [], pending: null, outbox: [] });
 
 /** What the client sends to the ranking server for one finished game. */
-export interface SubmitReq { gid: string; ai: AiLevel; opp?: number; score: 0 | 0.5 | 1; actions: number; ms: number; at: number }
+export interface SubmitReq { gid: string; ai: string; opp?: number; score: 0 | 0.5 | 1; actions: number; ms: number; at: number }
 
 export function startRated(r: Rated, o: Opponent, deck: string, now: number) {
   r.pending = { at: now, ai: o.ai, deck, foe: o.name, foeRating: o.rating };
@@ -106,7 +133,7 @@ export function finishRated(r: Rated, score: 0 | 0.5 | 1, actions: number, now: 
   if (!p) return null;
   r.pending = null;
   const before = r.rating;
-  const opp = p.foeRating ?? AI_RATING[p.ai];
+  const opp = p.foeRating ?? foeById(p.ai)?.rating ?? START_RATING;
   const after = nextRating(before, r.games, opp, score);
   r.rating = after;
   r.games++;

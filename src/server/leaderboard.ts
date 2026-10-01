@@ -5,9 +5,8 @@
  * The server never trusts a rating number from a client. Clients report finished games and the server replays the
  * same rating rules (src/meta/rating.ts). Games that are too short, too frequent or repeated are refused.
  */
-import type { AiLevel } from '../core/ai';
 import { cleanName } from '../core/net';
-import { AI_RATING, OPP_SPREAD, START_RATING, nextRating, tierOf, type SubmitReq } from '../meta/rating';
+import { OPP_SPREAD, START_RATING, foeById, nextRating, tierOf, type SubmitReq } from '../meta/rating';
 import type { PlayStats } from './stats';
 
 export interface KV {
@@ -20,7 +19,6 @@ export interface KV {
 export interface PlayerRec { id: string; key: string; name: string; rating: number; games: number; wins: number; peak: number; lastAt: number; lastGids: string[]; created: number }
 export interface RankRow { name: string; rating: number; tier: string; games: number; wins: number; peak: number; me?: boolean }
 
-const LEVELS: AiLevel[] = ['easy', 'normal', 'hard', 'expert'];
 /** A rated game against the AI takes longer than this (it also stops scripted spamming). */
 export const MIN_GAME_MS = 60_000;
 export const MIN_ACTIONS = 5;
@@ -55,13 +53,14 @@ export class Leaderboard {
     const games = Array.isArray(body.games) ? (body.games as SubmitReq[]).slice(0, 20) : [];
     const accepted: string[] = [], refused: string[] = [];
     for (const g of games) {
-      const wellFormed = g && typeof g.gid === 'string' && g.gid.length <= 64 && LEVELS.includes(g.ai) && [0, 0.5, 1].includes(g.score)
+      const wellFormed = g && typeof g.gid === 'string' && g.gid.length <= 64 && typeof g.ai === 'string' && !!foeById(g.ai) && [0, 0.5, 1].includes(g.score)
         && typeof g.actions === 'number' && typeof g.ms === 'number' && typeof g.at === 'number' && g.at <= this.now() + 60_000 && !rec.lastGids.includes(g.gid);
       // losses always count (quitting early must not dodge one); wins and draws need a real game, spaced out
       const ok = wellFormed && (g.score === 0 || (g.actions >= MIN_ACTIONS && g.ms >= MIN_GAME_MS && g.at - rec.lastAt >= MIN_GAME_MS));
       if (!ok) { if (g && typeof g.gid === 'string') refused.push(g.gid); continue; }
       // the opponent's shown rating must fit its level, so a client cannot invent a very strong opponent
-      const opp = typeof g.opp === 'number' && Math.abs(g.opp - AI_RATING[g.ai]) <= OPP_SPREAD ? g.opp : AI_RATING[g.ai];
+      const base = foeById(g.ai)!.rating;
+      const opp = typeof g.opp === 'number' && Math.abs(g.opp - base) <= OPP_SPREAD ? g.opp : base;
       rec.rating = nextRating(rec.rating, rec.games, opp, g.score);
       rec.games++;
       if (g.score === 1) rec.wins++;

@@ -1,5 +1,5 @@
 import { Container, FederatedPointerEvent, Graphics, type Sprite, type Ticker } from 'pixi.js';
-import { AI_LEVEL_NAMES, chooseAction, chooseActionAsync, type AiLevel } from '../core/ai';
+import { AI_LEVEL_NAMES, chooseAction, chooseActionAsync, chooseActionSpecAsync, type AiLevel, type AiSpec } from '../core/ai';
 import { KEYWORD_HELP, cardDef, keywordsOf } from '../core/cards';
 import {
   actor, apply, attackTarget, canShift, cardCost, createGame, isReady, legalActions, other, resvCount, resvRange,
@@ -22,6 +22,8 @@ export interface BattleConfig {
   aiDeck: string[];
   aiDeckName: string;
   level: AiLevel;
+  /** Rated play: the opponent's exact strength (may sit between or above the levels). Defaults to `level`. */
+  aiSpec?: AiSpec;
   seed?: number;
   /** Rated game (surrendering or leaving counts as a loss). The opponent is shown only by `foeName`. */
   rated?: boolean;
@@ -272,10 +274,12 @@ export class BattleScene extends Container {
         this.busy = true;
         if (this.cfg.rated) this.setTimer(NET.TURN_MS);
         this.refreshControls();
-        // a person takes a moment to decide; rated opponents do too
-        await this.tw.wait(this.cfg.rated ? 700 + Math.random() * 1900 : 420);
+        // a person takes a moment to decide; rated opponents do too (the AI's own thinking counts towards it)
+        const pause = this.cfg.rated ? 700 + Math.random() * 1900 : 420;
+        const t0 = performance.now();
+        const act = this.cfg.aiSpec ? await chooseActionSpecAsync(this.s, 1, this.cfg.aiSpec) : await chooseActionAsync(this.s, 1, this.cfg.level);
         if (this.destroyed_) return;
-        const act = await chooseActionAsync(this.s, 1, this.cfg.level);
+        await this.tw.wait(Math.max(0, pause - (performance.now() - t0)));
         if (this.destroyed_) return;
         const ev = apply(this.s, act);
         this.log?.actions.push(act);

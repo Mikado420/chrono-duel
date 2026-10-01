@@ -190,6 +190,28 @@ function deepValue(s: GameState, pi: PlayerIndex, mine: number, theirs: number):
 
 /** Tunables of the 超つよい rollout search (the balance tools may change them). */
 export const EXPERT_SEARCH = { candidates: 6, rollouts: 12, depth: 30 };
+export type SearchCfg = { candidates: number; rollouts: number; depth: number };
+
+/**
+ * An AI strength between or above the four levels (rated play): each move is played at `level`, or at `mix.level`
+ * with probability `mix.p`; `search` makes 超つよい think harder.
+ */
+export interface AiSpec { level: AiLevel; mix?: { level: AiLevel; p: number }; search?: SearchCfg }
+function specMove(spec: AiSpec, rand: () => number): { level: AiLevel; search?: SearchCfg } {
+  const level = spec.mix && rand() < spec.mix.p ? spec.mix.level : spec.level;
+  return { level, search: level === 'expert' ? spec.search : undefined };
+}
+/** chooseAction for an AiSpec. */
+export function chooseActionSpec(s: GameState, pi: PlayerIndex, spec: AiSpec, rand: () => number = Math.random): Action {
+  const m = specMove(spec, rand);
+  return m.level === 'expert' ? chooseExpert(s, pi, rand, m.search) : chooseAction(s, pi, m.level, rand);
+}
+/** chooseActionAsync for an AiSpec. */
+export async function chooseActionSpecAsync(s: GameState, pi: PlayerIndex, spec: AiSpec, rand: () => number = Math.random): Promise<Action> {
+  const m = specMove(spec, rand);
+  if (m.level !== 'expert') return chooseAction(s, pi, m.level, rand);
+  return runSteps(expertSteps(s, pi, rand, m.search));
+}
 
 /**
  * One guess of the hidden information for `pi`: the opponent's hand and deck become random cards, our own deck
@@ -225,7 +247,7 @@ function rollout(s: GameState, pi: PlayerIndex, depth: number, rand: () => numbe
 }
 
 /** A generator so the UI can pause between candidates and keep animating while 超つよい thinks. */
-function* expertSteps(s: GameState, pi: PlayerIndex, rand: () => number): Generator<void, Action> {
+function* expertSteps(s: GameState, pi: PlayerIndex, rand: () => number, search: SearchCfg = EXPERT_SEARCH): Generator<void, Action> {
   const base = fogged(s, pi);
   const acts = pruneReserves(base, pi, legalActions(base, pi));
   // 1) shortlist with the deterministic search
@@ -234,11 +256,11 @@ function* expertSteps(s: GameState, pi: PlayerIndex, rand: () => number): Genera
     apply(c, a);
     return { a, v: deepValue(c, pi, 2, 2) + intentBonus(base, pi, a) + breakBonus(s, pi, a) };
   }).sort((x, y) => y.v - x.v);
-  const short = scored.slice(0, EXPERT_SEARCH.candidates);
+  const short = scored.slice(0, search.candidates);
   if (short.length <= 1) return short[0]?.a ?? { t: 'wait' };
   // 2) settle it by playing each candidate out against several guesses of the hidden cards
   const ownDeck = s.players[pi].deck.slice();
-  const worlds = Array.from({ length: EXPERT_SEARCH.rollouts }, () => determinize(s, pi, ownDeck, rand));
+  const worlds = Array.from({ length: search.rollouts }, () => determinize(s, pi, ownDeck, rand));
   let best = short[0].a, bestV = -Infinity;
   for (const cand of short) {
     yield;
@@ -246,7 +268,7 @@ function* expertSteps(s: GameState, pi: PlayerIndex, rand: () => number): Genera
     for (const w of worlds) {
       const c = clone(w);
       try { apply(c, cand.a); } catch { sum -= 1000; continue; }
-      sum += rollout(c, pi, EXPERT_SEARCH.depth, rand);
+      sum += rollout(c, pi, search.depth, rand);
     }
     // keep a little of the search score: it knows about reservations that rollouts do not play
     const v = sum / worlds.length + cand.v * 0.25;
@@ -255,19 +277,21 @@ function* expertSteps(s: GameState, pi: PlayerIndex, rand: () => number): Genera
   return best;
 }
 
-function chooseExpert(s: GameState, pi: PlayerIndex, rand: () => number): Action {
-  const it = expertSteps(s, pi, rand);
+function chooseExpert(s: GameState, pi: PlayerIndex, rand: () => number, search?: SearchCfg): Action {
+  const it = expertSteps(s, pi, rand, search);
   for (;;) { const r = it.next(); if (r.done) return r.value; }
 }
-/** Same as chooseAction, but gives the browser a frame between 超つよい's candidates. */
-export async function chooseActionAsync(s: GameState, pi: PlayerIndex, level: AiLevel, rand: () => number = Math.random): Promise<Action> {
-  if (level !== 'expert') return chooseAction(s, pi, level, rand);
-  const it = expertSteps(s, pi, rand);
+async function runSteps(it: Generator<void, Action>): Promise<Action> {
   for (;;) {
     const r = it.next();
     if (r.done) return r.value;
     await new Promise((res) => setTimeout(res, 0));
   }
+}
+/** Same as chooseAction, but gives the browser a frame between 超つよい's candidates. */
+export async function chooseActionAsync(s: GameState, pi: PlayerIndex, level: AiLevel, rand: () => number = Math.random): Promise<Action> {
+  if (level !== 'expert') return chooseAction(s, pi, level, rand);
+  return runSteps(expertSteps(s, pi, rand));
 }
 
 export function chooseAction(s: GameState, pi: PlayerIndex, level: AiLevel, rand: () => number = Math.random): Action {
