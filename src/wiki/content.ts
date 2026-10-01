@@ -67,6 +67,7 @@ export const DECK_NOTE: Record<string, string> = {
 export const KW_TIPS: { k: string; label: string; set: string; tip: string; ex: string[] }[] = [
   { k: '速攻', label: '速攻', set: '基本', tip: '出したその刻に1点入れられるので、空いたレーンへの差し込みに強い。', ex: ['scout', 'e_raider'] },
   { k: '挑発', label: '挑発', set: '基本', tip: '真ん中のレーンに置くと左右両方を守れる。隣のレーンに味方がいると、そのレーンへの攻撃は味方自身が受ける。', ex: ['warden', 'e_guard', 'titan'] },
+  { k: '鐘鳴', label: '鐘鳴', set: '基本', tip: '鐘は自分の時計が8・16・24・32刻を越えたときに鳴る。早く出すほど多く鳴らせる。鐘の直前にドローや充填で多めに払うと、鐘をまたいで効果を起こせる。', ex: ['sentinel'] },
   { k: '貫通', label: '貫通', set: '基本', tip: '反撃で自分が倒れても、貫通ダメージは入る。', ex: ['lancer', 'titan'] },
   { k: '残響', label: '残響N', set: '第1弾', tip: '発動は世界の時刻（両者の遅い方）で判定。ユニットの残響は、そのユニットが倒されても起きる。予約した術の残響は、予約の発動時刻から数える。', ex: ['e_sprite', 'e_shot', 'e_storm'] },
   { k: '共鳴', label: '共鳴', set: '第1弾', tip: '1回の発動ごとに、場の共鳴ユニット全員が反応する。残響を多く積んだデッキの中心になる。', ex: ['e_tuner', 'e_bellkeeper', 'e_verna'] },

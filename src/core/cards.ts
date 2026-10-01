@@ -1,7 +1,9 @@
 export type CardKind = 'unit' | 'spell';
 /** C 通常, R 希少, E 秘宝, L 伝説 */
 export type Rarity = 'C' | 'R' | 'E' | 'L';
-export type Keyword = 'taunt' | 'pierce' | 'swift';
+export type Keyword = 'taunt' | 'pierce' | 'swift' | 'shift';
+/** 鐘鳴: what a unit does each time its owner's clock passes a bell. */
+export type BellEffect = 'grow' | 'shot2' | 'draw1' | 'ready';
 /** Card sets. `base` is owned by everyone; later sets come from packs. */
 export type CardSet = 'base' | 'echo';
 export const SET_NAMES: Record<CardSet, string> = { base: '基本', echo: '第1弾「残響の刻」' };
@@ -12,7 +14,7 @@ export type EchoEffect = 'ping1' | 'ping2' | 'shot1' | 'heal2' | 'heal3' | 'draw
 
 /** Ability hooks the engine knows how to run. Kept as ids so card data stays serializable. */
 export type UnitHook =
-  | 'draw1' | 'revealResv' | 'delayOpp1' | 'bellGrow' | 'breakResv' | 'dawnBurst' | 'echoOnDeath'
+  | 'draw1' | 'revealResv' | 'delayOpp1' | 'breakResv' | 'dawnBurst' | 'echoOnDeath'
   // 第1弾
   | 'resonateAtk' | 'resonatePing' | 'resonateRewind' | 'hasten2' | 'storm1';
 
@@ -32,6 +34,8 @@ export interface CardDef {
   /** Time a unit needs after attacking before it can attack again. */
   reload?: number;
   keywords?: Keyword[];
+  /** 鐘鳴 */
+  bell?: BellEffect;
   hook?: UnitHook;
   effect?: SpellEffect;
   text: string;
@@ -64,7 +68,7 @@ export const CARDS: Record<string, CardDef> = {
   oracle: { id: 'oracle', name: '予見の巫女', kind: 'unit', rarity: 'R', cost: 3, atk: 3, hp: 3, reload: 2, hook: 'revealResv', text: '登場時：相手の予約を全て公開する。', flavor: 'あなたの明日は、もう見えている。', motif: 'eye' },
   lancer: { id: 'lancer', name: '突撃槍兵', kind: 'unit', rarity: 'R', cost: 4, atk: 4, hp: 4, reload: 2, keywords: ['pierce'], text: '貫通', flavor: '盾ごと、時間ごと貫く。', motif: 'flame' },
   delayer: { id: 'delayer', name: '遅延術師', kind: 'unit', rarity: 'R', cost: 4, atk: 3, hp: 4, reload: 2, hook: 'delayOpp1', text: '登場時：相手の時計を1進める。', flavor: '少しだけ、待っていてもらおう。', motif: 'spiral' },
-  sentinel: { id: 'sentinel', name: '鐘楼の歩哨', kind: 'unit', rarity: 'R', cost: 4, atk: 2, hp: 5, reload: 2, hook: 'bellGrow', text: '自分の鐘が鳴るたび、攻撃+1・体力+1。', flavor: '鐘の数だけ強くなる。', motif: 'bell' },
+  sentinel: { id: 'sentinel', name: '鐘楼の歩哨', kind: 'unit', rarity: 'R', cost: 4, atk: 2, hp: 5, reload: 2, bell: 'grow', text: '鐘鳴：攻撃+1・体力+1。', flavor: '鐘の数だけ強くなる。', motif: 'bell' },
   heavy: { id: 'heavy', name: '刻の重装兵', kind: 'unit', rarity: 'C', cost: 5, atk: 5, hp: 5, reload: 3, text: '', flavor: '重い一歩は、戻らない。', motif: 'shield' },
   breaker: { id: 'breaker', name: '刻壊し', kind: 'unit', rarity: 'R', cost: 5, atk: 4, hp: 5, reload: 2, hook: 'breakResv', text: '登場時：相手の最も近い予約を1つ破棄する。', flavor: '約束された未来など、ない。', motif: 'gear' },
   dragon: { id: 'dragon', name: '夜明けの竜', kind: 'unit', rarity: 'L', cost: 7, atk: 5, hp: 5, reload: 3, hook: 'dawnBurst', text: '登場時：敵ユニット全てに2ダメージ。', flavor: '夜が明ける。それは終わりの合図。', motif: 'flame' },
@@ -116,10 +120,13 @@ export const KEYWORD_HELP: Record<string, string> = {
   残響: '効果が解決してからN刻後に、弱い効果がもう一度起きる。時計にピンとして表示され、両者の針が届くと発動。予約の枠は使わない。',
   共鳴: '自分の予約か残響が発動するたびに効果が起きる。',
   急襲: '自分の時計が相手より2刻以上遅れているとき、コストがN少なくなる（最低1）。',
+  転移: '1刻払って、隣の空いたレーンへ移れる。準備の状態はそのまま。',
+  鐘鳴: '自分の時計が鐘（8・16・24・32刻）を越えるたびに効果が起きる。',
   充填: '今すぐ使うとき、最大N刻まで多く払って効果を強められる（X＝多く払った刻）。予約するときはX＝0。',
 };
 export function keywordsOf(c: CardDef): string[] {
-  const k: string[] = (c.keywords ?? []).map((x) => ({ taunt: '挑発', pierce: '貫通', swift: '速攻' })[x]);
+  const k: string[] = (c.keywords ?? []).map((x) => ({ taunt: '挑発', pierce: '貫通', swift: '速攻', shift: '転移' })[x]);
+  if (c.bell) k.push('鐘鳴');
   if (c.echo) k.push('残響');
   if (c.hook?.startsWith('resonate')) k.push('共鳴');
   if (c.rush) k.push('急襲');

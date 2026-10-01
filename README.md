@@ -122,6 +122,7 @@ npm run test:econ  # パックの確率・天井・報酬のテスト
 npm run test:meta  # ログインボーナス・ミッション・ランクのテスト
 npm run test:rating # レート計算とランキングサーバーのテスト
 npm run test:stats  # 実戦データ集計のテスト
+npm run test:keywords # 転移・鐘鳴のテスト（テスト専用カードで確認）
 npm run balance -- e_slash collapse   # カードの強さを測る（振り子兵と入れ替えた勝率の増減）
 npm run balance -- all --csv out.csv  # 全カード（2コアで30〜40分）
 npm run stats:real -- https://<サーバー>  # 実戦データを表示してCSVに書き出す

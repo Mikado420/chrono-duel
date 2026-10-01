@@ -1,4 +1,4 @@
-import { CARDS, cardDef, type CardDef, type EchoEffect } from './cards';
+import { CARDS, cardDef, type BellEffect, type CardDef, type EchoEffect } from './cards';
 import { RULES } from './rules';
 
 export type PlayerIndex = 0 | 1;
@@ -15,6 +15,8 @@ export interface Unit {
   readyAt: number;
   taunt: boolean;
   pierce: boolean;
+  /** 転移: may move to the next empty lane for 1 tick. */
+  shift?: boolean;
 }
 /**
  * A spell waiting on the clock. `echo` marks an echo (残響): a public, weaker repeat that does not use a
@@ -47,6 +49,8 @@ export type Action =
   | { t: 'cast'; hand: number; x?: number }
   | { t: 'reserve'; hand: number; T: number }
   | { t: 'attack'; lane: number }
+  /** 転移: the unit in `lane` moves to the empty lane `to` next to it. */
+  | { t: 'move'; lane: number; to: number }
   | { t: 'draw' }
   | { t: 'wait' };
 
@@ -65,6 +69,7 @@ export type GameEvent =
   | { e: 'echo'; pi: PlayerIndex; uid: number; card: string; T: number }
   | { e: 'moveResv'; pi: PlayerIndex; uid: number; T: number }
   | { e: 'attack'; pi: PlayerIndex; lane: number; target: Target }
+  | { e: 'move'; pi: PlayerIndex; from: number; to: number }
   | { e: 'dmgUnit'; pi: PlayerIndex; lane: number; amount: number; hp: number }
   | { e: 'dmgBase'; pi: PlayerIndex; amount: number; hp: number; doom: boolean }
   | { e: 'heal'; pi: PlayerIndex; amount: number; hp: number }
@@ -174,6 +179,7 @@ export function legalActions(s: GameState, pi: PlayerIndex): Action[] {
     }
   });
   p.field.forEach((u, l) => { if (u && isReady(s, pi, u)) out.push({ t: 'attack', lane: l }); });
+  p.field.forEach((u, l) => { if (u?.shift) for (const to of [l - 1, l + 1]) if (to >= 0 && to < RULES.LANES && !p.field[to]) out.push({ t: 'move', lane: l, to }); });
   if (p.deck.length) out.push({ t: 'draw' });
   out.push({ t: 'wait' });
   return out;
@@ -186,6 +192,7 @@ export function timeCost(s: GameState, pi: PlayerIndex, a: Action): number {
       return h ? cardCost(s, pi, h.card) + (a.t !== 'reserve' ? a.x ?? 0 : 0) : 0;
     }
     case 'attack': return RULES.COST_ATTACK;
+    case 'move': return RULES.COST_MOVE;
     case 'draw': return RULES.COST_DRAW;
     case 'wait': return RULES.COST_WAIT;
   }
@@ -211,13 +218,22 @@ function advance(s: GameState, pi: PlayerIndex, n: number, ev: GameEvent[]) {
     if (from < b && p.time >= b) {
       ev.push({ e: 'bell', pi, at: b });
       drawCard(s, pi, ev);
-      p.field.forEach((u, l) => {
-        if (u && cardDef(u.card).hook === 'bellGrow') { u.atk++; u.hp++; u.maxHp++; ev.push({ e: 'buff', pi, lane: l, atk: u.atk, hp: u.hp }); }
-      });
+      // 鐘鳴, left to right
+      for (let l = 0; l < RULES.LANES; l++) { const u = p.field[l]; const fx = u && cardDef(u.card).bell; if (fx) runBell(s, pi, l, fx, ev); }
     }
   }
 }
 
+/** 鐘鳴: one unit's bell effect. */
+function runBell(s: GameState, pi: PlayerIndex, lane: number, fx: BellEffect, ev: GameEvent[]) {
+  const u = s.players[pi].field[lane]!;
+  switch (fx) {
+    case 'grow': u.atk++; u.hp++; u.maxHp++; ev.push({ e: 'buff', pi, lane, atk: u.atk, hp: u.hp }); break;
+    case 'shot2': shot(s, other(pi), 2, 0, ev); break;
+    case 'draw1': drawCard(s, pi, ev); break;
+    case 'ready': u.readyAt = Math.min(u.readyAt, s.players[pi].time); ev.push({ e: 'buff', pi, lane, atk: u.atk, hp: u.hp }); break;
+  }
+}
 function damageUnit(s: GameState, pi: PlayerIndex, lane: number, amount: number, ev: GameEvent[]) {
   const p = s.players[pi];
   const u = p.field[lane];
@@ -449,7 +465,7 @@ function summonUnit(s: GameState, pi: PlayerIndex, card: string, lane: number, f
   const kw = d.keywords ?? [];
   const unit: Unit = {
     uid: s.nextUid++, card, atk: d.atk! + x, hp: d.hp! + x, maxHp: d.hp! + x, reload: d.reload!,
-    readyAt: p.time + (kw.includes('swift') ? 0 : 1), taunt: kw.includes('taunt') || (card === 'e_colossus' && x >= 3), pierce: kw.includes('pierce'),
+    readyAt: p.time + (kw.includes('swift') ? 0 : 1), taunt: kw.includes('taunt') || (card === 'e_colossus' && x >= 3), pierce: kw.includes('pierce'), ...(kw.includes('shift') ? { shift: true } : {}),
   };
   p.field[lane] = unit;
   ev.push({ e: 'summon', pi, lane, unit: { ...unit }, fromHand });
@@ -540,6 +556,18 @@ export function apply(s: GameState, a: Action): GameEvent[] {
       }
       const still = p.field[a.lane];
       if (still && still.uid === u.uid) still.readyAt = p.time + u.reload;
+      break;
+    }
+    case 'move': {
+      const u = p.field[a.lane];
+      if (!u?.shift) throw new Error('unit cannot move');
+      if (Math.abs(a.to - a.lane) !== 1 || a.to < 0 || a.to >= RULES.LANES || p.field[a.to]) throw new Error('lane not free');
+      advance(s, pi, RULES.COST_MOVE, ev);
+      // the clock may have rung a bell that changed the board; the move still needs its unit and an empty lane
+      if (p.field[a.lane] === u && !p.field[a.to]) {
+        p.field[a.to] = u; p.field[a.lane] = null;
+        ev.push({ e: 'move', pi, from: a.lane, to: a.to });
+      }
       break;
     }
     case 'draw':

@@ -22,5 +22,7 @@ export const RULES = {
   COST_ATTACK: 1,
   COST_DRAW: 2,
   COST_WAIT: 1,
+  /** 転移: moving a unit to the next empty lane. */
+  COST_MOVE: 1,
   LANES: 3,
 } as const;

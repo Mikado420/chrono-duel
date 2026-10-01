@@ -2,7 +2,7 @@ import { Container, FederatedPointerEvent, Graphics, type Sprite, type Ticker } 
 import { AI_LEVEL_NAMES, chooseAction, chooseActionAsync, type AiLevel } from '../core/ai';
 import { KEYWORD_HELP, cardDef, keywordsOf } from '../core/cards';
 import {
-  actor, apply, attackTarget, cardCost, createGame, legalActions, other, resvCount, resvRange,
+  actor, apply, attackTarget, cardCost, createGame, isReady, legalActions, other, resvCount, resvRange,
   type Action, type GameEvent, type GameState, type PlayerIndex, type Target,
 } from '../core/engine';
 import { NET, type NetLink, type NetResult, type ServerMsg } from '../core/net';
@@ -46,7 +46,9 @@ type Mode =
   | { k: 'resv'; uid: number; T: number }
   | { k: 'attack'; lane: number }
   /** 充填: choosing how much extra time to pay. `lane` is set for units. */
-  | { k: 'charge'; uid: number; x: number; lane: number | null };
+  | { k: 'charge'; uid: number; x: number; lane: number | null }
+  /** 転移: choosing which empty lane next to it a unit moves to (also offered from the attack bar). */
+  | { k: 'shift'; lane: number };
 
 /** The match screen: board, hands, clock, and the event-driven animation player. */
 export class BattleScene extends Container {
@@ -549,7 +551,7 @@ export class BattleScene extends Container {
   private setMode(m: Mode) {
     const prev = this.mode;
     this.mode = m;
-    if (prev.k === 'attack') this.viewAt(0, prev.lane)?.select(false);
+    if (prev.k === 'attack' || prev.k === 'shift') this.viewAt(0, prev.lane)?.select(false);
     this.arrowG.clear();
     this.laneHi.clear();
     this.dial.showCursor(null);
@@ -596,7 +598,21 @@ export class BattleScene extends Container {
       v?.select(true);
       this.forecast(RULES.COST_ATTACK);
       this.drawAttackArrow(m.lane, null);
-      this.bar([['やめる', 'plain', () => this.setMode({ k: 'idle' })], [`攻撃する`, 'primary', () => this.tryAction({ t: 'attack', lane: m.lane })]], this.attackPreview(m.lane));
+      const mv = this.moveLanes(m.lane);
+      this.showLaneHi(mv, COLORS.you);
+      this.bar([
+        ['やめる', 'plain', () => this.setMode({ k: 'idle' })],
+        ...this.moveButtons(m.lane, mv, true),
+        [`攻撃する`, 'primary', () => this.tryAction({ t: 'attack', lane: m.lane })],
+        ...this.moveButtons(m.lane, mv, false),
+      ], this.attackPreview(m.lane));
+    }
+    if (m.k === 'shift') {
+      this.viewAt(0, m.lane)?.select(true);
+      this.forecast(RULES.COST_MOVE);
+      const mv = this.moveLanes(m.lane);
+      this.showLaneHi(mv, COLORS.you);
+      this.bar([...this.moveButtons(m.lane, mv, true), ['やめる', 'plain', () => this.setMode({ k: 'idle' })], ...this.moveButtons(m.lane, mv, false)], `転移：隣の空いたレーンへ移る（${RULES.COST_MOVE}刻）`);
     }
     this.layoutHand();
   }
@@ -625,6 +641,17 @@ export class BattleScene extends Container {
     const T = Math.max(r[0], Math.min(r[1], this.mode.T + d));
     this.setMode({ k: 'resv', uid: this.mode.uid, T });
   }
+  private unitReady(lane: number) { const u = this.s.players[0].field[lane]; return !!u && isReady(this.s, 0, u); }
+  /** 転移: the empty lanes next to the player's unit in `lane` it can move to right now. */
+  private moveLanes(lane: number): number[] {
+    const p = this.s.players[0], u = p.field[lane];
+    if (!u?.shift || this.busy || actor(this.s) !== 0) return [];
+    return [lane - 1, lane + 1].filter((l) => l >= 0 && l < RULES.LANES && !p.field[l]);
+  }
+  private moveButtons(lane: number, lanes: number[], left: boolean): [string, 'plain' | 'primary', () => void][] {
+    const to = left ? lane - 1 : lane + 1;
+    return lanes.includes(to) ? [[left ? '← 転移' : '転移 →', 'plain', () => void this.tryAction({ t: 'move', lane, to })]] : [];
+  }
   private emptyLanes() { return this.s.players[0].field.map((u, i) => (u ? -1 : i)).filter((i) => i >= 0); }
   private laneAt(x: number, y: number): number {
     if (Math.abs(y - ROW_Y[0]) > UNIT_H / 2 + 30) return -1;
@@ -646,7 +673,7 @@ export class BattleScene extends Container {
     audio.unlock();
     if (this.modal) return;
     const lane = LANE_X.findIndex((x) => Math.abs(x - v.x) < 2);
-    if (v.owner === 0 && v.ready && !this.busy && actor(this.s) === 0) {
+    if (v.owner === 0 && !this.busy && actor(this.s) === 0 && (v.ready || this.moveLanes(lane).length)) {
       const p = this.local(e);
       this.unitDrag = { lane, sx: p.x, sy: p.y, moved: false };
     } else {
@@ -693,8 +720,13 @@ export class BattleScene extends Container {
     }
     if (this.unitDrag) {
       const u = this.unitDrag;
-      if (!u.moved && Math.hypot(p.x - u.sx, p.y - u.sy) > 16) { u.moved = true; this.setMode({ k: 'attack', lane: u.lane }); }
-      if (u.moved) this.drawAttackArrow(u.lane, p);
+      const ready = this.unitReady(u.lane);
+      if (!u.moved && Math.hypot(p.x - u.sx, p.y - u.sy) > 16) { u.moved = true; this.setMode(ready ? { k: 'attack', lane: u.lane } : { k: 'shift', lane: u.lane }); }
+      if (u.moved) {
+        const l = this.laneAt(p.x, p.y), mv = this.moveLanes(u.lane);
+        if (mv.includes(l)) { this.arrowG.clear(); this.showLaneHi([l], COLORS.you); }
+        else { this.showLaneHi(mv, COLORS.brass); if (ready) this.drawAttackArrow(u.lane, p); }
+      }
       return;
     }
     if (this.mode.k === 'resv' && e.buttons && this.dial.hit(p.x, p.y)) this.pickResvAt(p.x, p.y);
@@ -726,12 +758,16 @@ export class BattleScene extends Container {
     if (this.unitDrag) {
       const u = this.unitDrag;
       this.unitDrag = null;
+      const ready = this.unitReady(u.lane);
       if (!u.moved) {
+        if (!ready) { this.setMode({ k: 'shift', lane: u.lane }); return; }
         if (this.mode.k === 'attack' && this.mode.lane === u.lane) void this.tryAction({ t: 'attack', lane: u.lane });
         else this.setMode({ k: 'attack', lane: u.lane });
         return;
       }
-      if (p.y < L.front) void this.tryAction({ t: 'attack', lane: u.lane });
+      const l = this.laneAt(p.x, p.y);
+      if (this.moveLanes(u.lane).includes(l)) void this.tryAction({ t: 'move', lane: u.lane, to: l });
+      else if (ready && p.y < L.front) void this.tryAction({ t: 'attack', lane: u.lane });
       else this.setMode({ k: 'idle' });
     }
   }
@@ -745,6 +781,11 @@ export class BattleScene extends Container {
       return;
     }
     if (this.mode.k === 'charge') { if (Math.abs(p.y - L.bar) < 70) return; this.setMode({ k: 'idle' }); return; }
+    if (this.mode.k === 'attack' || this.mode.k === 'shift') {
+      const from = this.mode.lane, l = this.laneAt(p.x, p.y);
+      if (this.moveLanes(from).includes(l)) { void this.tryAction({ t: 'move', lane: from, to: l }); return; }
+      if (this.mode.k === 'shift' && Math.abs(p.y - L.bar) < 70) return;
+    }
     if (this.mode.k === 'resv') { if (this.dial.hit(p.x, p.y)) this.pickResvAt(p.x, p.y); return; }
     if (this.mode.k === 'attack' && Math.abs(p.y - L.bar) < 70) return;
     if (this.mode.k !== 'idle') this.setMode({ k: 'idle' });
@@ -889,6 +930,7 @@ export class BattleScene extends Container {
       ...this.keywordNotes(u.card).filter((n) => !n.startsWith('急襲') && !n.startsWith('充填')),
       `現在 攻撃${u.atk} ・ 体力${u.hp}/${u.maxHp}`,
       left <= 0 ? '攻撃できます' : `あと${left}刻で攻撃可能（${u.readyAt}刻）`,
+      ...(pi === 0 && u.shift ? [this.moveLanes(this.s.players[0].field.indexOf(u)).length ? 'タップかドラッグで隣の空いたレーンへ転移できます（1刻）' : '隣のレーンが空いていないので転移できません'] : []),
     ]);
   }
   private toast(msg: string) {
@@ -950,6 +992,7 @@ export class BattleScene extends Container {
       case 'heal': return this.onLog(`${nm(e.pi)}の拠点が${e.amount}回復`, e.pi);
       case 'clock': return this.onLog(`${nm(e.pi)}の時計が${e.delta > 0 ? '+' : '−'}${Math.abs(e.delta)}刻`, -1);
       case 'bell': return this.onLog(`${nm(e.pi)}：${e.at}刻の鐘`, e.pi);
+      case 'move': { const u = this.s.players[e.pi].field[e.to]; return this.onLog(`${nm(e.pi)}：${u ? cn(u.card) : 'ユニット'}が${e.to < e.from ? '左' : '右'}のレーンへ転移`, e.pi); }
       case 'doom': return this.onLog(`終焉の刻：ユニットが拠点に与えるダメージ+${e.level}`, -1);
       case 'act': if (e.action.t === 'draw' || e.action.t === 'wait') this.onLog(`${nm(e.pi)}：${e.action.t === 'draw' ? 'ドロー' : '待機'}`, e.pi); return;
       default: return;
@@ -1029,6 +1072,12 @@ export class BattleScene extends Container {
       }
       case 'burn': this.toast(`${e.pi === 0 ? 'あなた' : this.foe}：手札が一杯で「${cardDef(e.card).name}」を失った`); await tw.wait(500); break;
       case 'deckout': this.toast(`${e.pi === 0 ? 'あなた' : this.foe}：山札がありません`); await tw.wait(400); break;
+      case 'move': {
+        const v = this.viewAt(e.pi, e.from);
+        audio.play('select');
+        if (v) await tw.to(v, { x: LANE_X[e.to] }, 260, ease.outBack);
+        break;
+      }
       case 'summon': {
         const to = { x: LANE_X[e.lane], y: ROW_Y[e.pi] };
         if (e.pi === 1 && e.fromHand >= 0) {

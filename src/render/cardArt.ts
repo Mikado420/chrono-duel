@@ -233,7 +233,7 @@ export function cardFace(id: string): HTMLCanvasElement {
   c.fillStyle = '#23180a'; c.font = `700 32px ${FONTS.num}`; c.textAlign = 'center'; c.fillText(String(d.cost), mx, my + 2); c.textAlign = 'left';
   // kind + rarity strip
   const kind = d.kind === 'unit' ? 'ユニット' : '術';
-  const kw = (d.keywords ?? []).map((k) => ({ taunt: '挑発', pierce: '貫通', swift: '速攻' })[k]).join('・');
+  const kw = (d.keywords ?? []).map((k) => ({ taunt: '挑発', pierce: '貫通', swift: '速攻', shift: '転移' })[k]).join('・');
   c.font = `500 17px ${FONTS.body}`; c.fillStyle = e1;
   c.fillText(`${kind}${d.rarity !== 'C' ? ` ・ ${RARITY_NAMES[d.rarity]}` : ''}`, 22, 274);
   if (setOf(d) !== 'base') {

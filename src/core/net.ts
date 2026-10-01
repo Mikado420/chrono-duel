@@ -73,7 +73,7 @@ export function normalizeCode(raw: string): string | null {
 export function sameAction(x: Action, y: Action): boolean {
   if (x.t !== y.t) return false;
   const a = x as unknown as Record<string, unknown>, b = y as unknown as Record<string, unknown>;
-  return ['hand', 'lane', 'T'].every((k) => a[k] === b[k]) && (a.x ?? 0) === (b.x ?? 0);
+  return ['hand', 'lane', 'T', 'to'].every((k) => a[k] === b[k]) && (a.x ?? 0) === (b.x ?? 0);
 }
 
 // ------------------------------------------------------------------ views
