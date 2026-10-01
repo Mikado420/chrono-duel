@@ -19,7 +19,8 @@
     "test:stats": "tsx src/sim/statstest.ts",
     "stats:real": "tsx src/sim/realstats.ts",
     "balance": "tsx src/sim/balance.ts",
-    "test:keywords": "tsx src/sim/kwtest.ts"
+    "test:keywords": "tsx src/sim/kwtest.ts",
+    "test:set2": "tsx src/sim/set2test.ts"
   },
   "dependencies": {
     "pixi.js": "8.6.6"

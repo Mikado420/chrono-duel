@@ -118,6 +118,15 @@ function intentBonus(s: GameState, pi: PlayerIndex, a: Action): number {
     case 'eReverse': b = 3.5; break;
     case 'eStorm': b = 1 + enemies * 1.3; break;
     case 'eEternal': b = 3.5; break;
+    // 第2弾
+    case 'gSpanner': b = 1.2 + enemies * 0.5; break;
+    case 'gTrap': b = 1.2 + enemies * 0.6; break;
+    case 'gBlueprint': b = 2.5; break;
+    case 'gHammer': b = 1.5 + enemies * 0.6; break;
+    case 'gHush': case 'gSilence': b = 1 + op.resv.length * 1.2; break;
+    case 'gQuake': case 'gGearstorm': b = 1 + enemies * 1.2; break;
+    case 'gMaze': b = 0.8 + enemies * 0.5; break;
+    case 'gFortify': case 'gRally': case 'gTune': case 'gRewire': case 'gOverdrive': case 'gRing': case 'gMirror': b = 1; break;
   }
   return b - wait * 0.12;
 }

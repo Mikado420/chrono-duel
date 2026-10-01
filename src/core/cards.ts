@@ -3,25 +3,34 @@ export type CardKind = 'unit' | 'spell';
 export type Rarity = 'C' | 'R' | 'E' | 'L';
 export type Keyword = 'taunt' | 'pierce' | 'swift' | 'shift';
 /** 鐘鳴: what a unit does each time its owner's clock passes a bell. */
-export type BellEffect = 'grow' | 'shot2' | 'draw1' | 'ready';
+export type BellEffect = 'grow' | 'shot2' | 'draw1' | 'ready'
+  // 第2弾
+  | 'shot1' | 'heal2' | 'hp2' | 'storm1' | 'blessAll' | 'blessOthers' | 'gearShift' | 'oppClock1';
 /** Card sets. `base` is owned by everyone; later sets come from packs. */
-export type CardSet = 'base' | 'echo';
-export const SET_NAMES: Record<CardSet, string> = { base: '基本', echo: '第1弾「残響の刻」' };
+export type CardSet = 'base' | 'echo' | 'gear';
+export const SET_NAMES: Record<CardSet, string> = { base: '基本', echo: '第1弾「残響の刻」', gear: '第2弾「歯車の迷宮」' };
 export const RARITY_NAMES: Record<Rarity, string> = { C: '通常', R: '希少', E: '秘宝', L: '伝説' };
 
 /** Effects that an echo (a delayed, weaker repeat) can carry. */
-export type EchoEffect = 'ping1' | 'ping2' | 'shot1' | 'heal2' | 'heal3' | 'draw1' | 'rally' | 'image' | 'storm1';
+export type EchoEffect = 'ping1' | 'ping2' | 'shot1' | 'heal2' | 'heal3' | 'draw1' | 'rally' | 'image' | 'storm1' | 'overdrive';
 
 /** Ability hooks the engine knows how to run. Kept as ids so card data stays serializable. */
 export type UnitHook =
   | 'draw1' | 'revealResv' | 'delayOpp1' | 'breakResv' | 'dawnBurst' | 'echoOnDeath'
   // 第1弾
-  | 'resonateAtk' | 'resonatePing' | 'resonateRewind' | 'hasten2' | 'storm1';
+  | 'resonateAtk' | 'resonatePing' | 'resonateRewind' | 'hasten2' | 'storm1'
+  // 第2弾: on summon
+  | 'readyAlly' | 'stunTop3' | 'ringAll' | 'dolls'
+  // 第2弾: when this unit moves (転移), on its attacks, or while it is on the board
+  | 'shiftGrow' | 'shiftPing' | 'shiftHaste' | 'flank' | 'bellDraw' | 'shiftAura';
 
 export type SpellEffect =
   | 'arrow' | 'cage' | 'bolt' | 'collapse' | 'rewind' | 'haste' | 'insight' | 'stop'
   // 第1弾
-  | 'eShot' | 'ePray' | 'eSlash' | 'ePeek' | 'eBreak' | 'eDraw' | 'eReverse' | 'eStorm' | 'eEternal';
+  | 'eShot' | 'ePray' | 'eSlash' | 'ePeek' | 'eBreak' | 'eDraw' | 'eReverse' | 'eStorm' | 'eEternal'
+  // 第2弾
+  | 'gSpanner' | 'gReroute' | 'gTrap' | 'gBlueprint' | 'gFortify' | 'gHammer' | 'gHush' | 'gRally' | 'gRing' | 'gSilence'
+  | 'gMaze' | 'gTune' | 'gGearstorm' | 'gMirror' | 'gLever' | 'gRewire' | 'gQuake' | 'gErase' | 'gOverdrive';
 
 export interface CardDef {
   id: string;

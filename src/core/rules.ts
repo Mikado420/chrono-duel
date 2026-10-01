@@ -10,6 +10,8 @@ export const RULES = {
   MAX_LEGEND_COPIES: 1,
   /** Crossing these on your own clock draws a card. */
   BELLS: [8, 16, 24, 32] as readonly number[],
+  /** The bells that set off 鐘鳴. 第2弾 narrows this to the great bells [16, 32] (see set2.ts). */
+  BELL_RING_AT: [8, 16, 24, 32] as readonly number[],
   /** From this world time, every hit on a base by a unit deals +1 (spells and echoes are not affected). */
   DOOM_AT: 20,
   /** Doom bonus grows by 1 every this many ticks after DOOM_AT. */

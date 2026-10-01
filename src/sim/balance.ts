@@ -9,6 +9,7 @@
  *   npm run balance -- e_slash collapse          two cards
  *   npm run balance -- all --csv balance.csv     every card (≈ 30–40 min on 2 cores)
  *   npm run balance -- bolt --games 80           more games → less noise
+ *   npm run balance -- set2 --set2               第2弾 (not in the game yet): loads it and adds its test decks as opponents
  * To try a change, edit src/core/cards.ts (or the engine) and run again: the numbers use the code as it is.
  */
 import { fork } from 'node:child_process';
@@ -20,9 +21,17 @@ import { CARDS, CARD_LIST, cardDef } from '../core/cards';
 import { PRESET_DECKS } from '../core/decks';
 import { actor, apply, createGame, mulberry32, type PlayerIndex } from '../core/engine';
 import { PACK_TEST_DECKS } from './packDecks';
+import { SET2, registerSet2 } from '../core/set2';
+import { SET2_TEST_DECKS } from './set2Decks';
+
+/** The bits of the Node process object a worker needs (kept narrow so the browser typecheck stays happy). */
+const proc = process as unknown as { argv: string[]; execArgv: string[]; on(ev: 'message', f: (m: { i: number; job: Job } | 'bye') => void): void; send(m: unknown): void; exit(code: number): never; stdout: { write(s: string): void } };
+/** --set2 (main) or the worker's 4th argument. */
+const WITH_SET2 = proc.argv.includes('--set2') || (proc.argv[2] === '--worker' && proc.argv[4] === '1');
+if (WITH_SET2) registerSet2();
 
 const REF = 'pendulum';
-const OPP = [...PRESET_DECKS, ...PACK_TEST_DECKS];
+const OPP = [...PRESET_DECKS, ...PACK_TEST_DECKS, ...(WITH_SET2 ? SET2_TEST_DECKS : [])];
 const get = (id: string) => OPP.find((d) => d.id === id)!.cards.slice();
 const HOSTS: Record<string, { name: string; cards: string[] }> = {
   balance: { name: '均衡', cards: get('balance') },
@@ -65,8 +74,6 @@ function runJob(j: Job, level: AiLevel): Res {
 }
 
 // ------------------------------------------------------------------ worker process
-/** The bits of the Node process object a worker needs (kept narrow so the browser typecheck stays happy). */
-const proc = process as unknown as { argv: string[]; execArgv: string[]; on(ev: 'message', f: (m: { i: number; job: Job } | 'bye') => void): void; send(m: unknown): void; exit(code: number): never; stdout: { write(s: string): void } };
 if (proc.argv[2] === '--worker') {
   const level = proc.argv[3] as AiLevel;
   proc.on('message', (m) => {
@@ -82,7 +89,9 @@ async function main() {
   const level = opt('--level', 'hard') as AiLevel;
   const csv = opt('--csv', '');
   const workers = Math.max(1, +opt('--jobs', String(cpus().length)));
-  let cards = args.length && args[0] !== 'all' ? args : CARD_LIST.map((c) => c.id).filter((id) => id !== REF);
+  const si = args.indexOf('--set2'); if (si >= 0) args.splice(si, 1);
+  let cards = args[0] === 'set2' ? Object.keys(SET2).filter((id) => !SET2[id].token) : args.length && args[0] !== 'all' ? args : CARD_LIST.map((c) => c.id).filter((id) => id !== REF);
+  if (args[0] === 'set2' && !WITH_SET2) { console.error('第2弾を測るときは --set2 を付けてください'); proc.exit(1); }
   const unknown = cards.filter((c) => !CARDS[c] || CARDS[c].token);
   if (unknown.length) { console.error(`知らないカードID: ${unknown.join(', ')}（src/core/cards.ts のIDを使います）`); proc.exit(1); }
   if (cards.includes(REF)) { console.log(`${REF} は基準カードなので除きます`); cards = cards.filter((c) => c !== REF); }
@@ -96,7 +105,7 @@ async function main() {
   let next = 0, done = 0;
   const t0 = Date.now();
   await Promise.all(Array.from({ length: Math.min(workers, jobs.length) }, () => new Promise<void>((resolve) => {
-    const w = fork(fileURLToPath(import.meta.url), ['--worker', level], { execArgv: proc.execArgv });
+    const w = fork(fileURLToPath(import.meta.url), ['--worker', level, WITH_SET2 ? '1' : '0'], { execArgv: proc.execArgv });
     const feed = () => { if (next < jobs.length) { const i = next++; w.send({ i, job: jobs[i] }); } else { w.send('bye'); resolve(); } };
     w.on('message', (m: { i: number; res: Res }) => {
       results[m.i] = m.res; done++;

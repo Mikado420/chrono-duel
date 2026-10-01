@@ -2,7 +2,7 @@ import { Container, FederatedPointerEvent, Graphics, type Sprite, type Ticker } 
 import { AI_LEVEL_NAMES, chooseAction, chooseActionAsync, type AiLevel } from '../core/ai';
 import { KEYWORD_HELP, cardDef, keywordsOf } from '../core/cards';
 import {
-  actor, apply, attackTarget, cardCost, createGame, isReady, legalActions, other, resvCount, resvRange,
+  actor, apply, attackTarget, canShift, cardCost, createGame, isReady, legalActions, other, resvCount, resvRange,
   type Action, type GameEvent, type GameState, type PlayerIndex, type Target,
 } from '../core/engine';
 import { NET, type NetLink, type NetResult, type ServerMsg } from '../core/net';
@@ -645,7 +645,7 @@ export class BattleScene extends Container {
   /** 転移: the empty lanes next to the player's unit in `lane` it can move to right now. */
   private moveLanes(lane: number): number[] {
     const p = this.s.players[0], u = p.field[lane];
-    if (!u?.shift || this.busy || actor(this.s) !== 0) return [];
+    if (!u || !canShift(this.s, 0, u) || this.busy || actor(this.s) !== 0) return [];
     return [lane - 1, lane + 1].filter((l) => l >= 0 && l < RULES.LANES && !p.field[l]);
   }
   private moveButtons(lane: number, lanes: number[], left: boolean): [string, 'plain' | 'primary', () => void][] {
@@ -930,7 +930,7 @@ export class BattleScene extends Container {
       ...this.keywordNotes(u.card).filter((n) => !n.startsWith('急襲') && !n.startsWith('充填')),
       `現在 攻撃${u.atk} ・ 体力${u.hp}/${u.maxHp}`,
       left <= 0 ? '攻撃できます' : `あと${left}刻で攻撃可能（${u.readyAt}刻）`,
-      ...(pi === 0 && u.shift ? [this.moveLanes(this.s.players[0].field.indexOf(u)).length ? 'タップかドラッグで隣の空いたレーンへ転移できます（1刻）' : '隣のレーンが空いていないので転移できません'] : []),
+      ...(pi === 0 && canShift(this.s, 0, u) ? [this.moveLanes(this.s.players[0].field.indexOf(u)).length ? 'タップかドラッグで隣の空いたレーンへ転移できます（1刻）' : '隣のレーンが空いていないので転移できません'] : []),
     ]);
   }
   private toast(msg: string) {

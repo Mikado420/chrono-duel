@@ -70,6 +70,10 @@ export type GameEvent =
   | { e: 'moveResv'; pi: PlayerIndex; uid: number; T: number }
   | { e: 'attack'; pi: PlayerIndex; lane: number; target: Target }
   | { e: 'move'; pi: PlayerIndex; from: number; to: number }
+  /** Two of a player's units trade lanes (第2弾 切り替えレバー). */
+  | { e: 'swap'; pi: PlayerIndex; a: number; b: number }
+  /** A player's units all shift one lane to the right, the last one wrapping to the first (第2弾 配線し直し). */
+  | { e: 'rotate'; pi: PlayerIndex }
   | { e: 'dmgUnit'; pi: PlayerIndex; lane: number; amount: number; hp: number }
   | { e: 'dmgBase'; pi: PlayerIndex; amount: number; hp: number; doom: boolean }
   | { e: 'heal'; pi: PlayerIndex; amount: number; hp: number }
@@ -179,7 +183,7 @@ export function legalActions(s: GameState, pi: PlayerIndex): Action[] {
     }
   });
   p.field.forEach((u, l) => { if (u && isReady(s, pi, u)) out.push({ t: 'attack', lane: l }); });
-  p.field.forEach((u, l) => { if (u?.shift) for (const to of [l - 1, l + 1]) if (to >= 0 && to < RULES.LANES && !p.field[to]) out.push({ t: 'move', lane: l, to }); });
+  p.field.forEach((u, l) => { if (u && canShift(s, pi, u)) for (const to of [l - 1, l + 1]) if (to >= 0 && to < RULES.LANES && !p.field[to]) out.push({ t: 'move', lane: l, to }); });
   if (p.deck.length) out.push({ t: 'draw' });
   out.push({ t: 'wait' });
   return out;
@@ -218,8 +222,11 @@ function advance(s: GameState, pi: PlayerIndex, n: number, ev: GameEvent[]) {
     if (from < b && p.time >= b) {
       ev.push({ e: 'bell', pi, at: b });
       drawCard(s, pi, ev);
-      // 鐘鳴, left to right
-      for (let l = 0; l < RULES.LANES; l++) { const u = p.field[l]; const fx = u && cardDef(u.card).bell; if (fx) runBell(s, pi, l, fx, ev); }
+      if (RULES.BELL_RING_AT.includes(b)) {
+        // 時計塔の機関士: one more card per ringing bell, each
+        for (const u of p.field) if (u && cardDef(u.card).hook === 'bellDraw') drawCard(s, pi, ev);
+        ringBells(s, pi, ev);
+      }
     }
   }
 }
@@ -232,7 +239,73 @@ function runBell(s: GameState, pi: PlayerIndex, lane: number, fx: BellEffect, ev
     case 'shot2': shot(s, other(pi), 2, 0, ev); break;
     case 'draw1': drawCard(s, pi, ev); break;
     case 'ready': u.readyAt = Math.min(u.readyAt, s.players[pi].time); ev.push({ e: 'buff', pi, lane, atk: u.atk, hp: u.hp }); break;
+    // 第2弾
+    case 'shot1': shot(s, other(pi), 1, 0, ev); break;
+    case 'heal2': heal(s, pi, 2, ev); break;
+    case 'hp2': u.hp += 2; u.maxHp += 2; ev.push({ e: 'buff', pi, lane, atk: u.atk, hp: u.hp }); break;
+    case 'storm1': storm(s, pi, other(pi), 1, u.card, ev); break;
+    case 'blessAll': fortify(s, pi, 1, 0, ev); heal(s, pi, 2, ev); break;
+    case 'blessOthers': s.players[pi].field.forEach((x, l) => { if (x && l !== lane && cardDef(x.card).bell) { x.hp += 2; x.maxHp += 2; ev.push({ e: 'buff', pi, lane: l, atk: x.atk, hp: x.hp }); } }); break;
+    case 'gearShift': {
+      const p = s.players[pi];
+      for (let l = RULES.LANES - 2; l >= 0; l--) if (p.field[l] && !p.field[l + 1]) { p.field[l + 1] = p.field[l]; p.field[l] = null; ev.push({ e: 'move', pi, from: l, to: l + 1 }); onShifted(s, pi, l + 1, ev); }
+      readyAll(s, pi, ev);
+      break;
+    }
+    case 'oppClock1': shiftClock(s, other(pi), 1, ev); break;
   }
+}
+/** Every 鐘鳴 unit of `pi` rings once, left to right. */
+function ringBells(s: GameState, pi: PlayerIndex, ev: GameEvent[]) {
+  const p = s.players[pi];
+  const ringers = p.field.map((u) => (u && cardDef(u.card).bell ? u.uid : -1)).filter((x) => x >= 0);
+  for (const uid of ringers) {
+    const lane = p.field.findIndex((u) => u?.uid === uid);
+    if (lane >= 0) runBell(s, pi, lane, cardDef(p.field[lane]!.card).bell!, ev); // gone if an earlier ring killed it
+  }
+}
+/** 転移 is the unit's own keyword or comes from 迷宮の設計者 on its side. */
+export function canShift(s: GameState, pi: PlayerIndex, u: Unit): boolean {
+  return !!u.shift || s.players[pi].field.some((x) => x && cardDef(x.card).hook === 'shiftAura');
+}
+/** What a unit does after moving (転移). */
+function onShifted(s: GameState, pi: PlayerIndex, lane: number, ev: GameEvent[]) {
+  const u = s.players[pi].field[lane];
+  if (!u) return;
+  switch (cardDef(u.card).hook) {
+    case 'shiftGrow': u.atk++; ev.push({ e: 'buff', pi, lane, atk: u.atk, hp: u.hp }); break;
+    case 'shiftPing': damageBase(s, other(pi), 1, ev); break;
+    case 'shiftHaste': u.readyAt -= 1; ev.push({ e: 'buff', pi, lane, atk: u.atk, hp: u.hp }); break;
+  }
+}
+function readyAll(s: GameState, pi: PlayerIndex, ev: GameEvent[]) {
+  const p = s.players[pi];
+  p.field.forEach((u) => { if (u) u.readyAt = Math.min(u.readyAt, p.time); });
+  ev.push({ e: 'readyAll', pi });
+}
+function fortify(s: GameState, pi: PlayerIndex, hp: number, atk: number, ev: GameEvent[]) {
+  s.players[pi].field.forEach((u, l) => { if (u) { u.hp += hp; u.maxHp += hp; u.atk += atk; ev.push({ e: 'buff', pi, lane: l, atk: u.atk, hp: u.hp }); } });
+}
+/** Lane of `pi`'s unit with the highest (or lowest) attack, or -1. */
+function pickUnit(s: GameState, pi: PlayerIndex, by: 'atkHi' | 'atkLo' | 'hpHi'): number {
+  const f = s.players[pi].field;
+  let best = -1;
+  f.forEach((u, i) => {
+    if (!u) return;
+    const b = best >= 0 ? f[best]! : null;
+    const better = !b || (by === 'atkHi' ? u.atk > b.atk || (u.atk === b.atk && u.hp > b.hp) : by === 'atkLo' ? u.atk < b.atk || (u.atk === b.atk && u.hp < b.hp) : u.hp > b.hp || (u.hp === b.hp && u.atk > b.atk));
+    if (better) best = i;
+  });
+  return best;
+}
+function delayUnit(s: GameState, qi: PlayerIndex, lane: number, n: number, ev: GameEvent[]) {
+  const u = s.players[qi].field[lane]!;
+  u.readyAt = Math.max(u.readyAt, s.players[qi].time) + n;
+  ev.push({ e: 'stun', pi: qi, lane, readyAt: u.readyAt });
+}
+/** Pushes reservations of `qi` later (echoes only, or every one). */
+function delayResv(s: GameState, qi: PlayerIndex, n: number, echoesOnly: boolean, ev: GameEvent[]) {
+  for (const r of s.players[qi].resv) if (!echoesOnly || r.echo) { r.T += n; ev.push({ e: 'moveResv', pi: qi, uid: r.uid, T: r.T }); }
 }
 function damageUnit(s: GameState, pi: PlayerIndex, lane: number, amount: number, ev: GameEvent[]) {
   const p = s.players[pi];
@@ -343,6 +416,7 @@ function runEcho(s: GameState, pi: PlayerIndex, card: string, fx: EchoEffect, ev
     case 'heal3': heal(s, pi, 3, ev); break;
     case 'draw1': drawCard(s, pi, ev); break;
     case 'storm1': storm(s, pi, qi, 1, card, ev); break;
+    case 'overdrive': readyAll(s, pi, ev); fortify(s, pi, 1, 1, ev); break;
     case 'rally': {
       let any = false;
       p.field.forEach((u, l) => { if (u) { u.atk++; any = true; ev.push({ e: 'buff', pi, lane: l, atk: u.atk, hp: u.hp }); } });
@@ -431,6 +505,106 @@ function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, e
     case 'eReverse': shiftClock(s, qi, boosted ? 3 : 2, ev); break;
     case 'eStorm': storm(s, pi, qi, boosted ? 2 : 1, d.id, ev); break;
     case 'eEternal': damageBase(s, qi, boosted ? 3 : 2, ev); break;
+    // ---- 第2弾
+    case 'gSpanner': {
+      const l = pickUnit(s, qi, 'atkLo');
+      if (l < 0) damageBase(s, qi, 1, ev); else { damageUnit(s, qi, l, 2 + b, ev); reap(s, ev); }
+      break;
+    }
+    case 'gReroute': case 'gTune': {
+      const l = pickUnit(s, pi, 'atkHi');
+      if (l < 0) { ev.push({ e: 'fizzle', pi, card: d.id }); break; }
+      const u = p.field[l]!;
+      u.shift = true;
+      if (d.effect === 'gReroute') { u.readyAt = Math.min(u.readyAt, p.time); u.atk += 2 + b; }
+      else { u.atk += 2 + b; u.hp += 1; u.maxHp += 1; }
+      ev.push({ e: 'buff', pi, lane: l, atk: u.atk, hp: u.hp });
+      break;
+    }
+    case 'gTrap': {
+      const l = topEnemy(s, qi);
+      if (l < 0) { ev.push({ e: 'fizzle', pi, card: d.id }); break; }
+      const f = s.players[qi].field, target = f[l]!;
+      damageUnit(s, qi, l, 2 + b, ev); reap(s, ev);
+      const to = [l + 1, l - 1].find((x) => x >= 0 && x < RULES.LANES && !f[x]);
+      if (f[l] === target && to !== undefined) { f[to] = target; f[l] = null; ev.push({ e: 'move', pi: qi, from: l, to }); }
+      break;
+    }
+    case 'gBlueprint': {
+      for (let i = 0; i < 1 + b; i++) drawCard(s, pi, ev);
+      const theme = p.hand.some((h) => { const c = cardDef(h.card); return !!c.bell || (c.keywords ?? []).includes('shift'); });
+      if (theme) drawCard(s, pi, ev);
+      break;
+    }
+    case 'gFortify': fortify(s, pi, 2 + b, 0, ev); break;
+    case 'gHammer': {
+      const l = pickUnit(s, qi, 'hpHi');
+      if (l < 0) { ev.push({ e: 'fizzle', pi, card: d.id }); break; }
+      damageUnit(s, qi, l, 4, ev); reap(s, ev);
+      break;
+    }
+    case 'gHush': {
+      const any = s.players[qi].resv.some((r) => r.echo);
+      delayResv(s, qi, 3 + b, true, ev); drawCard(s, pi, ev);
+      if (any) drawCard(s, pi, ev);
+      break;
+    }
+    case 'gRally': fortify(s, pi, 1 + b, 1, ev); break;
+    case 'gRing': {
+      for (let i = 0; i < 1 + b; i++) drawCard(s, pi, ev);
+      let best = -1;
+      p.field.forEach((u, l) => { if (u && cardDef(u.card).bell && (best < 0 || u.atk > p.field[best]!.atk)) best = l; });
+      if (best >= 0) runBell(s, pi, best, cardDef(p.field[best]!.card).bell!, ev);
+      break;
+    }
+    case 'gSilence': delayResv(s, qi, boosted ? 6 : 4, false, ev); drawCard(s, pi, ev); break;
+    case 'gMaze': {
+      const f = s.players[qi].field;
+      storm(s, pi, qi, 1, d.id, ev);
+      for (let l = RULES.LANES - 2; l >= 0; l--) if (f[l] && !f[l + 1]) { f[l + 1] = f[l]; f[l] = null; ev.push({ e: 'move', pi: qi, from: l, to: l + 1 }); }
+      f.forEach((u, l) => { if (u) delayUnit(s, qi, l, 2 + b, ev); });
+      break;
+    }
+    case 'gGearstorm': {
+      const shifters = p.field.filter((u) => u && canShift(s, pi, u)).length;
+      storm(s, pi, qi, 1 + Math.min(2, shifters) + b, d.id, ev);
+      break;
+    }
+    case 'gMirror': {
+      const l = topEnemy(s, qi), lane = p.field.findIndex((u) => !u);
+      if (l < 0 || lane < 0) { ev.push({ e: 'fizzle', pi, card: d.id }); break; }
+      const src = s.players[qi].field[l]!;
+      summonUnit(s, pi, 'g_doll', lane, -1, 0, ev);
+      const u = p.field[lane]!;
+      u.atk = src.atk + b; u.hp = u.maxHp = Math.max(1, src.hp);
+      ev.push({ e: 'buff', pi, lane, atk: u.atk, hp: u.hp });
+      break;
+    }
+    case 'gLever': {
+      const hi = pickUnit(s, pi, 'atkHi'), lo = pickUnit(s, pi, 'atkLo');
+      if (hi < 0 || lo < 0 || hi === lo) { ev.push({ e: 'fizzle', pi, card: d.id }); break; }
+      [p.field[hi], p.field[lo]] = [p.field[lo], p.field[hi]];
+      ev.push({ e: 'swap', pi, a: hi, b: lo });
+      for (const l of [hi, lo]) { const u = p.field[l]!; u.readyAt = Math.min(u.readyAt, p.time); u.atk += 1 + b; ev.push({ e: 'buff', pi, lane: l, atk: u.atk, hp: u.hp }); }
+      break;
+    }
+    case 'gRewire': {
+      const f = s.players[qi].field;
+      if (f.some(Boolean)) { const last = f[RULES.LANES - 1]; for (let l = RULES.LANES - 1; l > 0; l--) f[l] = f[l - 1]; f[0] = last; ev.push({ e: 'rotate', pi: qi }); }
+      storm(s, pi, qi, 1, d.id, ev);
+      readyAll(s, pi, ev);
+      if (boosted) fortify(s, pi, 0, 1, ev);
+      break;
+    }
+    case 'gQuake': storm(s, pi, qi, 2 + b, d.id, ev); p.field.forEach((u, l) => { if (u && cardDef(u.card).bell) { u.hp++; u.maxHp++; ev.push({ e: 'buff', pi, lane: l, atk: u.atk, hp: u.hp }); } }); break;
+    case 'gErase': {
+      const gone = s.players[qi].resv;
+      s.players[qi].resv = [];
+      for (const x of gone) ev.push({ e: 'breakResv', pi: qi, uid: x.uid, card: x.card });
+      for (let i = 0; i < Math.max(1, Math.min(gone.length, 2 + b)); i++) drawCard(s, pi, ev);
+      break;
+    }
+    case 'gOverdrive': readyAll(s, pi, ev); fortify(s, pi, 1, 1 + b, ev); break;
   }
 }
 
@@ -447,6 +621,17 @@ function runUnitHook(s: GameState, pi: PlayerIndex, lane: number, ev: GameEvent[
       reap(s, ev);
       break;
     case 'storm1': storm(s, pi, qi, 1, u.card, ev); break;
+    // 第2弾
+    case 'readyAlly': {
+      const f = s.players[pi].field;
+      let best = -1;
+      f.forEach((x, l) => { if (x && l !== lane && (best < 0 || x.atk > f[best]!.atk)) best = l; });
+      if (best >= 0) { f[best]!.readyAt = Math.min(f[best]!.readyAt, s.players[pi].time); ev.push({ e: 'buff', pi, lane: best, atk: f[best]!.atk, hp: f[best]!.hp }); }
+      break;
+    }
+    case 'stunTop3': { const l = topEnemy(s, qi); if (l >= 0) delayUnit(s, qi, l, 3, ev); break; }
+    case 'ringAll': ringBells(s, pi, ev); break;
+    case 'dolls': for (let l = 0; l < RULES.LANES; l++) if (!s.players[pi].field[l]) summonUnit(s, pi, 'g_doll', l, -1, 0, ev); break;
     case 'hasten2': {
       const w = worldTime(s);
       for (const r of s.players[pi].resv) {
@@ -544,7 +729,7 @@ export function apply(s: GameState, a: Action): GameEvent[] {
       advance(s, pi, RULES.COST_ATTACK, ev);
       const t = attackTarget(s, pi, a.lane);
       ev.push({ e: 'attack', pi, lane: a.lane, target: t });
-      if (!t) damageBase(s, qi, u.atk, ev, true);
+      if (!t) damageBase(s, qi, u.atk + (cardDef(u.card).hook === 'flank' ? 2 : 0), ev, true);
       else {
         const v = s.players[qi].field[t.lane]!;
         const over = u.atk - v.hp;
@@ -560,13 +745,14 @@ export function apply(s: GameState, a: Action): GameEvent[] {
     }
     case 'move': {
       const u = p.field[a.lane];
-      if (!u?.shift) throw new Error('unit cannot move');
+      if (!u || !canShift(s, pi, u)) throw new Error('unit cannot move');
       if (Math.abs(a.to - a.lane) !== 1 || a.to < 0 || a.to >= RULES.LANES || p.field[a.to]) throw new Error('lane not free');
       advance(s, pi, RULES.COST_MOVE, ev);
       // the clock may have rung a bell that changed the board; the move still needs its unit and an empty lane
       if (p.field[a.lane] === u && !p.field[a.to]) {
         p.field[a.to] = u; p.field[a.lane] = null;
         ev.push({ e: 'move', pi, from: a.lane, to: a.to });
+        onShifted(s, pi, a.to, ev);
       }
       break;
     }
