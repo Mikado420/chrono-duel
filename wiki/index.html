@@ -36,7 +36,7 @@
 
     <footer class="site-foot">
       <div class="in">
-        <p>カードの数値・効果文とルールの数値は、ゲーム本体と同じデータから表示しています。ランキングと相性表はAI「ふつう」同士<span data-v="STATS_GAMES"></span>戦のシミュレーション結果（<span data-v="STATS_DATE"></span>集計）で、人同士の対戦とは傾向が違うことがあります。</p>
+        <p>カードの数値・効果文とルールの数値は、ゲーム本体と同じデータから表示しています。ランキングと相性表はいちばん強いAI同士<span data-v="META_GAMES"></span>戦のシミュレーション結果（<span data-v="META_DATE"></span>集計）で、人同士の対戦とは傾向が違うことがあります。カード詳細の採用時勝率はAI「ふつう」同士<span data-v="STATS_GAMES"></span>戦（<span data-v="STATS_DATE"></span>集計）です。</p>
         <p>クロノ・デュエル Ver. <span data-v="VERSION"></span></p>
       </div>
     </footer>
@@ -86,12 +86,12 @@
     <template id="t-ranking">
       <div class="box note">
         <b>ランクの決め方</b>
-        AI「ふつう」同士の対戦で、そのカードを使った試合の勝率（採用時勝率）を並べ、上位から SS（約1割）・S・A・B・C に分けています。デッキとの相性やプレイの腕は含まれないので、目安として使ってください。人が遊んだ対戦の成績は<a href="#real" data-go="real">実戦データ</a>で見られます。
+        環境デッキ<span data-v="META_DECKS"></span>個をいちばん強いAI同士で総当たりさせ（<span data-v="META_GAMES"></span>戦）、そのカードを「使った試合」でデッキがいつもよりどれだけ多く勝ったか（「影響」、%）を並べ、上位から SS（約1割）・S・A・B・C に分けています。強いデッキに入っているだけで高く出ないよう、デッキごとの平均勝率を差し引いています。「影響（実戦）」はみんなの対戦の集計（最新バージョン）で、使われた試合が20未満のものは薄く表示します。くわしくは<a href="#real" data-go="real">実戦データ</a>へ。
       </div>
       <h2 id="h-tier">ランク別一覧</h2>
       <div id="tierlist" data-ctx="最強カードランキング"></div>
-      <h2 id="h-all">採用時勝率ランキング（全カード）</h2>
-      <div class="tw"><table class="gt rank" id="ranktable" data-ctx="採用時勝率ランキング"></table></div>
+      <h2 id="h-all">影響ランキング（全カード）</h2>
+      <div class="tw"><table class="gt rank" id="ranktable" data-ctx="最強カードランキング"></table></div>
     </template>
 
     <template id="t-cards">
@@ -122,10 +122,10 @@
     <template id="t-decks">
       <p class="lead-s">カードの画像をタップすると、ページを移らずにその場で詳しい性能を見られます。詳細の「前へ／次へ」で、同じデッキのカードを順番に確認できます。</p>
       <h2 id="h-drank">最強デッキランキング</h2>
-      <p class="lead-s">相性表の平均勝率（同じデッキ同士を除く）の高い順です。</p>
+      <p class="lead-s">いちばん強いAI同士の総当たり（各組み合わせ<span data-v="META_PER"></span>戦・合計<span data-v="META_GAMES"></span>戦、<span data-v="META_DATE"></span>）で、他の全デッキに対する平均勝率の高い順です。Tier1＝70%以上、Tier2＝57%以上、Tier3＝44%以上、Tier4＝それ未満。1組み合わせの試合数が少ないので、±5%程度は誤差として見てください。</p>
       <div id="decklist"></div>
       <h2 id="h-matrix">相性表</h2>
-      <p class="lead-s">行のデッキが列のデッキに勝った割合（%）。AI「ふつう」同士、各組み合わせ<span data-v="STATS_PER"></span>戦、先手後手は半々。55%以上を緑、45%以下を赤にしています。</p>
+      <p class="lead-s">行のデッキが列のデッキに勝った割合（%）。いちばん強いAI同士、各組み合わせ<span data-v="META_PER"></span>戦、先手後手は半々。並びはランキング順。60%以上を緑、40%以下を赤にしています。</p>
       <div class="tw"><table class="gt mx" id="matrix"></table></div>
     </template>
 

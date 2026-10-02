@@ -5,15 +5,16 @@
  * カード詳細は履歴に1つ積むので、スマホの「戻る」で閉じると元のページの同じ位置に戻ります。 */
 import './wiki.css';
 import { CARD_LIST, KEYWORD_HELP, SET_NAMES, keywordsOf, setOf, type CardDef, type CardSet, type Rarity } from '../core/cards';
-import { PRESET_DECKS, type DeckDef } from '../core/decks';
 import { RULES } from '../core/rules';
 import { CRAFT_COST, DAILY_BONUS, DAILY_MATCH_CAP, DUPE_SHARDS, LAST_SLOT, MATCH_REWARD, MIN_ACTIONS, PACKS, PITY } from '../meta/economy';
 import { NEWS } from '../meta/progress';
 import { cardFace } from '../render/cardArt';
-import { PACK_TEST_DECKS } from '../sim/packDecks';
+import { META_DECKS, META_KIND_NAME, type MetaDeck } from '../sim/metaDecks';
 import { VERSION } from '../version';
 import { DECK_NOTE, GLOSS, KW_TIPS, MEMO } from './content';
 import { STATS } from './stats';
+import { META } from './meta';
+import { PRESET_DECKS } from '../core/decks';
 import { serverUrl } from '../net/config';
 import { impacts, type StatsAgg, type StoredLog } from '../server/stats';
 import { narrate } from '../core/narrate';
@@ -53,6 +54,10 @@ const V: Record<string, string | number> = {
   STATS_GAMES: STATS.games.toLocaleString('ja-JP'),
   STATS_DATE: STATS.date,
   STATS_PER: STATS.perPair,
+  META_GAMES: META.games.toLocaleString('ja-JP'),
+  META_PER: META.perPair,
+  META_DATE: META.date,
+  META_DECKS: META_DECKS.length,
 };
 const fillValues = (root: ParentNode) => root.querySelectorAll<HTMLElement>('[data-v]').forEach((el) => {
   const v = V[el.dataset.v!];
@@ -80,35 +85,50 @@ function hydrate(root: ParentNode) {
 }
 const img = (id: string, cls = 'face') => `<img class="${cls}" data-face="${id}" alt="${esc(C[id]?.name)}" width="340" height="476" decoding="async">`;
 
-// ------------------------------------------------------------------ ratings (from the AI simulation)
+// ------------------------------------------------------------------ ratings (environment round robin, strongest AI)
 type Tier = 'SS' | 'S' | 'A' | 'B' | 'C';
 const TIERS: Tier[] = ['SS', 'S', 'A', 'B', 'C'];
-const RANKED = CARD_LIST.filter((c) => STATS.win[c.id] != null).sort((a, b) => STATS.win[b.id] - STATS.win[a.id] || a.cost - b.cost);
+/** 影響: how much more often a deck won in the games where the card was used, than that deck's average (%). */
+const SCORE: Record<string, number> = Object.fromEntries(Object.entries(META.cards).filter(([id]) => C[id] && !C[id].token).map(([id, x]) => [id, x[0]]));
+const sign = (n: number) => `${n > 0 ? '+' : ''}${n.toFixed(1)}`;
+const RANKED = CARD_LIST.filter((c) => SCORE[c.id] != null).sort((a, b) => SCORE[b.id] - SCORE[a.id] || a.cost - b.cost);
 const TIER: Record<string, Tier> = {};
 const RANK: Record<string, number> = {};
 {
   const n = RANKED.length;
-  const cuts = [0.1, 0.3, 0.55, 0.8].map((f) => STATS.win[RANKED[Math.max(0, Math.ceil(n * f) - 1)]?.id] ?? 0);
+  const cuts = [0.1, 0.3, 0.55, 0.8].map((f) => SCORE[RANKED[Math.max(0, Math.ceil(n * f) - 1)]?.id] ?? 0);
   RANKED.forEach((c, i) => {
-    const w = STATS.win[c.id];
+    const w = SCORE[c.id];
     const t = cuts.findIndex((x) => w >= x);
     TIER[c.id] = TIERS[t < 0 ? 4 : t];
-    RANK[c.id] = i === 0 || w !== STATS.win[RANKED[i - 1].id] ? i + 1 : RANK[RANKED[i - 1].id];
+    RANK[c.id] = i === 0 || w !== SCORE[RANKED[i - 1].id] ? i + 1 : RANK[RANKED[i - 1].id];
   });
+}
+/** Real games (the ranking server's totals for the newest version), loaded once on demand. */
+let realLift: Record<string, { used: number; lift: number }> | null = null;
+let realLoading: Promise<void> | null = null;
+function loadReal(): Promise<void> {
+  const base = serverUrl()?.replace(/^ws/, 'http');
+  if (!base) { realLift = {}; return Promise.resolve(); }
+  return (realLoading ??= (async () => {
+    try {
+      const r = await fetch(base + '/api/stats', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+      const agg = r.ok ? ((await r.json()) as { agg: StatsAgg | null }).agg : null;
+      realLift = agg ? Object.fromEntries(impacts(agg).map((x) => [x.id, { used: x.used, lift: x.lift }])) : {};
+    } catch { realLift = {}; }
+  })());
 }
 const tierBadge = (id: string) => (TIER[id] ? `<span class="tb ${TIER[id]}">${TIER[id]}</span>` : '<span class="tb none">—</span>');
 
-// ------------------------------------------------------------------ decks
-type WikiDeck = DeckDef & { preset: boolean; avg: number | null; count: Record<string, number>; ids: string[] };
-const DECKS: WikiDeck[] = [...PRESET_DECKS.map((d) => ({ d, preset: true })), ...PACK_TEST_DECKS.map((d) => ({ d, preset: false }))].map(({ d, preset }) => {
+// ------------------------------------------------------------------ decks (environment round robin)
+type WikiDeck = MetaDeck & { blurb?: string; avg: number | null; count: Record<string, number>; ids: string[]; idx: number };
+const DECKS: WikiDeck[] = META_DECKS.map((d, idx) => {
   const count: Record<string, number> = {};
   for (const c of d.cards) count[c] = (count[c] ?? 0) + 1;
   const ids = Object.keys(count).filter((id) => C[id]).sort((a, b) => C[a].cost - C[b].cost || C[a].name.localeCompare(C[b].name, 'ja'));
-  const row = STATS.matrix[d.name];
-  const self = STATS.decks.indexOf(d.name);
-  const others = row?.filter((_, i) => i !== self) ?? [];
-  return { ...d, preset, count, ids, avg: others.length ? others.reduce((s, x) => s + x, 0) / others.length : null };
+  return { ...d, idx, blurb: PRESET_DECKS.find((p) => p.id === d.id)?.blurb, count, ids, avg: META.decks[idx]?.win ?? null };
 }).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1));
+const deckTier = (w: number | null) => (w == null ? '' : w >= 70 ? 'Tier1' : w >= 57 ? 'Tier2' : w >= 44 ? 'Tier3' : 'Tier4');
 const decksWith = (id: string) => DECKS.filter((d) => d.count[id]);
 
 // ------------------------------------------------------------------ pages
@@ -129,11 +149,11 @@ interface Page { id: string; label: string; title: string; desc: string; intro?:
 const PAGES: Page[] = [
   { id: 'home', label: 'トップ', title: 'クロノ・デュエル攻略wiki', desc: 'このwikiの使い方' },
   { id: 'ranking', label: '最強ランキング', title: '最強カードランキング', desc: '全カードを5段階で評価',
-    intro: '全カードを、AI同士の対戦で「使ったときに勝ちやすかったか」で5段階に分けたランキングです。カードの画像をタップすると、その場で詳しい性能と攻略メモを見られます。' },
+    intro: '全カードを、いちばん強いAI同士で環境デッキを総当たりさせたときの「使った試合でどれだけ勝ちやすくなったか（影響）」で5段階に分けたランキングです。みんなの実際の対戦での影響も並べています。カードの画像をタップすると、その場で詳しい性能と攻略メモを見られます。' },
   { id: 'cards', label: 'カード一覧', title: `カード一覧（全${CARD_LIST.length}種）`, desc: '検索・絞り込み・評価つき',
     intro: 'セット・種類・レアリティ・効果で絞り込めます。行をタップすると詳細が開き、「前へ／次へ」で絞り込んだ一覧の中を順番に見られます。' },
-  { id: 'decks', label: 'デッキ', title: '最強デッキランキングと相性表', desc: '基本デッキと参考構築、相性表',
-    intro: '最初から使える基本デッキと、バランス検証に使われている第1弾入りの参考構築です。' },
+  { id: 'decks', label: 'デッキ', title: '最強デッキランキングと相性表', desc: '環境デッキからファンデッキまで16個のTier表',
+    intro: '基本デッキ・参考構築・プレイヤーが使っている環境デッキ・ファンデッキを、いちばん強いAI同士で総当たりさせた結果です。' },
   { id: 'rules', label: '基本ルール', title: '基本ルールと遊び方', desc: '時計・行動コスト・鐘・終焉・予約',
     intro: 'クロノ・デュエルにはターンがありません。時計と行動コストの仕組みを押さえれば、すぐに遊べます。' },
   { id: 'keywords', label: 'キーワード', title: 'キーワード一覧と使い方', desc: '残響・共鳴・急襲・充填など',
@@ -212,11 +232,17 @@ const thumb = (id: string, extra = '') => `<button type="button" class="thumb" d
 const tierRow = (t: Tier, ids: string[]) => `<div class="tier ${t}"><b>${t}</b><div><div class="thumbs sm">${ids.map((id) => thumb(id)).join('')}</div></div></div>`;
 function initRanking() {
   $('tierlist').innerHTML = TIERS.map((t) => tierRow(t, RANKED.filter((c) => TIER[c.id] === t).map((c) => c.id))).join('');
-  $('ranktable').innerHTML = '<tr><th class="num">順位</th><th>カード</th><th>評価</th><th class="num">採用時勝率</th><th class="num wide">使用／試合</th></tr>' +
-    RANKED.map((c) => {
-      const u = STATS.use[c.id];
-      return `<tr data-card="${c.id}" tabindex="0"><td class="ranknum">${RANK[c.id]}</td><td>${cname(c)}</td><td>${tierBadge(c.id)}</td><td class="num"><b class="n">${STATS.win[c.id]}%</b></td><td class="num wide small">${u ? (u[0] + u[1]).toFixed(2) : '—'}</td></tr>`;
-    }).join('');
+  const table = () => {
+    $('ranktable').innerHTML = '<tr><th class="num">順位</th><th>カード</th><th>評価</th><th class="num">影響（AI戦）</th><th class="num">影響（実戦）</th><th class="num wide">使われた試合</th></tr>' +
+      RANKED.map((c) => {
+        const r = realLift?.[c.id], m = META.cards[c.id];
+        const real = r && r.used >= 20 ? `<b class="n">${sign(r.lift)}</b>` : r ? `<span class="mute">${sign(r.lift)}</span>` : '<span class="mute">—</span>';
+        return `<tr data-card="${c.id}" tabindex="0"><td class="ranknum">${RANK[c.id]}</td><td>${cname(c)}</td><td>${tierBadge(c.id)}</td><td class="num"><b class="n">${sign(SCORE[c.id])}</b></td><td class="num">${real}</td><td class="num wide small">${m?.[1] ?? 0}</td></tr>`;
+      }).join('');
+    hydrate($('ranktable'));
+  };
+  table();
+  if (!realLift) void loadReal().then(() => { if (document.body.contains($('ranktable'))) { table(); $('ranktable').classList.add('list'); } });
   $('ranktable').classList.add('list');
 }
 
@@ -224,7 +250,7 @@ function initRanking() {
 function deckBlock(d: WikiDeck, rank: number, compact = false) {
   const units = d.cards.filter((id) => C[id]?.kind === 'unit').length;
   const head = `<div class="deck-hd"><span class="rk${rank <= 3 ? ' top' : ''}">${rank}</span>
-    <div><h3>${esc(d.name)}</h3><div class="tags"><span class="tag ${d.preset ? '' : 'test'}">${d.preset ? '基本デッキ' : '参考構築（第1弾入り）'}</span>${d.blurb ? `<span class="small mute">${esc(d.blurb)}</span>` : ''}</div></div>
+    <div><h3>${esc(d.name)}</h3><div class="tags"><span class="tag ${d.kind === 'preset' ? '' : 'test'}">${deckTier(d.avg)}・${META_KIND_NAME[d.kind]}</span>${d.blurb ? `<span class="small mute">${esc(d.blurb)}</span>` : ''}</div></div>
     <div class="wr">平均勝率<b>${d.avg != null ? d.avg.toFixed(1) + '%' : '—'}</b></div></div>`;
   if (compact) {
     const key = [...d.ids].sort((a, b) => C[b].cost - C[a].cost).slice(0, 8);
@@ -243,11 +269,12 @@ function deckBlock(d: WikiDeck, rank: number, compact = false) {
 }
 function initDecks() {
   $('decklist').innerHTML = DECKS.map((d, i) => deckBlock(d, i + 1)).join('');
-  const cols = STATS.decks;
-  $('matrix').innerHTML = `<tr><th class="row">行 ＼ 列</th>${cols.map((c) => `<th>${esc(c)}</th>`).join('')}</tr>` +
-    cols.map((r) => `<tr><th class="row">${esc(r)}</th>${(STATS.matrix[r] ?? []).map((x, i) => {
-      const bg = r === cols[i] ? 'rgba(143,169,173,.12)' : x >= 55 ? 'rgba(95,208,181,.24)' : x <= 45 ? 'rgba(233,103,79,.24)' : '';
-      return `<td${bg ? ` style="background:${bg}"` : ''}>${x}</td>`;
+  const short = (d: WikiDeck) => esc(d.name.replace(/（.*）/, '').slice(0, 6));
+  $('matrix').innerHTML = `<tr><th class="row">行 ＼ 列</th>${DECKS.map((c) => `<th>${short(c)}</th>`).join('')}</tr>` +
+    DECKS.map((r) => `<tr><th class="row">${short(r)}</th>${DECKS.map((c) => {
+      const x = META.matrix[r.idx]?.[c.idx] ?? -1;
+      const bg = r === c ? 'rgba(143,169,173,.12)' : x >= 60 ? 'rgba(95,208,181,.24)' : x >= 0 && x <= 40 ? 'rgba(233,103,79,.24)' : '';
+      return `<td${bg ? ` style="background:${bg}"` : ''}>${x < 0 ? '' : x}</td>`;
     }).join('')}</tr>`).join('');
 }
 
@@ -421,7 +448,7 @@ function renderPage(id: string) {
   page = id;
   main.innerHTML = `<nav class="crumbs" aria-label="現在地"><a href="#home" data-go="home">クロノ・デュエル攻略wiki</a>${id !== 'home' ? `<span>${esc(p.label)}</span>` : ''}</nav>
     <article class="art"><h1>${esc(p.title)}</h1>
-      <div class="updated"><span>対応バージョン：<b>Ver. ${esc(VERSION)}</b></span><span>評価データ：<b>${esc(STATS.date)}</b> 集計</span></div>
+      <div class="updated"><span>対応バージョン：<b>Ver. ${esc(VERSION)}</b></span><span>評価データ：<b>${esc(META.date)}</b> 集計</span></div>
       ${p.intro ? `<p class="intro">${esc(p.intro)}</p>` : ''}
       <div id="page-body"></div></article>`;
   const bodyEl = $('page-body');
@@ -451,7 +478,7 @@ function renderChrome() {
   $('side').innerHTML = `
     <div class="sbox"><a class="banner" href="../"><b>クロノ・デュエル</b><span>ターンのない対戦カードゲーム。ブラウザですぐ遊べます。</span><br><em>ゲームで遊ぶ</em></a></div>
     <div class="sbox menu"><h2>攻略メニュー</h2><ul class="smenu">${MENU.map((p) => `<li><a href="#${p.id}" data-go="${p.id}" data-nav="${p.id}">${ICON[p.id] ?? ''}${p.label}</a></li>`).join('')}</ul></div>
-    <div class="sbox"><h2>採用時勝率 TOP5</h2><ul class="stop" data-ctx="採用時勝率TOP5">${top.map((c, i) => `<li><button type="button" data-card="${c.id}"><i>${i + 1}</i>${img(c.id)}<span>${esc(c.name)}</span><small>${STATS.win[c.id]}%</small></button></li>`).join('')}</ul></div>
+    <div class="sbox"><h2>最強カード TOP5</h2><ul class="stop" data-ctx="最強カードTOP5">${top.map((c, i) => `<li><button type="button" data-card="${c.id}"><i>${i + 1}</i>${img(c.id)}<span>${esc(c.name)}</span><small>${sign(SCORE[c.id])}</small></button></li>`).join('')}</ul></div>
     <div class="sbox"><h2>お知らせ</h2><ul class="snews">${NEWS.slice(0, 4).map((n) => `<li><time>${n.date.replace(/-/g, '.')}</time>${esc(n.title)}</li>`).join('')}</ul></div>`;
   fillValues(document);
   hydrate($('side'));
@@ -492,7 +519,7 @@ function renderDetail(id: string) {
       <div>
         <h2 class="m-name" id="m-name">${esc(c.name)}</h2>
         <div class="m-sub">${kws.map((k) => `<span class="rar C">${k}</span>`).join('')}</div>
-        <div class="m-eval">${tierBadge(id)}<div>${w != null ? `採用時勝率 <b>${w}%</b>（全${RANKED.length}種中 ${RANK[id]}位）<br>1試合あたり 使用 ${u?.[0].toFixed(2) ?? '0'}回${u?.[1] ? ` ／ 予約 ${u[1].toFixed(2)}回` : ''}` : 'このカードはまだ評価データがありません。'}</div></div>
+        <div class="m-eval">${tierBadge(id)}<div>${SCORE[id] != null ? `影響 <b>${sign(SCORE[id])}</b>（全${RANKED.length}種中 ${RANK[id]}位）<br>` : ''}${w != null ? `AI「ふつう」での採用時勝率 ${w}% ／ 1試合あたり 使用 ${u?.[0].toFixed(2) ?? '0'}回${u?.[1] ? ` ／ 予約 ${u[1].toFixed(2)}回` : ''}` : ''}${SCORE[id] == null && w == null ? 'このカードはまだ評価データがありません。' : ''}</div></div>
         <div class="tw"><table class="gt spec">${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table></div>
         <div class="m-sec"><h4>効果</h4><p>${esc(c.text) || '<span class="mute">（効果なし）</span>'}</p>${c.resvText ? `<p class="resv"><b>予約時</b>${esc(c.resvText)}</p>` : ''}</div>
         ${MEMO[id] ? `<div class="m-sec"><h4>攻略メモ</h4><p>${esc(MEMO[id])}</p></div>` : ''}

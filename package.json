@@ -21,7 +21,8 @@
     "balance": "tsx src/sim/balance.ts",
     "test:keywords": "tsx src/sim/kwtest.ts",
     "test:set2": "tsx src/sim/set2test.ts",
-    "logs": "tsx src/sim/logs.ts"
+    "logs": "tsx src/sim/logs.ts",
+    "meta": "tsx src/sim/meta.ts"
   },
   "dependencies": {
     "pixi.js": "8.6.6"

@@ -129,6 +129,7 @@ npm run test:keywords # 転移・鐘鳴のテスト（テスト専用カード�
 npm run balance -- e_slash collapse   # カードの強さを測る（振り子兵と入れ替えた勝率の増減）
 npm run balance -- all --csv out.csv  # 全カード（2コアで30〜40分）
 npm run stats:real -- https://<サーバー>  # 実戦データを表示してCSVに書き出す
+npm run meta                          # 環境デッキの総当たり（超つよい＋＋同士）→ wikiのデッキ・カードランキング
 npm run logs -- https://<サーバー> <トークン>  # 対戦の記録を取得して分析（--player 名前）
 npm run sim -- 240 expert hard  # AIの強さ比較
 npm run dev:server # オンライン用のローカルサーバー（ws://localhost:8787）
@@ -180,8 +181,7 @@ server/      Cloudflare Workers（Durable Objects）の入れ物、ローカル�
 - カードの数値・効果文、デッキ、ルールの数値、パックの確率と報酬は `core/` と `meta/` を直接読んで表示します。カードを追加・調整すると、次のビルドでwikiも変わります。
 - 採用時勝率・使用回数・相性表は `src/wiki/stats.ts`（生成ファイル）から表示します。カードやバランスを変えたら `npm run wiki:stats` で作り直してコミットしてください（6,400戦で1分ほど）。
 - 攻略メモ・デッキ解説・用語集などの文章は `src/wiki/content.ts` に書きます。新カードは `MEMO` に1行足すと「攻略」欄が出ます（無くても表示されます）。
-- 各ページは `#cards` `#decks` のようなURLで直接開けます。カードの詳細は `#card-<カードID>`（例 `#card-titan`）で、どのページの上にも重ねて開きます（戻るで閉じる）。
-- カードの画像はゲーム本体の `render/cardArt.ts` でその場で描いています。評価（SS〜C）は `stats.ts` の採用時勝率を上位から約1割・2割・2.5割・2.5割・残りで分けたものです。
+- 各ページは `#cards` `#decks` のようなURLで直接開けます。
 
 ## PWA
 
