@@ -4,294 +4,280 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#08141c" />
-    <meta name="description" content="クロノ・デュエルの攻略wiki。ルール、全カードの効果と攻略メモ、デッキと相性表、立ち回り、パックの提供割合をまとめています。" />
+    <meta name="description" content="クロノ・デュエルの攻略wiki。最強カードランキング、全カードの評価と攻略メモ、デッキと相性表、ルール、立ち回り、パックの提供割合をまとめています。" />
     <title>クロノ・デュエル攻略wiki</title>
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
     <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Shippori+Mincho+B1:wght@600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Shippori+Mincho+B1:wght@500;600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" />
   </head>
   <body>
-    <div class="wrap">
-      <header class="top">
-        <div class="bar"><div class="en">CHRONO DUEL · STRATEGY WIKI</div><a class="play" href="../">ゲームで遊ぶ</a></div>
-        <h1>クロノ・デュエル攻略wiki</h1>
-        <p class="lede">ターンのない対戦カードゲーム。すべての行動は「刻」を払い、時計が遅れている方が次に動く。ルール、全<span data-v="CARD_COUNT">45</span>種のカード、デッキ、立ち回りをまとめています。</p>
-        <div class="meta">Ver <span data-v="VERSION"></span> · 第1弾「残響の刻」対応</div>
-      </header>
+    <header class="site">
+      <div class="in">
+        <a class="logo" href="#home" data-go="home" aria-label="クロノ・デュエル攻略wiki トップ">
+          <svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17" fill="#0e202b" stroke="#e0b25c" stroke-width="2"/><g stroke="#9c7432" stroke-width="1.5"><path d="M20 5v4M20 31v4M5 20h4M31 20h4M9.4 9.4l2.8 2.8M27.8 27.8l2.8 2.8M9.4 30.6l2.8-2.8M27.8 12.2l2.8-2.8"/></g><path d="M20 20V10M20 20l7 4" stroke="#f1e7d0" stroke-width="2.2" stroke-linecap="round"/><circle cx="20" cy="20" r="2.2" fill="#e0b25c"/></svg>
+          <span><small>CHRONO DUEL</small><b>クロノ・デュエル攻略wiki</b></span>
+        </a>
+        <div class="search" role="search">
+          <input type="search" id="gq" placeholder="カード名・効果で検索" aria-label="カードを検索" autocomplete="off" />
+          <div class="suggest" id="suggest" hidden></div>
+        </div>
+        <a class="play" href="../">ゲームで遊ぶ</a>
+      </div>
+      <nav class="gnav" aria-label="攻略メニュー"><div class="in" id="gnav"></div></nav>
+    </header>
+
+    <div class="layout">
+      <main id="main"></main>
+      <aside id="side" aria-label="サイドメニュー"></aside>
     </div>
 
-    <nav class="tabs" aria-label="ページ"><div class="in" role="tablist" id="tabs"></div></nav>
+    <footer class="site-foot">
+      <div class="in">
+        <p>カードの数値・効果文とルールの数値は、ゲーム本体と同じデータから表示しています。ランキングと相性表はAI「ふつう」同士<span data-v="STATS_GAMES"></span>戦のシミュレーション結果（<span data-v="STATS_DATE"></span>集計）で、人同士の対戦とは傾向が違うことがあります。</p>
+        <p>クロノ・デュエル Ver. <span data-v="VERSION"></span></p>
+      </div>
+    </footer>
 
-    <main class="wrap" id="main"></main>
+    <div class="modal" id="modal" hidden>
+      <div class="modal-back" data-close></div>
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="m-name" tabindex="-1" id="sheet"></div>
+    </div>
 
-    <div class="wrap"><footer>カードの数値・効果文とルールの数値は、ゲーム本体と同じデータから表示しています。勝率と相性表はAI「ふつう」同士<span data-v="STATS_GAMES"></span>戦のシミュレーション結果（<span data-v="STATS_DATE"></span>集計）で、人同士の対戦とは傾向が違うことがあります。</footer></div>
-
+    <!-- ===================================================== 各ページの本文 -->
     <template id="t-home">
-      <section class="page">
-        <div class="grid2">
-          <div class="panel block">
-            <h4>このゲームをひとことで</h4>
-            <p style="margin:0">手番は交互ではありません。<b>重い行動をすると、そのぶん相手が続けて動けます。</b>カードの強さに加えて「いつ、何刻使うか」が勝負を分けます。</p>
-          </div>
-          <div class="panel block">
-            <h4>勝ち方は2つ</h4>
-            <ul class="dots">
-              <li>相手の拠点（体力<span data-v="BASE_HP"></span>）を0にする</li>
-              <li>両者の時計が<span data-v="END"></span>刻に届いたとき、体力が多い方が勝ち</li>
-            </ul>
-          </div>
+      <section class="kv">
+        <div class="kv-txt">
+          <div class="en">TIME IS YOUR ONLY RESOURCE</div>
+          <p class="kv-h">ターンのない対戦カードゲーム</p>
+          <p>すべての行動は「刻」を払い、時計が遅れている方が次に動く。全<span data-v="CARD_COUNT"></span>種のカード評価、デッキ、立ち回りをまとめた攻略wikiです。</p>
         </div>
-        <div class="block prose">
-          <h2>はじめての人へ</h2>
-          <ul class="dots">
-            <li>まず<a href="#rules" data-go="rules">ルール</a>の「時計」と「行動コスト」の表を読んでください。これだけで対戦はできます。</li>
-            <li>最初のデッキは「均衡の刻」がおすすめです。攻守のバランスがよく、どの相手にも大きく負け越しません。</li>
-            <li>パックのカードを手に入れたら、<a href="#keywords" data-go="keywords">キーワード</a>で残響・共鳴・急襲・充填を確認しましょう。</li>
-            <li>勝てなくなってきたら<a href="#tips" data-go="tips">立ち回り</a>へ。鐘と終焉の使い方で勝率が変わります。</li>
-          </ul>
-        </div>
-        <div class="block">
-          <h2>ページ一覧</h2>
-          <div class="grid2" id="home-links"></div>
-        </div>
+        <div class="kv-cards" id="kv-cards" aria-hidden="true"></div>
       </section>
+
+      <h2 id="h-news">新着情報</h2>
+      <ul class="news" id="home-news"></ul>
+
+      <h2 id="h-menu">攻略メニュー</h2>
+      <div class="tiles" id="home-tiles"></div>
+
+      <h2 id="h-rank">最強カードランキング</h2>
+      <p class="lead-s">AI同士の対戦で、使ったときに勝ちやすかったカードです。上位2ランクを表示しています。</p>
+      <div id="home-tier"></div>
+      <p class="more"><a href="#ranking" data-go="ranking">ランキングをすべて見る</a></p>
+
+      <h2 id="h-deck">おすすめデッキ</h2>
+      <div id="home-decks"></div>
+      <p class="more"><a href="#decks" data-go="decks">デッキと相性表をすべて見る</a></p>
+
+      <h2 id="h-begin">はじめての人へ</h2>
+      <div class="box">
+        <ol class="steps">
+          <li><a href="#rules" data-go="rules">基本ルール</a>の「時計」と「行動コスト」の表を読む。これだけで対戦はできます。</li>
+          <li>最初のデッキは「均衡の刻」がおすすめ。攻守のバランスがよく、どの相手にも大きく負け越しません。</li>
+          <li>パックのカードを手に入れたら、<a href="#keywords" data-go="keywords">キーワード</a>で残響・共鳴・急襲・充填を確認する。</li>
+          <li>勝てなくなってきたら<a href="#tips" data-go="tips">立ち回り</a>へ。鐘と終焉の使い方で勝率が変わります。</li>
+        </ol>
+      </div>
     </template>
 
-    <template id="t-rules">
-      <section class="page">
-        <div class="block prose">
-          <h2>基本ルール</h2>
-          <p>両プレイヤーはそれぞれ自分の時計を持ち、0刻から始まります。行動するたびに、その行動のコスト分だけ自分の時計が進みます。</p>
-          <div class="callout"><b>次に動くのは、時計が遅れている方。</b>同じ刻なら、直前に動いていない方が動きます。片方が<span data-v="END"></span>刻に着いたら、もう片方が着くまで続けて動きます。</div>
-        </div>
-        <div class="panel clock">
-          <h4>時計の目盛り（0〜<span data-v="END"></span>刻）</h4>
-          <svg viewBox="0 0 800 150" id="clocksvg" role="img" aria-label="時計の目盛り。鐘と終焉の刻を示す"></svg>
-        </div>
-        <div class="grid2">
-          <div class="panel">
-            <h4>主な数値</h4>
-            <div class="tw"><table>
-              <tr><th>項目</th><th>値</th></tr>
-              <tr><td>拠点の体力</td><td><span class="tick" data-v="BASE_HP"></span>（回復しても上限はこの値）</td></tr>
-              <tr><td>時計の終わり</td><td><span class="tick" data-v="END"></span>刻</td></tr>
-              <tr><td>デッキ</td><td><span class="tick" data-v="DECK_SIZE"></span>枚。同名<span data-v="MAX_COPIES"></span>枚まで、伝説は<span data-v="MAX_LEGEND_COPIES"></span>枚</td></tr>
-              <tr><td>初期手札 / 上限</td><td><span class="tick" data-v="START_HAND"></span>枚 / <span class="tick" data-v="MAX_HAND"></span>枚（あふれたカードは燃えて消える）</td></tr>
-              <tr><td>レーン</td><td><span class="tick" data-v="LANES"></span>つ。1レーンにユニット1体</td></tr>
-              <tr><td>予約</td><td>同時に<span class="tick" data-v="MAX_RESV"></span>つまで</td></tr>
-              <tr><td>残響</td><td>同時に<span class="tick" data-v="MAX_ECHO"></span>つまで（超えた分は不発）</td></tr>
-            </table></div>
-          </div>
-          <div class="panel">
-            <h4>行動コスト</h4>
-            <div class="tw"><table>
-              <tr><th>行動</th><th class="num">刻</th><th>メモ</th></tr>
-              <tr><td>カードを使う</td><td class="num tick">コスト</td><td>ユニットの召喚、術の即時発動</td></tr>
-              <tr><td>予約する</td><td class="num tick">コスト</td><td>術を未来の時刻に伏せる</td></tr>
-              <tr><td>攻撃</td><td class="num tick" data-v="COST_ATTACK"></td><td>準備ができたユニット1体で</td></tr>
-              <tr><td>ドロー</td><td class="num tick" data-v="COST_DRAW"></td><td>山札が残っているときだけ</td></tr>
-              <tr><td>待機</td><td class="num tick" data-v="COST_WAIT"></td><td>何もしない</td></tr>
-            </table></div>
-          </div>
-        </div>
-        <div class="block prose">
-          <h3>鐘</h3>
-          <p>自分の時計が <span class="tick" data-v="BELLS"></span> 刻を越えるたびに、カードを1枚引きます。コストの大きい行動で2つの鐘を一度に越えれば2枚引けます。「鐘楼の歩哨」はこのタイミングで成長します。</p>
-          <h3>終焉の刻</h3>
-          <p>両者の時計の遅い方（世界の時刻）が <span class="tick" data-v="DOOM_AT"></span> 刻に届くと、<b>ユニットの攻撃</b>で拠点に与えるダメージが<b>+1</b>されます。以降 <span class="tick" data-v="DOOM_STEP"></span> 刻ごとにさらに+1（<span data-v="DOOM_LIST"></span>）。術や残響による拠点へのダメージには乗りません。盤面を無視して拠点を削る手段は、終盤でも書かれた数値のままです。</p>
-          <h3>ユニットと攻撃</h3>
-          <ul class="dots">
-            <li>召喚したユニットは、自分の時計が1刻進むと攻撃できます。<b>速攻</b>なら召喚直後から攻撃できます。</li>
-            <li>攻撃すると、ユニットは「再装填」の刻数だけ次の攻撃を待ちます（カードの「再」の数字）。</li>
-            <li>攻撃先は同じレーンの敵ユニット。いなければ、隣のレーンにいる<b>挑発</b>ユニット（2体なら体力の多い方）が受け止めます。それもいなければ敵拠点へ。</li>
-            <li>ユニット同士の戦闘は同時にダメージ。攻撃された側も、自分の攻撃力ぶん反撃します。</li>
-            <li><b>貫通</b>は、倒した相手の体力を超えた分が拠点に届きます。</li>
-          </ul>
-          <h3>未来予約</h3>
-          <ul class="dots">
-            <li>術を使う代わりに、未来の時刻を指定して伏せられます。コストは同じで、今払います。</li>
-            <li>指定できるのは「支払い後の自分の時計+1」から<span data-v="END"></span>刻まで。世界の時刻（両者の時計の遅い方）がその刻に届くと発動します。</li>
-            <li>予約から発動した術は<b>必ず強化</b>されます（カードの「予約時」欄）。ただし充填のXは0になります。</li>
-            <li>相手には伏せた時刻だけが見え、中身は見えません。「予見の巫女」「覗き時計」で公開、「刻壊し」「破約の刃」で破棄されます。</li>
-          </ul>
-          <h3>時間切れの判定</h3>
-          <p>両者の時計が<span data-v="END"></span>刻に届いた時点で、拠点の体力が多い方の勝ち。体力が同じなら、場に残っているユニットの<b>攻撃力と体力の合計</b>が大きい方の勝ち。それも同じなら引き分けです。</p>
-          <h3>山札切れ</h3>
-          <p>山札がなくなってもダメージは受けません。ドローの行動と鐘のドローができなくなるだけです。</p>
-        </div>
-      </section>
-    </template>
-
-    <template id="t-keywords">
-      <section class="page">
-        <div class="block prose">
-          <h2>キーワード</h2>
-          <p class="mute">基本セットの3つと、第1弾「残響の刻」で加わった4つ。</p>
-        </div>
-        <div class="grid2" id="kwlist"></div>
-      </section>
+    <template id="t-ranking">
+      <div class="box note">
+        <b>ランクの決め方</b>
+        AI「ふつう」同士の対戦で、そのカードを使った試合の勝率（採用時勝率）を並べ、上位から SS（約1割）・S・A・B・C に分けています。デッキとの相性やプレイの腕は含まれないので、目安として使ってください。人が遊んだ対戦の成績は<a href="#real" data-go="real">実戦データ</a>で見られます。
+      </div>
+      <h2 id="h-tier">ランク別一覧</h2>
+      <div id="tierlist" data-ctx="最強カードランキング"></div>
+      <h2 id="h-all">採用時勝率ランキング（全カード）</h2>
+      <div class="tw"><table class="gt rank" id="ranktable" data-ctx="採用時勝率ランキング"></table></div>
     </template>
 
     <template id="t-cards">
-      <section class="page">
-        <div class="block">
-          <h2>カード一覧</h2>
-          <div class="filters">
-            <input type="search" id="q" placeholder="カード名・効果で検索（例：挑発、時計、拠点）" aria-label="カードを検索" />
-            <div class="seg" id="f-set" aria-label="セット"></div>
-            <div class="seg" id="f-kind" aria-label="種類"></div>
-          </div>
-          <div class="filters">
-            <div class="seg" id="f-rar" aria-label="レアリティ"></div>
-            <select id="f-kw" aria-label="キーワード"></select>
-            <select id="f-sort" aria-label="並び順">
-              <option value="cost">コスト順</option>
-              <option value="win">採用時勝率順</option>
-              <option value="rar">レアリティ順</option>
-            </select>
-            <span class="count" id="count"></span>
+      <div class="filter box">
+        <div class="frow">
+          <input type="search" id="q" placeholder="カード名・効果で絞り込み（例：挑発、時計、拠点）" aria-label="カードを絞り込み" />
+        </div>
+        <div class="frow"><span class="fl">セット</span><div class="chips" id="f-set"></div></div>
+        <div class="frow"><span class="fl">種類</span><div class="chips" id="f-kind"></div></div>
+        <div class="frow"><span class="fl">レア</span><div class="chips" id="f-rar"></div></div>
+        <div class="frow"><span class="fl">効果</span><div class="chips" id="f-kw"></div></div>
+        <div class="frow end">
+          <span class="count" id="count"></span>
+          <select id="f-sort" aria-label="並び順">
+            <option value="cost">コスト順</option>
+            <option value="tier">評価順</option>
+            <option value="rar">レアリティ順</option>
+            <option value="name">名前順</option>
+          </select>
+          <div class="seg" id="f-view" aria-label="表示">
+            <button type="button" data-view="list">リスト</button><button type="button" data-view="grid">画像</button>
           </div>
         </div>
-        <div class="cards" id="cardgrid"></div>
-      </section>
+      </div>
+      <div id="cardlist" data-ctx="カード一覧"></div>
     </template>
 
     <template id="t-decks">
-      <section class="page">
-        <div class="block prose">
-          <h2>デッキ</h2>
-          <p>最初から使える基本デッキと、バランス検証に使われている第1弾入りの参考構築です。コスト分布の棒は1〜9コストの枚数です。</p>
-        </div>
-        <div class="grid2" id="decklist"></div>
-        <div class="block">
-          <h2>相性表</h2>
-          <p class="mute small prose">行のデッキが列のデッキに勝った割合（%）。AI「ふつう」同士、各組み合わせ<span data-v="STATS_PER"></span>戦、先手後手は半々。55%以上を緑、45%以下を赤にしています。</p>
-          <div class="panel tw"><table class="mx" id="matrix"></table></div>
-        </div>
-      </section>
+      <p class="lead-s">カードの画像をタップすると、ページを移らずにその場で詳しい性能を見られます。詳細の「前へ／次へ」で、同じデッキのカードを順番に確認できます。</p>
+      <h2 id="h-drank">最強デッキランキング</h2>
+      <p class="lead-s">相性表の平均勝率（同じデッキ同士を除く）の高い順です。</p>
+      <div id="decklist"></div>
+      <h2 id="h-matrix">相性表</h2>
+      <p class="lead-s">行のデッキが列のデッキに勝った割合（%）。AI「ふつう」同士、各組み合わせ<span data-v="STATS_PER"></span>戦、先手後手は半々。55%以上を緑、45%以下を赤にしています。</p>
+      <div class="tw"><table class="gt mx" id="matrix"></table></div>
+    </template>
+
+    <template id="t-rules">
+      <h2 id="h-turn">ターンのかわりに「時計」</h2>
+      <p>両プレイヤーはそれぞれ自分の時計を持ち、0刻から始まります。行動するたびに、その行動のコスト分だけ自分の時計が進みます。</p>
+      <div class="box point"><b>次に動くのは、時計が遅れている方。</b>同じ刻なら、直前に動いていない方が動きます。片方が<span data-v="END"></span>刻に着いたら、もう片方が着くまで続けて動きます。</div>
+      <div class="box clock">
+        <p class="cap">時計の目盛り（0〜<span data-v="END"></span>刻）</p>
+        <div class="tw"><svg viewBox="0 0 800 150" id="clocksvg" role="img" aria-label="時計の目盛り。鐘と終焉の刻を示す"></svg></div>
+      </div>
+
+      <h2 id="h-num">主な数値</h2>
+      <div class="tw"><table class="gt">
+        <tr><th>項目</th><th>値</th></tr>
+        <tr><td>拠点の体力</td><td><b class="n" data-v="BASE_HP"></b>（回復しても上限はこの値）</td></tr>
+        <tr><td>時計の終わり</td><td><b class="n" data-v="END"></b>刻</td></tr>
+        <tr><td>デッキ</td><td><b class="n" data-v="DECK_SIZE"></b>枚。同名<span data-v="MAX_COPIES"></span>枚まで、伝説は<span data-v="MAX_LEGEND_COPIES"></span>枚</td></tr>
+        <tr><td>初期手札 / 上限</td><td><b class="n" data-v="START_HAND"></b>枚 / <b class="n" data-v="MAX_HAND"></b>枚（あふれたカードは燃えて消える）</td></tr>
+        <tr><td>レーン</td><td><b class="n" data-v="LANES"></b>つ。1レーンにユニット1体</td></tr>
+        <tr><td>予約</td><td>同時に<b class="n" data-v="MAX_RESV"></b>つまで</td></tr>
+        <tr><td>残響</td><td>同時に<b class="n" data-v="MAX_ECHO"></b>つまで（超えた分は不発）</td></tr>
+      </table></div>
+
+      <h2 id="h-cost">行動コスト</h2>
+      <div class="tw"><table class="gt">
+        <tr><th>行動</th><th class="num">刻</th><th>メモ</th></tr>
+        <tr><td>カードを使う</td><td class="num"><b class="n">コスト</b></td><td>ユニットの召喚、術の即時発動</td></tr>
+        <tr><td>予約する</td><td class="num"><b class="n">コスト</b></td><td>術を未来の時刻に伏せる</td></tr>
+        <tr><td>攻撃</td><td class="num"><b class="n" data-v="COST_ATTACK"></b></td><td>準備ができたユニット1体で</td></tr>
+        <tr><td>ドロー</td><td class="num"><b class="n" data-v="COST_DRAW"></b></td><td>山札が残っているときだけ</td></tr>
+        <tr><td>待機</td><td class="num"><b class="n" data-v="COST_WAIT"></b></td><td>何もしない</td></tr>
+      </table></div>
+
+      <h2 id="h-bell">鐘と終焉</h2>
+      <h3>鐘</h3>
+      <p>自分の時計が <b class="n" data-v="BELLS"></b> 刻を越えるたびに、カードを1枚引きます。コストの大きい行動で2つの鐘を一度に越えれば2枚引けます。「鐘楼の歩哨」はこのタイミングで成長します。</p>
+      <h3>終焉の刻</h3>
+      <p>両者の時計の遅い方（世界の時刻）が <b class="n" data-v="DOOM_AT"></b> 刻に届くと、<b>ユニットの攻撃</b>で拠点に与えるダメージが<b>+1</b>されます。以降 <b class="n" data-v="DOOM_STEP"></b> 刻ごとにさらに+1（<span data-v="DOOM_LIST"></span>）。術や残響による拠点へのダメージには乗りません。</p>
+
+      <h2 id="h-unit">ユニットと攻撃</h2>
+      <ul class="dots">
+        <li>召喚したユニットは、自分の時計が1刻進むと攻撃できます。<b>速攻</b>なら召喚直後から攻撃できます。</li>
+        <li>攻撃すると、ユニットは「間隔」の刻数だけ次の攻撃を待ちます。</li>
+        <li>攻撃先は同じレーンの敵ユニット。いなければ、隣のレーンにいる<b>挑発</b>ユニット（2体なら体力の多い方）が受け止めます。それもいなければ敵拠点へ。</li>
+        <li>ユニット同士の戦闘は同時にダメージ。攻撃された側も、自分の攻撃力ぶん反撃します。</li>
+        <li><b>貫通</b>は、倒した相手の体力を超えた分が拠点に届きます。</li>
+      </ul>
+
+      <h2 id="h-resv">未来予約</h2>
+      <ul class="dots">
+        <li>術を使う代わりに、未来の時刻を指定して伏せられます。コストは同じで、今払います。</li>
+        <li>指定できるのは「支払い後の自分の時計+1」から<span data-v="END"></span>刻まで。世界の時刻（両者の時計の遅い方）がその刻に届くと発動します。</li>
+        <li>予約から発動した術は<b>必ず強化</b>されます（カードの「予約時」欄）。ただし充填のXは0になります。</li>
+        <li>相手には伏せた時刻だけが見え、中身は見えません。「予見の巫女」「覗き時計」で公開、「刻壊し」「破約の刃」で破棄されます。</li>
+      </ul>
+
+      <h2 id="h-end">勝敗</h2>
+      <h3>時間切れの判定</h3>
+      <p>両者の時計が<span data-v="END"></span>刻に届いた時点で、拠点の体力が多い方の勝ち。体力が同じなら、場に残っているユニットの<b>攻撃力と体力の合計</b>が大きい方の勝ち。それも同じなら引き分けです。</p>
+      <h3>山札切れ</h3>
+      <p>山札がなくなってもダメージは受けません。ドローの行動と鐘のドローができなくなるだけです。</p>
+    </template>
+
+    <template id="t-keywords">
+      <div id="kwlist" data-ctx="キーワードの代表カード"></div>
     </template>
 
     <template id="t-tips">
-      <section class="page">
-        <div class="block prose">
-          <h2>立ち回り</h2>
-          <p class="mute">ルールの仕組みから言える定石です。デッキや相手によって例外はあります。</p>
-        </div>
-        <div class="block prose">
-          <h3>1. コストは「相手に渡す時間」</h3>
-          <p>5コストのユニットを出すと、相手はその間に1コストの行動を最大5回できます。重いカードを出す前に、相手がその時間で何をしてくるかを考えましょう。逆に、相手が大型を出した直後は、攻撃（1刻）を何回も差し込むチャンスです。</p>
-          <h3>2. ドローは割高、鐘で引く</h3>
-          <p>ドローの行動は<span data-v="COST_DRAW"></span>刻で1枚。鐘は無料で1枚です。鐘の直前に、どうせ必要な行動（召喚や攻撃）で鐘を越えるのが基本。手札が<span data-v="MAX_HAND"></span>枚のときに鐘を越えると、引いたカードが燃えてしまうので注意。</p>
-          <h3>3. 攻撃は1刻、再装填を数える</h3>
-          <p>攻撃は最も安い行動です。再装填1のユニット（秒針の斥候、早鐘の射手など）は刻ごとに殴れるので、時計の使い方が細かくなります。空いたレーンから拠点を狙うか、正面の敵を倒すかは、相手の反撃力と終焉の段階で決めます。</p>
-          <h3>4. 予約は強化と奇襲</h3>
-          <p>予約した術は強化版で発動します。例えば「停滞の檻」は4刻→6刻、「時の矢」は3→4ダメージ。さらに相手には中身が見えないので、相手の大型ユニットが出そうな時刻に「時の矢」や「崩落の刻」を置いておくと刺さります。シミュレーションのAIも「停滞の檻」「時間停止」「未来視」「逆転の針」はほぼ必ず予約で使っています。</p>
-          <p>ただし予約したカードは発動まで手札から消えたままです。相手に「刻壊し」や「破約の刃」があると、最も近い予約から壊されます。</p>
-          <div class="callout doom"><h4 style="color:var(--doom)">5. 終焉を数える</h4>世界の時刻<span data-v="DOOM_AT"></span>刻からはユニットの攻撃で拠点に与えるダメージが増えていきます（<span data-v="DOOM_LIST"></span>）。再装填の短いユニットで何度も殴れる盤面ほど、終盤の圧力が強くなります。術や残響の拠点ダメージは増えないので、終盤は盤面を取った側が押し切りやすくなります。</div>
-          <h3 style="margin-top:14px">6. 時計を進める＝連続行動</h3>
-          <p>「時間停止」（予約で相手+4）、「逆転の針」、「遅延術師」は相手の時計を進めます。その分だけ自分が続けて動けます。相手の時計を進めると自分が2刻以上遅れやすくなり、<b>急襲</b>が有効になるので、急襲デッキとの相性が特に良い組み合わせです。</p>
-          <h3>7. 体力リードは守り切る</h3>
-          <p>時間切れの時点で体力が多ければ勝ちです。体力で勝っているなら、挑発ユニットと回復（巻き戻し、残響の祈り）で時計を進めるだけでも勝てます。同点なら場のユニットの攻撃+体力の合計で決まるので、最後にユニットを並べておくのが効きます。</p>
-          <h3>8. 挑発の置き場所</h3>
-          <p>挑発が守れるのは自分のレーンと、<b>隣の空いたレーン</b>だけです。真ん中のレーンに置くと両隣を守れます。端に置くと反対側の端は守れません。</p>
-          <h3>9. 残響には上限がある</h3>
-          <p>残響は予約の枠を使いませんが、同時に<span data-v="MAX_ECHO"></span>つまでです。「残響の嵐」（残響2つ）と「永劫回帰」（残響2つ）を続けて使うと、超えた分が不発になります。残響が消化されるのを待ってから次を使いましょう。</p>
-        </div>
-      </section>
+      <h2 id="h-t1">コストは「相手に渡す時間」</h2>
+      <p>5コストのユニットを出すと、相手はその間に1コストの行動を最大5回できます。重いカードを出す前に、相手がその時間で何をしてくるかを考えましょう。逆に、相手が大型を出した直後は、攻撃（1刻）を何回も差し込むチャンスです。</p>
+      <h2 id="h-t2">ドローは割高、鐘で引く</h2>
+      <p>ドローの行動は<span data-v="COST_DRAW"></span>刻で1枚。鐘は無料で1枚です。鐘の直前に、どうせ必要な行動（召喚や攻撃）で鐘を越えるのが基本。手札が<span data-v="MAX_HAND"></span>枚のときに鐘を越えると、引いたカードが燃えてしまうので注意。</p>
+      <h2 id="h-t3">攻撃は1刻、間隔を数える</h2>
+      <p>攻撃は最も安い行動です。間隔1のユニット（秒針の斥候、早鐘の射手など）は刻ごとに殴れるので、時計の使い方が細かくなります。空いたレーンから拠点を狙うか、正面の敵を倒すかは、相手の反撃力と終焉の段階で決めます。</p>
+      <h2 id="h-t4">予約は強化と奇襲</h2>
+      <p>予約した術は強化版で発動します。さらに相手には中身が見えないので、相手の大型ユニットが出そうな時刻に「時の矢」や「崩落の刻」を置いておくと刺さります。シミュレーションのAIも「停滞の檻」「時間停止」「未来視」「逆転の針」はほぼ必ず予約で使っています。</p>
+      <p>ただし予約したカードは発動まで手札から消えたままです。相手に「刻壊し」や「破約の刃」があると壊されます。</p>
+      <h2 id="h-t5">終焉を数える</h2>
+      <div class="box doom">世界の時刻<span data-v="DOOM_AT"></span>刻からは、ユニットの攻撃で拠点に与えるダメージが増えていきます（<span data-v="DOOM_LIST"></span>）。間隔の短いユニットで何度も殴れる盤面ほど、終盤の圧力が強くなります。術や残響の拠点ダメージは増えないので、終盤は盤面を取った側が押し切りやすくなります。</div>
+      <h2 id="h-t6">時計を進める＝連続行動</h2>
+      <p>「時間停止」「逆転の針」「遅延術師」は相手の時計を進めます。その分だけ自分が続けて動けます。相手の時計を進めると自分が2刻以上遅れやすくなり、<b>急襲</b>が有効になるので、急襲デッキとの相性が特に良い組み合わせです。</p>
+      <h2 id="h-t7">体力リードは守り切る</h2>
+      <p>時間切れの時点で体力が多ければ勝ちです。体力で勝っているなら、挑発ユニットと回復（巻き戻し、残響の祈り）で時計を進めるだけでも勝てます。同点なら場のユニットの攻撃+体力の合計で決まるので、最後にユニットを並べておくのが効きます。</p>
+      <h2 id="h-t8">挑発の置き場所</h2>
+      <p>挑発が守れるのは自分のレーンと、<b>隣の空いたレーン</b>だけです。真ん中のレーンに置くと両隣を守れます。端に置くと反対側の端は守れません。</p>
+      <h2 id="h-t9">残響には上限がある</h2>
+      <p>残響は予約の枠を使いませんが、同時に<span data-v="MAX_ECHO"></span>つまでです。「残響の嵐」（残響2つ）と「永劫回帰」（残響2つ）を続けて使うと、超えた分が不発になります。残響が消化されるのを待ってから次を使いましょう。</p>
     </template>
 
     <template id="t-packs">
-      <section class="page">
-        <div class="block prose">
-          <h2>パックとコイン</h2>
-          <p>第1弾「残響の刻」のカード<span data-v="ECHO_COUNT"></span>種はパックから手に入ります。コインは対戦で手に入り、課金はありません。基本セットの<span data-v="BASE_COUNT"></span>種は最初から全部持っています。</p>
-        </div>
-        <div class="grid2">
-          <div class="panel">
-            <h4>パックの中身（1パック<span data-v="PACK_PRICE"></span>コイン・<span data-v="PACK_SIZE"></span>枚）</h4>
-            <div class="tw"><table>
-              <tr><th>枠</th><th>内容</th></tr>
-              <tr><td>1〜3枚目</td><td>通常</td></tr>
-              <tr><td>4枚目</td><td>希少</td></tr>
-              <tr><td>5枚目</td><td data-v="LAST_SLOT"></td></tr>
-            </table></div>
-            <p class="small mute" style="margin-top:8px">伝説が出ないまま<span data-v="PITY"></span>パック目で確定（天井）。伝説はまだ持っていないものが優先して出ます。</p>
-          </div>
-          <div class="panel">
-            <h4>コインの報酬</h4>
-            <div class="tw"><table id="rewards"></table></div>
-            <p class="small mute" style="margin-top:8px">対戦の報酬は1日<span data-v="DAILY_CAP"></span>コインまで。自分の行動が<span data-v="MIN_ACTIONS"></span>回未満の対戦と降参はコインなし。</p>
-          </div>
-          <div class="panel">
-            <h4>欠片（重複カード）</h4>
-            <div class="tw"><table id="shards"></table></div>
-            <p class="small mute" style="margin-top:8px">上限枚数（<span data-v="MAX_COPIES"></span>枚、伝説<span data-v="MAX_LEGEND_COPIES"></span>枚）を超えた分が欠片になります。</p>
-          </div>
-          <div class="panel">
-            <h4>そのほかの入手手段</h4>
-            <ul class="dots small">
-              <li>はじめにパックチケット3枚</li>
-              <li>ログインボーナス（7日周期、7日目はチケット）</li>
-              <li>デイリーミッション3つと全達成ボーナス</li>
-              <li>初心者ミッション</li>
-              <li>ランクアップごとにコイン、5の倍数でチケット</li>
-            </ul>
-          </div>
-        </div>
-        <div class="block prose">
-          <h3>効率よく集めるには</h3>
-          <ul class="dots">
-            <li>毎日まず1勝して、その日の初勝利ボーナス（+<span data-v="DAILY_BONUS"></span>）を取る。</li>
-            <li>勝てるなら「つよい」AIの方が1勝あたりのコインが多く、ランクのEXPも1.5倍。</li>
-            <li>欠片は、欲しい秘宝を狙って作るのが効率的。伝説の作成は重いので、天井を待つ方が早いことが多いです。</li>
-            <li>第1弾は1日5戦ほどで約1週間でコンプリートできる設計です。</li>
-          </ul>
-        </div>
-      </section>
+      <h2 id="h-pack">パックの中身と確率</h2>
+      <p>第1弾「残響の刻」のカード<span data-v="ECHO_COUNT"></span>種はパックから手に入ります。コインは対戦で手に入り、課金はありません。基本セットの<span data-v="BASE_COUNT"></span>種は最初から全部持っています。</p>
+      <div class="tw"><table class="gt">
+        <tr><th colspan="2">1パック <span data-v="PACK_PRICE"></span>コイン・<span data-v="PACK_SIZE"></span>枚</th></tr>
+        <tr><td>1〜3枚目</td><td>通常</td></tr>
+        <tr><td>4枚目</td><td>希少</td></tr>
+        <tr><td>5枚目</td><td data-v="LAST_SLOT"></td></tr>
+      </table></div>
+      <p class="small mute">伝説が出ないまま<span data-v="PITY"></span>パック目で確定（天井）。伝説はまだ持っていないものが優先して出ます。</p>
+
+      <h2 id="h-coin">コインの報酬</h2>
+      <div class="tw"><table class="gt" id="rewards"></table></div>
+      <p class="small mute">対戦の報酬は1日<span data-v="DAILY_CAP"></span>コインまで。自分の行動が<span data-v="MIN_ACTIONS"></span>回未満の対戦と降参はコインなし。</p>
+
+      <h2 id="h-shard">欠片（重複カード）</h2>
+      <div class="tw"><table class="gt" id="shards"></table></div>
+      <p class="small mute">上限枚数（<span data-v="MAX_COPIES"></span>枚、伝説<span data-v="MAX_LEGEND_COPIES"></span>枚）を超えた分が欠片になります。</p>
+
+      <h2 id="h-other">そのほかの入手手段</h2>
+      <ul class="dots">
+        <li>はじめにパックチケット3枚</li>
+        <li>ログインボーナス（7日周期、7日目はチケット）</li>
+        <li>デイリーミッション3つと全達成ボーナス</li>
+        <li>初心者ミッション</li>
+        <li>ランクアップごとにコイン、5の倍数でチケット</li>
+      </ul>
+
+      <h2 id="h-eff">効率よく集めるには</h2>
+      <ul class="dots">
+        <li>毎日まず1勝して、その日の初勝利ボーナス（+<span data-v="DAILY_BONUS"></span>）を取る。</li>
+        <li>勝てるなら「つよい」AIの方が1勝あたりのコインが多く、ランクのEXPも1.5倍。</li>
+        <li>欠片は、欲しい秘宝を狙って作るのが効率的。伝説の作成は重いので、天井を待つ方が早いことが多いです。</li>
+        <li>第1弾は1日5戦ほどで約1週間でコンプリートできる設計です。</li>
+      </ul>
     </template>
 
-    <template id="t-admin">
-      <section class="page">
-        <div class="block prose">
-          <h2>対戦の記録（管理用）</h2>
-          <p class="small mute">サーバーの管理用トークン（ADMIN_TOKEN）がある人だけが読めます。トークンはこの端末にだけ保存されます。</p>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <input id="adm-token" type="password" placeholder="管理用トークン" autocomplete="off" style="flex:1;min-width:160px;padding:8px">
-            <select id="adm-ver"></select>
-            <button type="button" id="adm-load">読み込む</button>
-          </div>
-          <input id="adm-q" type="search" placeholder="名前で絞り込み（例：レジあいす）" style="width:100%;margin-top:8px;padding:8px">
-          <p id="adm-sum" class="small mute"></p>
-          <div id="adm-list"></div>
-          <div id="adm-game"></div>
-        </div>
-      </section>
-    </template>
     <template id="t-real">
-      <section class="page">
-        <div class="block prose">
-          <h2>実戦データ</h2>
-          <p>みんなが実際に遊んだ対戦（フリー対戦・レート戦・フレンド対戦）から集計した、カードごとの成績です。AI同士の統計では分からない「人が使ったときの強さ」が見えます。バージョンごとに集計するので、調整前の数字は混ざりません。</p>
-          <p class="small mute">「影響」＝そのカードを使った試合の勝率 − 同じ対戦モードでの平均勝率。AIの強さの違いなどを差し引いた、カードそのものの効き目の目安です。使われた試合が<span data-v="REAL_MIN"></span>未満のカードは参考値として薄く表示します。</p>
-          <div class="row" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-            <label>バージョン <select id="real-ver"></select></label>
-            <span id="real-sum" class="small mute"></span>
-          </div>
-          <div id="real-body" style="margin-top:12px"><p class="mute">読み込み中…</p></div>
-        </div>
-      </section>
+      <p class="small mute">「影響」＝そのカードを使った試合の勝率 − 同じ対戦モードでの平均勝率。AIの強さの違いなどを差し引いた、カードそのものの効き目の目安です。使われた試合が<span data-v="REAL_MIN"></span>未満のカードは参考値として薄く表示します。</p>
+      <div class="frow" style="margin-top:10px">
+        <label>バージョン <select id="real-ver"></select></label>
+        <span id="real-sum" class="small mute"></span>
+      </div>
+      <h2 id="h-real">カード別の成績</h2>
+      <div id="real-body" data-ctx="実戦データ"><p class="mute">読み込み中…</p></div>
     </template>
 
     <template id="t-gloss">
-      <section class="page">
-        <div class="block prose">
-          <h2>用語集</h2>
-          <dl class="gloss" id="gloss"></dl>
-        </div>
-      </section>
+      <dl class="gloss" id="gloss"></dl>
+    </template>
+
+    <template id="t-admin">
+      <p class="small mute">サーバーの管理用トークン（ADMIN_TOKEN）がある人だけが読めます。トークンはこの端末にだけ保存されます。</p>
+      <div class="frow">
+        <input id="adm-token" type="password" placeholder="管理用トークン" autocomplete="off" style="flex:1;min-width:160px" />
+        <select id="adm-ver"></select>
+        <button type="button" class="btn" id="adm-load">読み込む</button>
+      </div>
+      <input id="adm-q" type="search" placeholder="名前で絞り込み（例：レジあいす）" style="width:100%;margin-top:8px" />
+      <p id="adm-sum" class="small mute"></p>
+      <div id="adm-list"></div>
+      <div id="adm-game"></div>
     </template>
 
     <script type="module" src="/src/wiki/main.ts"></script>
