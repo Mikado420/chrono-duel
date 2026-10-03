@@ -86,6 +86,8 @@ export type GameEvent =
   | { e: 'breakResv'; pi: PlayerIndex; uid: number; card: string }
   | { e: 'fizzle'; pi: PlayerIndex; card: string }
   | { e: 'doom'; level: number }
+  /** A reservation goes back to its owner's hand (先読みの書). */
+  | { e: 'bounce'; pi: PlayerIndex; uid: number; card: string }
   | { e: 'end'; winner: PlayerIndex | -1; reason: EndReason };
 
 export const other = (pi: PlayerIndex): PlayerIndex => (pi === 0 ? 1 : 0);
@@ -322,6 +324,7 @@ function reap(s: GameState, ev: GameEvent[]) {
       if (u && u.hp <= 0) {
         p.field[l] = null;
         ev.push({ e: 'destroy', pi, lane: l, unit: u });
+        if (cardDef(u.card).hook === 'emberClock') shiftClock(s, other(pi), 1, ev);
         if (cardDef(u.card).hook === 'echoOnDeath') {
           const to = Math.max(0, p.time - 1);
           const delta = to - p.time;
@@ -349,6 +352,12 @@ function topEnemy(s: GameState, qi: PlayerIndex): number {
     if (!b || u.atk > b.atk || (u.atk === b.atk && u.hp > b.hp)) best = i;
   });
   return best;
+}
+/** 溜め込む砂時計: every time its owner pays extra for 充填, the others grow. */
+function chargeGrow(s: GameState, pi: PlayerIndex, except: number, ev: GameEvent[]) {
+  s.players[pi].field.forEach((u, l) => {
+    if (u && u.uid !== except && cardDef(u.card).hook === 'chargeGrow') { u.atk++; u.hp++; u.maxHp++; ev.push({ e: 'buff', pi, lane: l, atk: u.atk, hp: u.hp }); }
+  });
 }
 function shiftClock(s: GameState, pi: PlayerIndex, delta: number, ev: GameEvent[]) {
   const p = s.players[pi];
@@ -505,6 +514,19 @@ function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, e
     case 'eReverse': shiftClock(s, qi, boosted ? 3 : 2, ev); break;
     case 'eStorm': storm(s, pi, qi, boosted ? 2 : 1, d.id, ev); break;
     case 'eEternal': damageBase(s, qi, boosted ? 3 : 2, ev); break;
+    case 'xForesee': {
+      const q = s.players[qi];
+      if (q.resv.length) revealAll(s, qi, ev);
+      const r = q.resv.filter((x) => !x.echo).sort((a, b) => a.T - b.T)[0];
+      if (!r) ev.push({ e: 'fizzle', pi, card: d.id });
+      else {
+        q.resv = q.resv.filter((x) => x !== r);
+        if (q.hand.length < RULES.MAX_HAND) { const uid = s.nextUid++; q.hand.push({ uid, card: r.card }); ev.push({ e: 'bounce', pi: qi, uid, card: r.card }); }
+        else ev.push({ e: 'breakResv', pi: qi, uid: r.uid, card: r.card });
+      }
+      if (boosted) drawCard(s, pi, ev);
+      break;
+    }
     // ---- 第2弾
     case 'gSpanner': {
       const l = pickUnit(s, qi, 'atkLo');
@@ -615,6 +637,11 @@ function runUnitHook(s: GameState, pi: PlayerIndex, lane: number, ev: GameEvent[
     case 'draw1': drawCard(s, pi, ev); break;
     case 'delayOpp1': shiftClock(s, qi, 1, ev); break;
     case 'revealResv': revealAll(s, qi, ev); break;
+    case 'echoBand': {
+      const n = s.players[pi].field.filter((x) => x && x !== u && cardDef(x.card).echo?.length).length;
+      if (n) { u.atk += n; u.hp += n; u.maxHp += n; ev.push({ e: 'buff', pi, lane, atk: u.atk, hp: u.hp }); }
+      break;
+    }
     case 'breakResv': breakNearest(s, qi, ev); break;
     case 'dawnBurst':
       for (let l = 0; l < RULES.LANES; l++) if (s.players[qi].field[l]) damageUnit(s, qi, l, 2, ev);
@@ -691,6 +718,7 @@ export function apply(s: GameState, a: Action): GameEvent[] {
       const { idx, card } = takeHand(p, a.hand);
       advance(s, pi, cost, ev);
       summonUnit(s, pi, card, a.lane, idx, x, ev);
+      if (x > 0) chargeGrow(s, pi, p.field[a.lane]?.uid ?? -1, ev);
       break;
     }
     case 'cast': {
@@ -703,6 +731,7 @@ export function apply(s: GameState, a: Action): GameEvent[] {
       const { idx, card } = takeHand(p, a.hand);
       advance(s, pi, cost, ev);
       ev.push({ e: 'cast', pi, card, fromHand: idx });
+      if (x > 0) chargeGrow(s, pi, -1, ev);
       runSpell(s, pi, d, false, ev, x);
       scheduleEchoes(s, pi, d, p.time, ev);
       break;
@@ -729,18 +758,26 @@ export function apply(s: GameState, a: Action): GameEvent[] {
       advance(s, pi, RULES.COST_ATTACK, ev);
       const t = attackTarget(s, pi, a.lane);
       ev.push({ e: 'attack', pi, lane: a.lane, target: t });
-      if (!t) damageBase(s, qi, u.atk + (cardDef(u.card).hook === 'flank' ? 2 : 0), ev, true);
-      else {
+      const hk = cardDef(u.card).hook;
+      const atk = u.atk + (hk === 'formation' && p.field.every(Boolean) ? 2 : 0);
+      if (!t) {
+        damageBase(s, qi, atk + (hk === 'flank' ? 2 : 0), ev, true);
+        if (hk === 'baseGrow' && p.field[a.lane] === u) { u.atk++; ev.push({ e: 'buff', pi, lane: a.lane, atk: u.atk, hp: u.hp }); }
+      } else {
         const v = s.players[qi].field[t.lane]!;
-        const over = u.atk - v.hp;
+        const over = atk - v.hp;
         const back = v.atk;
-        damageUnit(s, qi, t.lane, u.atk, ev);
+        damageUnit(s, qi, t.lane, atk, ev);
         damageUnit(s, pi, a.lane, back, ev);
         if (u.pierce && over > 0) damageBase(s, qi, over, ev, true);
         reap(s, ev);
       }
       const still = p.field[a.lane];
-      if (still && still.uid === u.uid) still.readyAt = p.time + u.reload;
+      if (still && still.uid === u.uid) {
+        still.readyAt = p.time + u.reload;
+        // 刻守の将オルド: the other units' attacks come round 1 tick sooner
+        if (p.field.some((x) => x && x !== still && cardDef(x.card).hook === 'ordoReady')) still.readyAt -= 1;
+      }
       break;
     }
     case 'move': {
@@ -796,6 +833,7 @@ function settle(s: GameState, ev: GameEvent[]) {
       }
       if (checkKo(s, ev)) return;
       resonate(s, pi, ev);
+      s.players[other(pi)].field.forEach((u, l) => { if (u && cardDef(u.card).hook === 'oppResonateAtk') { u.atk++; ev.push({ e: 'buff', pi: other(pi), lane: l, atk: u.atk, hp: u.hp }); } });
       if (checkKo(s, ev)) return;
     }
     // clock shifts from triggered spells can release more reservations; loop again

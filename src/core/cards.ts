@@ -22,7 +22,9 @@ export type UnitHook =
   // 第2弾: on summon
   | 'readyAlly' | 'stunTop3' | 'ringAll' | 'dolls'
   // 第2弾: when this unit moves (転移), on its attacks, or while it is on the board
-  | 'shiftGrow' | 'shiftPing' | 'shiftHaste' | 'flank' | 'bellDraw' | 'shiftAura';
+  | 'shiftGrow' | 'shiftPing' | 'shiftHaste' | 'flank' | 'bellDraw' | 'shiftAura'
+  // 第1弾 追加
+  | 'baseGrow' | 'formation' | 'oppResonateAtk' | 'chargeGrow' | 'emberClock' | 'echoBand' | 'ordoReady';
 
 export type SpellEffect =
   | 'arrow' | 'cage' | 'bolt' | 'collapse' | 'rewind' | 'haste' | 'insight' | 'stop'
@@ -30,7 +32,9 @@ export type SpellEffect =
   | 'eShot' | 'ePray' | 'eSlash' | 'ePeek' | 'eBreak' | 'eDraw' | 'eReverse' | 'eStorm' | 'eEternal'
   // 第2弾
   | 'gSpanner' | 'gReroute' | 'gTrap' | 'gBlueprint' | 'gFortify' | 'gHammer' | 'gHush' | 'gRally' | 'gRing' | 'gSilence'
-  | 'gMaze' | 'gTune' | 'gGearstorm' | 'gMirror' | 'gLever' | 'gRewire' | 'gQuake' | 'gErase' | 'gOverdrive';
+  | 'gMaze' | 'gTune' | 'gGearstorm' | 'gMirror' | 'gLever' | 'gRewire' | 'gQuake' | 'gErase' | 'gOverdrive'
+  // 第1弾 追加
+  | 'xForesee';
 
 export interface CardDef {
   id: string;
