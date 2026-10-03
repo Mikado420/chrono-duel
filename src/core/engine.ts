@@ -356,7 +356,7 @@ function topEnemy(s: GameState, qi: PlayerIndex): number {
 /** 溜め込む砂時計: every time its owner pays extra for 充填, the others grow. */
 function chargeGrow(s: GameState, pi: PlayerIndex, except: number, ev: GameEvent[]) {
   s.players[pi].field.forEach((u, l) => {
-    if (u && u.uid !== except && cardDef(u.card).hook === 'chargeGrow') { u.atk++; u.hp++; u.maxHp++; ev.push({ e: 'buff', pi, lane: l, atk: u.atk, hp: u.hp }); }
+    if (u && u.uid !== except && cardDef(u.card).hook === 'chargeGrow') { u.atk += 2; u.hp += 2; u.maxHp += 2; ev.push({ e: 'buff', pi, lane: l, atk: u.atk, hp: u.hp }); }
   });
 }
 function shiftClock(s: GameState, pi: PlayerIndex, delta: number, ev: GameEvent[]) {
@@ -518,7 +518,7 @@ function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, e
       const q = s.players[qi];
       if (q.resv.length) revealAll(s, qi, ev);
       const r = q.resv.filter((x) => !x.echo).sort((a, b) => a.T - b.T)[0];
-      if (!r) ev.push({ e: 'fizzle', pi, card: d.id });
+      if (!r) drawCard(s, pi, ev); // nothing to send back: a card instead
       else {
         q.resv = q.resv.filter((x) => x !== r);
         if (q.hand.length < RULES.MAX_HAND) { const uid = s.nextUid++; q.hand.push({ uid, card: r.card }); ev.push({ e: 'bounce', pi: qi, uid, card: r.card }); }
@@ -759,7 +759,7 @@ export function apply(s: GameState, a: Action): GameEvent[] {
       const t = attackTarget(s, pi, a.lane);
       ev.push({ e: 'attack', pi, lane: a.lane, target: t });
       const hk = cardDef(u.card).hook;
-      const atk = u.atk + (hk === 'formation' && p.field.every(Boolean) ? 2 : 0);
+      const atk = u.atk + (hk === 'formation' ? p.field.filter((x) => x && x !== u).length : 0);
       if (!t) {
         damageBase(s, qi, atk + (hk === 'flank' ? 2 : 0), ev, true);
         if (hk === 'baseGrow' && p.field[a.lane] === u) { u.atk++; ev.push({ e: 'buff', pi, lane: a.lane, atk: u.atk, hp: u.hp }); }
