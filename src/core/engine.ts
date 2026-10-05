@@ -30,6 +30,10 @@ export interface PlayerState {
   hand: HandCard[];
   field: (Unit | null)[];
   resv: Reservation[];
+  /** Spells this player has used (cast, or reserved and fired), oldest first (記憶の司書ミレア). */
+  used?: string[];
+  /** 二重詠唱の書: how many of this player's next reservations fire twice. */
+  twin?: number;
 }
 export type EndReason = 'ko' | 'time';
 export interface GameState {
@@ -88,6 +92,14 @@ export type GameEvent =
   | { e: 'doom'; level: number }
   /** A reservation goes back to its owner's hand (先読みの書). */
   | { e: 'bounce'; pi: PlayerIndex; uid: number; card: string }
+  /** A unit leaves the board for its owner's hand (送り返しの風). `uid` is the new hand card, -1 if it was lost. */
+  | { e: 'unsummon'; pi: PlayerIndex; lane: number; unit: Unit; uid: number }
+  /** A card is thrown away from a hand (忘却の砂). */
+  | { e: 'discard'; pi: PlayerIndex; uid: number; card: string }
+  /** A card goes from the deck or the used spells to a hand without a draw (星読みの占者, 記憶の司書ミレア). */
+  | { e: 'fetch'; pi: PlayerIndex; uid: number; card: string }
+  /** A reservation or echo changes hands (時の簒奪者): it leaves `pi` and joins the other player. */
+  | { e: 'stealResv'; pi: PlayerIndex; uid: number; card: string; T: number }
   | { e: 'end'; winner: PlayerIndex | -1; reason: EndReason };
 
 export const other = (pi: PlayerIndex): PlayerIndex => (pi === 0 ? 1 : 0);
@@ -214,6 +226,16 @@ function drawCard(s: GameState, pi: PlayerIndex, ev: GameEvent[]) {
   p.hand.push({ uid, card });
   ev.push({ e: 'draw', pi, uid, card });
 }
+
+/** Puts a card straight into a hand (not a draw). Returns the new uid, or -1 if the hand was full (the card burns). */
+function toHand(s: GameState, pi: PlayerIndex, card: string, ev: GameEvent[]): number {
+  const p = s.players[pi];
+  if (p.hand.length >= RULES.MAX_HAND) { ev.push({ e: 'burn', pi, card }); return -1; }
+  const uid = s.nextUid++;
+  p.hand.push({ uid, card });
+  return uid;
+}
+const noteUsed = (p: PlayerState, card: string) => { (p.used ??= []).push(card); };
 
 function advance(s: GameState, pi: PlayerIndex, n: number, ev: GameEvent[]) {
   const p = s.players[pi];
@@ -527,6 +549,29 @@ function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, e
       if (boosted) drawCard(s, pi, ev);
       break;
     }
+    case 'xGust': {
+      const l = topEnemy(s, qi);
+      if (l < 0) { ev.push({ e: 'fizzle', pi, card: d.id }); }
+      else {
+        const q = s.players[qi], u = q.field[l]!;
+        q.field[l] = null;
+        // tokens made by effects have no card to go back to
+        const uid = cardDef(u.card).token ? -1 : toHand(s, qi, u.card, ev);
+        ev.push({ e: 'unsummon', pi: qi, lane: l, unit: u, uid });
+      }
+      if (boosted) drawCard(s, pi, ev);
+      break;
+    }
+    case 'xOblivion': {
+      const q = s.players[qi];
+      let best = -1;
+      q.hand.forEach((h, i) => { if (best < 0 || cardDef(h.card).cost > cardDef(q.hand[best].card).cost) best = i; });
+      if (best < 0) ev.push({ e: 'fizzle', pi, card: d.id });
+      else { const [h] = q.hand.splice(best, 1); ev.push({ e: 'discard', pi: qi, uid: h.uid, card: h.card }); }
+      if (boosted) drawCard(s, pi, ev);
+      break;
+    }
+    case 'xTwin': p.twin = (p.twin ?? 0) + 1; if (boosted) drawCard(s, pi, ev); break;
     // ---- 第2弾
     case 'gSpanner': {
       const l = pickUnit(s, qi, 'atkLo');
@@ -643,6 +688,38 @@ function runUnitHook(s: GameState, pi: PlayerIndex, lane: number, ev: GameEvent[
       break;
     }
     case 'breakResv': breakNearest(s, qi, ev); break;
+    case 'seer': {
+      // 星読みの占者: the dearest of the top 3 to hand, the rest to the bottom
+      const p = s.players[pi];
+      const top = p.deck.splice(Math.max(0, p.deck.length - 3)).reverse(); // top card first
+      if (!top.length) break;
+      let best = 0;
+      top.forEach((c, i) => { if (cardDef(c).cost > cardDef(top[best]).cost) best = i; });
+      const [pick] = top.splice(best, 1);
+      p.deck.unshift(...top);
+      const uid = toHand(s, pi, pick, ev);
+      if (uid >= 0) ev.push({ e: 'fetch', pi, uid, card: pick });
+      break;
+    }
+    case 'stealResv': {
+      const q = s.players[qi];
+      const r = q.resv.slice().sort((a, b) => a.T - b.T)[0];
+      if (!r) { ev.push({ e: 'fizzle', pi, card: u.card }); break; }
+      q.resv = q.resv.filter((x) => x !== r);
+      r.revealed = true;
+      s.players[pi].resv.push(r);
+      ev.push({ e: 'stealResv', pi: qi, uid: r.uid, card: r.card, T: r.T });
+      break;
+    }
+    case 'recall': {
+      const p = s.players[pi], used = p.used ?? [];
+      for (let i = 0; i < 2 && used.length; i++) {
+        const card = used.pop()!;
+        const uid = toHand(s, pi, card, ev);
+        if (uid >= 0) ev.push({ e: 'fetch', pi, uid, card });
+      }
+      break;
+    }
     case 'dawnBurst':
       for (let l = 0; l < RULES.LANES; l++) if (s.players[qi].field[l]) damageUnit(s, qi, l, 2, ev);
       reap(s, ev);
@@ -732,6 +809,7 @@ export function apply(s: GameState, a: Action): GameEvent[] {
       advance(s, pi, cost, ev);
       ev.push({ e: 'cast', pi, card, fromHand: idx });
       if (x > 0) chargeGrow(s, pi, -1, ev);
+      noteUsed(p, card);
       runSpell(s, pi, d, false, ev, x);
       scheduleEchoes(s, pi, d, p.time, ev);
       break;
@@ -759,12 +837,14 @@ export function apply(s: GameState, a: Action): GameEvent[] {
       const t = attackTarget(s, pi, a.lane);
       ev.push({ e: 'attack', pi, lane: a.lane, target: t });
       const hk = cardDef(u.card).hook;
-      const atk = u.atk + (hk === 'formation' ? p.field.filter((x) => x && x !== u).length : 0);
+      let atk = u.atk + (hk === 'formation' ? p.field.filter((x) => x && x !== u).length : 0);
       if (!t) {
         damageBase(s, qi, atk + (hk === 'flank' ? 2 : 0), ev, true);
         if (hk === 'baseGrow' && p.field[a.lane] === u) { u.atk++; ev.push({ e: 'buff', pi, lane: a.lane, atk: u.atk, hp: u.hp }); }
       } else {
         const v = s.players[qi].field[t.lane]!;
+        // 城崩しの槌兵: hits walls harder
+        if (hk === 'tauntBreaker' && v.taunt) atk += 3;
         const over = atk - v.hp;
         const back = v.atk;
         damageUnit(s, qi, t.lane, atk, ev);
@@ -828,7 +908,13 @@ function settle(s: GameState, ev: GameEvent[]) {
       } else {
         ev.push({ e: 'trigger', pi, uid: r.uid, card: r.card, T: r.T });
         const d = cardDef(r.card);
+        const p = s.players[pi];
+        noteUsed(p, r.card);
+        // 二重詠唱の書: the next reservation fires twice (not another 二重詠唱)
+        const twice = !!p.twin && d.effect !== 'xTwin';
+        if (twice) p.twin!--;
         runSpell(s, pi, d, true, ev);
+        if (twice && !s.over && !checkKo(s, ev)) runSpell(s, pi, d, true, ev);
         scheduleEchoes(s, pi, d, r.T, ev);
       }
       if (checkKo(s, ev)) return;

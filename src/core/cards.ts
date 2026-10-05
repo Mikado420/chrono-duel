@@ -24,7 +24,8 @@ export type UnitHook =
   // 第2弾: when this unit moves (転移), on its attacks, or while it is on the board
   | 'shiftGrow' | 'shiftPing' | 'shiftHaste' | 'flank' | 'bellDraw' | 'shiftAura'
   // 第1弾 追加
-  | 'baseGrow' | 'formation' | 'oppResonateAtk' | 'chargeGrow' | 'emberClock' | 'echoBand' | 'ordoReady';
+  | 'baseGrow' | 'formation' | 'oppResonateAtk' | 'chargeGrow' | 'emberClock' | 'echoBand' | 'ordoReady'
+  | 'tauntBreaker' | 'seer' | 'stealResv' | 'recall';
 
 export type SpellEffect =
   | 'arrow' | 'cage' | 'bolt' | 'collapse' | 'rewind' | 'haste' | 'insight' | 'stop'
@@ -34,7 +35,7 @@ export type SpellEffect =
   | 'gSpanner' | 'gReroute' | 'gTrap' | 'gBlueprint' | 'gFortify' | 'gHammer' | 'gHush' | 'gRally' | 'gRing' | 'gSilence'
   | 'gMaze' | 'gTune' | 'gGearstorm' | 'gMirror' | 'gLever' | 'gRewire' | 'gQuake' | 'gErase' | 'gOverdrive'
   // 第1弾 追加
-  | 'xForesee';
+  | 'xForesee' | 'xGust' | 'xOblivion' | 'xTwin';
 
 export interface CardDef {
   id: string;
