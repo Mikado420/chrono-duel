@@ -34,6 +34,10 @@ export interface PlayerState {
   used?: string[];
   /** 二重詠唱の書: how many of this player's next reservations fire twice. */
   twin?: number;
+  /** 二重詠唱の書 (variant): extra reservation slots for the rest of the game. */
+  resvBonus?: number;
+  /** 二重詠唱の書 (variant): ticks off this player's next reservation. */
+  resvDiscount?: number;
 }
 export type EndReason = 'ko' | 'time';
 export interface GameState {
@@ -101,6 +105,11 @@ export type GameEvent =
   /** A reservation or echo changes hands (時の簒奪者): it leaves `pi` and joins the other player. */
   | { e: 'stealResv'; pi: PlayerIndex; uid: number; card: string; T: number }
   | { e: 'end'; winner: PlayerIndex | -1; reason: EndReason };
+
+/** Variants of the new 第1弾 cards and of 転移, switched by the balance tools while designs are tried (not saved in games). */
+export const VARIANT = { gust: 'base', oblivion: 'base', twin: 'base', mirea: 'base', shiftSwap: false, sentryCap: 0 };
+/** How many reservations `p` may hold (二重詠唱の書 can raise it). */
+export const maxResv = (p: PlayerState) => RULES.MAX_RESV + (p.resvBonus ?? 0);
 
 export const other = (pi: PlayerIndex): PlayerIndex => (pi === 0 ? 1 : 0);
 
@@ -174,6 +183,11 @@ export function cardCost(s: GameState, pi: PlayerIndex, id: string): number {
   return d.rush && rushActive(s, pi) ? Math.max(1, d.cost - d.rush) : d.cost;
 }
 
+/** What reserving a card costs `pi` (二重詠唱の書 may make the next one cheaper). */
+export function resvCost(s: GameState, pi: PlayerIndex, id: string): number {
+  const d = s.players[pi].resvDiscount ?? 0;
+  return d ? Math.max(1, cardCost(s, pi, id) - d) : cardCost(s, pi, id);
+}
 export function resvRange(s: GameState, pi: PlayerIndex, cost: number): [number, number] | null {
   const p = s.players[pi];
   const lo = p.time + cost + RULES.RESV_MIN_GAP;
@@ -192,12 +206,12 @@ export function legalActions(s: GameState, pi: PlayerIndex): Action[] {
       p.field.forEach((u, l) => { if (!u) for (const x of xs) out.push(x === undefined ? { t: 'play', hand: h.uid, lane: l } : { t: 'play', hand: h.uid, lane: l, x }); });
     } else {
       for (const x of xs) out.push(x === undefined ? { t: 'cast', hand: h.uid } : { t: 'cast', hand: h.uid, x });
-      const r = resvCount(p) < RULES.MAX_RESV ? resvRange(s, pi, cardCost(s, pi, h.card)) : null;
+      const r = resvCount(p) < maxResv(p) ? resvRange(s, pi, resvCost(s, pi, h.card)) : null;
       if (r) for (let T = r[0]; T <= r[1]; T++) out.push({ t: 'reserve', hand: h.uid, T });
     }
   });
   p.field.forEach((u, l) => { if (u && isReady(s, pi, u)) out.push({ t: 'attack', lane: l }); });
-  p.field.forEach((u, l) => { if (u && canShift(s, pi, u)) for (const to of [l - 1, l + 1]) if (to >= 0 && to < RULES.LANES && !p.field[to]) out.push({ t: 'move', lane: l, to }); });
+  p.field.forEach((u, l) => { if (u && canShift(s, pi, u)) for (const to of [l - 1, l + 1]) if (to >= 0 && to < RULES.LANES && (!p.field[to] || VARIANT.shiftSwap)) out.push({ t: 'move', lane: l, to }); });
   if (p.deck.length) out.push({ t: 'draw' });
   out.push({ t: 'wait' });
   return out;
@@ -207,7 +221,7 @@ export function timeCost(s: GameState, pi: PlayerIndex, a: Action): number {
   switch (a.t) {
     case 'play': case 'cast': case 'reserve': {
       const h = s.players[pi].hand.find((x) => x.uid === a.hand);
-      return h ? cardCost(s, pi, h.card) + (a.t !== 'reserve' ? a.x ?? 0 : 0) : 0;
+      return h ? (a.t === 'reserve' ? resvCost(s, pi, h.card) : cardCost(s, pi, h.card) + (a.x ?? 0)) : 0;
     }
     case 'attack': return RULES.COST_ATTACK;
     case 'move': return RULES.COST_MOVE;
@@ -550,7 +564,9 @@ function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, e
       break;
     }
     case 'xGust': {
-      const l = topEnemy(s, qi);
+      const cap = VARIANT.gust === 'le4' ? 4 : VARIANT.gust === 'le3' ? 3 : 99;
+      let l = -1;
+      s.players[qi].field.forEach((u, i) => { if (u && cardDef(u.card).cost <= cap) { const b = l >= 0 ? s.players[qi].field[l]! : null; if (!b || u.atk > b.atk || (u.atk === b.atk && u.hp > b.hp)) l = i; } });
       if (l < 0) { ev.push({ e: 'fizzle', pi, card: d.id }); }
       else {
         const q = s.players[qi], u = q.field[l]!;
@@ -559,19 +575,26 @@ function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, e
         const uid = cardDef(u.card).token ? -1 : toHand(s, qi, u.card, ev);
         ev.push({ e: 'unsummon', pi: qi, lane: l, unit: u, uid });
       }
-      if (boosted) drawCard(s, pi, ev);
+      if (boosted && VARIANT.gust !== 'noboost') drawCard(s, pi, ev);
       break;
     }
     case 'xOblivion': {
       const q = s.players[qi];
       let best = -1;
       q.hand.forEach((h, i) => { if (best < 0 || cardDef(h.card).cost > cardDef(q.hand[best].card).cost) best = i; });
-      if (best < 0) ev.push({ e: 'fizzle', pi, card: d.id });
+      const cond = VARIANT.oblivion === 'cond';
+      if (best < 0 || (cond && cardDef(q.hand[best].card).cost < 4)) { if (cond) drawCard(s, pi, ev); else ev.push({ e: 'fizzle', pi, card: d.id }); }
       else { const [h] = q.hand.splice(best, 1); ev.push({ e: 'discard', pi: qi, uid: h.uid, card: h.card }); }
+      if (VARIANT.oblivion === 'draw') drawCard(s, pi, ev);
       if (boosted) drawCard(s, pi, ev);
       break;
     }
-    case 'xTwin': p.twin = (p.twin ?? 0) + 1; if (boosted) drawCard(s, pi, ev); break;
+    case 'xTwin':
+      if (VARIANT.twin === 'slot') { p.resvBonus = Math.min(1, (p.resvBonus ?? 0) + 1); drawCard(s, pi, ev); }
+      else if (VARIANT.twin === 'cheap') { p.resvDiscount = 2; drawCard(s, pi, ev); }
+      else p.twin = (p.twin ?? 0) + 1;
+      if (boosted) drawCard(s, pi, ev);
+      break;
     // ---- 第2弾
     case 'gSpanner': {
       const l = pickUnit(s, qi, 'atkLo');
@@ -709,10 +732,19 @@ function runUnitHook(s: GameState, pi: PlayerIndex, lane: number, ev: GameEvent[
       r.revealed = true;
       s.players[pi].resv.push(r);
       ev.push({ e: 'stealResv', pi: qi, uid: r.uid, card: r.card, T: r.T });
+      // 奪った予約は1刻早く発動する
+      const T = Math.max(worldTime(s), r.T - 1);
+      if (T !== r.T) { r.T = T; ev.push({ e: 'moveResv', pi, uid: r.uid, T }); }
       break;
     }
     case 'recall': {
       const p = s.players[pi], used = p.used ?? [];
+      if (VARIANT.mirea === 'replay') {
+        // 使った呪文を新しいものから2枚（伝説を除く）、コストを払わずにもう一度使う
+        const picks = [...new Set(used.slice().reverse())].filter((c) => cardDef(c).rarity !== 'L').slice(0, 2);
+        for (const c of picks) { if (s.over) break; ev.push({ e: 'cast', pi, card: c, fromHand: -1 }); runSpell(s, pi, cardDef(c), false, ev); }
+        break;
+      }
       for (let i = 0; i < 2 && used.length; i++) {
         const card = used.pop()!;
         const uid = toHand(s, pi, card, ev);
@@ -815,14 +847,15 @@ export function apply(s: GameState, a: Action): GameEvent[] {
       break;
     }
     case 'reserve': {
-      if (resvCount(p) >= RULES.MAX_RESV) throw new Error('too many reservations');
+      if (resvCount(p) >= maxResv(p)) throw new Error('too many reservations');
       const h = p.hand.find((x) => x.uid === a.hand);
       if (!h) throw new Error('card not in hand');
       const d = cardDef(h.card);
       if (d.kind !== 'spell') throw new Error('not a spell');
-      const cost = cardCost(s, pi, h.card);
+      const cost = resvCost(s, pi, h.card);
       const r = resvRange(s, pi, cost);
       if (!r || a.T < r[0] || a.T > r[1]) throw new Error('bad reservation time');
+      p.resvDiscount = 0;
       const { idx, card } = takeHand(p, a.hand);
       advance(s, pi, cost, ev);
       const uid = s.nextUid++;
@@ -863,12 +896,13 @@ export function apply(s: GameState, a: Action): GameEvent[] {
     case 'move': {
       const u = p.field[a.lane];
       if (!u || !canShift(s, pi, u)) throw new Error('unit cannot move');
-      if (Math.abs(a.to - a.lane) !== 1 || a.to < 0 || a.to >= RULES.LANES || p.field[a.to]) throw new Error('lane not free');
+      if (Math.abs(a.to - a.lane) !== 1 || a.to < 0 || a.to >= RULES.LANES || (p.field[a.to] && !VARIANT.shiftSwap)) throw new Error('lane not free');
+      const mate = p.field[a.to];
       advance(s, pi, RULES.COST_MOVE, ev);
-      // the clock may have rung a bell that changed the board; the move still needs its unit and an empty lane
-      if (p.field[a.lane] === u && !p.field[a.to]) {
-        p.field[a.to] = u; p.field[a.lane] = null;
-        ev.push({ e: 'move', pi, from: a.lane, to: a.to });
+      // the clock may have rung a bell that changed the board; the move still needs its unit (and the same lane-mate)
+      if (p.field[a.lane] === u && p.field[a.to] === mate) {
+        p.field[a.to] = u; p.field[a.lane] = mate;
+        ev.push(mate ? { e: 'swap', pi, a: a.lane, b: a.to } : { e: 'move', pi, from: a.lane, to: a.to });
         onShifted(s, pi, a.to, ev);
       }
       break;
@@ -919,7 +953,7 @@ function settle(s: GameState, ev: GameEvent[]) {
       }
       if (checkKo(s, ev)) return;
       resonate(s, pi, ev);
-      s.players[other(pi)].field.forEach((u, l) => { if (u && cardDef(u.card).hook === 'oppResonateAtk') { u.atk++; ev.push({ e: 'buff', pi: other(pi), lane: l, atk: u.atk, hp: u.hp }); } });
+      s.players[other(pi)].field.forEach((u, l) => { if (u && cardDef(u.card).hook === 'oppResonateAtk' && (!VARIANT.sentryCap || u.atk < cardDef(u.card).atk! + VARIANT.sentryCap)) { u.atk++; ev.push({ e: 'buff', pi: other(pi), lane: l, atk: u.atk, hp: u.hp }); } });
       if (checkKo(s, ev)) return;
     }
     // clock shifts from triggered spells can release more reservations; loop again
