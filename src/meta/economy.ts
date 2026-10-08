@@ -40,8 +40,44 @@ export interface Wallet {
   /** Coins earned from matches today (capped per day). */
   matchDay: string;
   matchCoins: number;
+  /** Card backs and clock faces bought with coins (ids from LOOKS). The default of each kind is always owned. */
+  looks: string[];
 }
-export const NEW_WALLET = (): Wallet => ({ coins: 0, tickets: 3, owned: {}, pity: 0, opened: 0, dailyWin: '', fresh: [], shards: 0, matchDay: '', matchCoins: 0 });
+export const NEW_WALLET = (): Wallet => ({ coins: 0, tickets: 3, owned: {}, pity: 0, opened: 0, dailyWin: '', fresh: [], shards: 0, matchDay: '', matchCoins: 0, looks: [] });
+
+// ------------------------------------------------------------------ looks (cosmetic only, bought with coins)
+export type LookKind = 'back' | 'dial';
+export interface LookDef { id: string; kind: LookKind; name: string; price: number; blurb: string }
+/** Card backs (your deck pile, cards you show face down) and clock faces (the dial during your games). */
+export const LOOKS: LookDef[] = [
+  { id: 'back:brass', kind: 'back', name: '真鍮の時計', price: 0, blurb: 'はじめから持っている裏面' },
+  { id: 'back:gear', kind: 'back', name: '真鍮の歯車', price: 300, blurb: '噛み合う歯車を刻んだ裏面' },
+  { id: 'back:ember', kind: 'back', name: '熾火の文字盤', price: 400, blurb: '赤く燃える針の裏面' },
+  { id: 'back:tide', kind: 'back', name: '潮の満ち引き', price: 400, blurb: '残響の波紋を描いた裏面' },
+  { id: 'back:star', kind: 'back', name: '夜明けの星図', price: 500, blurb: '星の運行を記した裏面' },
+  { id: 'dial:brass', kind: 'dial', name: '標準', price: 0, blurb: 'はじめから持っている文字盤' },
+  { id: 'dial:verdigris', kind: 'dial', name: '緑青', price: 400, blurb: '古びた銅の緑が浮く文字盤' },
+  { id: 'dial:ember', kind: 'dial', name: '熾火', price: 500, blurb: '炉の火を映した文字盤' },
+  { id: 'dial:ivory', kind: 'dial', name: '象牙', price: 500, blurb: '白く磨いた文字盤' },
+  { id: 'dial:night', kind: 'dial', name: '星夜', price: 600, blurb: '夜空を閉じ込めた文字盤' },
+];
+export const DEFAULT_LOOK: Record<LookKind, string> = { back: 'back:brass', dial: 'dial:brass' };
+export const lookById = (id: string | undefined): LookDef | undefined => LOOKS.find((l) => l.id === id);
+export const ownsLook = (w: Wallet, id: string) => lookById(id)?.price === 0 || (w.looks ?? []).includes(id);
+/** Why a look cannot be bought, or null. */
+export function lookBlock(w: Wallet, id: string): string | null {
+  const l = lookById(id);
+  if (!l) return '見つかりません';
+  if (ownsLook(w, id)) return '持っています';
+  if (w.coins < l.price) return `コインが${l.price - w.coins}足りません`;
+  return null;
+}
+export function buyLook(w: Wallet, id: string): boolean {
+  if (lookBlock(w, id)) return false;
+  w.coins -= lookById(id)!.price;
+  w.looks = [...(w.looks ?? []), id];
+  return true;
+}
 
 /** How many copies of a card the player may put in decks. Base cards are always complete. */
 export function ownedCount(w: Wallet, id: string): number {

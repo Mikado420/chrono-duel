@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { CARD_LIST, setOf } from '../core/cards';
 import { mulberry32 } from '../core/engine';
-import { CRAFT_COST, DAILY_BONUS, DAILY_MATCH_CAP, DUPE_SHARDS, MATCH_REWARD, NEW_WALLET, PACKS, PITY, applyReward, canOpen, craft, craftBlock, missingCards, openPack, ownedCount, reward, setProgress } from '../meta/economy';
+import { CRAFT_COST, DAILY_BONUS, DAILY_MATCH_CAP, DEFAULT_LOOK, DUPE_SHARDS, LOOKS, MATCH_REWARD, NEW_WALLET, PACKS, PITY, applyReward, buyLook, canOpen, craft, craftBlock, lookBlock, lookById, missingCards, openPack, ownedCount, ownsLook, reward, setProgress } from '../meta/economy';
 
 const rand = mulberry32(99);
 const pack = PACKS[0];
@@ -86,4 +86,18 @@ assert.ok(craft(cf, 'e_sprite'));
 assert.equal(cf.shards, 0);
 assert.ok(!craft(cf, 'e_sprite'), 'no shards left');
 assert.ok(Object.values(DUPE_SHARDS).every((v, i) => v * 4 <= Object.values(CRAFT_COST)[i]), 'crafting costs at least 4 duplicates');
+// looks: bought with coins, the defaults are free and always owned
+{
+  const w = NEW_WALLET();
+  assert.ok(ownsLook(w, DEFAULT_LOOK.back) && ownsLook(w, DEFAULT_LOOK.dial));
+  assert.ok(!ownsLook(w, 'back:gear'));
+  assert.ok(lookBlock(w, 'back:gear'), 'no coins, no purchase');
+  assert.equal(buyLook(w, 'back:gear'), false);
+  w.coins = 1000;
+  assert.equal(buyLook(w, 'back:gear'), true);
+  assert.equal(w.coins, 1000 - lookById('back:gear')!.price);
+  assert.ok(ownsLook(w, 'back:gear'));
+  assert.equal(buyLook(w, 'back:gear'), false, 'only once');
+  assert.ok(LOOKS.every((l) => l.price >= 0 && (l.kind === 'back' || l.kind === 'dial')));
+}
 console.log('all economy tests passed');

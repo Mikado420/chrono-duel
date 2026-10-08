@@ -2,15 +2,17 @@
  * Booster pack opening. Sequence:
  *   1. the pack floats under a spotlight; swipe along the top (or tap) to tear it
  *   2. light pours out in the colour of the best card inside (the only hint)
- *   3. five cards rise face down and deal out; each one glows by rarity
- *   4. tap to flip; 秘宝 and 伝説 get a full-screen spotlight moment
- *   5. summary with NEW marks and coins from duplicates
+ *   3. five cards rise face down and deal out onto the hours of a clock face; each one glows by rarity and the
+ *      clock hand points at the next card to turn
+ *   4. tap to flip; 秘宝 and 伝説 get a full-screen moment (the art, a crest, the name on a slanted band)
+ *   5. summary: the best card large, the rest in a row, NEW marks, 欠片 from duplicates and the pity count
  */
 import { Container, FederatedPointerEvent, Graphics, Rectangle, Sprite, Text, Texture, type Ticker } from 'pixi.js';
 import { RARITY_NAMES, cardDef, type Rarity } from '../core/cards';
 import type { Opening, Pull } from '../meta/economy';
 import { audio } from './audio';
-import { PACK_H, PACK_W, packArt } from './cardArt';
+import { PACK_H, PACK_W, cardArt, packArt } from './cardArt';
+import { haptics } from './haptics';
 import type { Fx } from './fx';
 import { COLORS, FONTS } from './theme';
 import { ease, type Tweener } from './tween';
@@ -26,14 +28,22 @@ function drawRays(g: Graphics, n: number, w: number, color: number) {
   g.fill({ color, alpha: 1 });
 }
 const GLOW: Record<Rarity, number> = { C: 0x9fb3b8, R: 0x5fe0c8, E: 0xc79bff, L: 0xffd66e };
-const CARD_S = 0.5;
-const SLOTS = [{ x: 150, y: 0 }, { x: 360, y: 0 }, { x: 570, y: 0 }, { x: 255, y: 1 }, { x: 465, y: 1 }];
+const CARD_S = 0.42;
+/** The five cards sit on the clock's 10, 11, 12, 1 and 2 o'clock (angle from straight up, in radians). */
+const HOURS = [-0.86, -0.43, 0, 0.43, 0.86];
+const ARC_R = 300;
 
 interface Slot { pull: Pull; c: Container; card: Sprite; aura: Graphics; badge: Container; open: boolean; t: number }
 
 export interface PackOpenHost {
   /** Label and availability of "open another", or null to hide the button. */
   again(): { label: string; enabled: boolean } | null;
+  /** Packs left until a 伝説 is certain, after this one. */
+  pityLeft(): number;
+  /** 欠片 held after this pack. */
+  shards(): number;
+  /** Card back look for the face-down cards. */
+  back?: string;
   onAgain(): void;
   onClose(): void;
 }
@@ -56,18 +66,22 @@ export class PackOpenScene extends Container {
   private rayColor: number = COLORS.brass;
   private rayAlpha = 0.08;
   private raysDrawn = -1;
-  private rowY = [470, 760];
   private h = 1280;
   private skipBtn: Button;
   private allBtn: Button | null = null;
   private dead = false;
   private spotDone: (() => void) | null = null;
+  /** The clock the cards are dealt onto, and its hand pointing at the next card to turn. */
+  private clock = new Container();
+  private clockHand = new Graphics();
+  private arcC = { x: 360, y: 0 };
+  private handA = 0;
 
   constructor(private tw: Tweener, private fx: Fx, private ticker: Ticker, private o: Opening, private host: PackOpenHost, extra = 0) {
     super();
     this.h = 1280 + extra;
     const cy = this.h * 0.47;
-    this.rowY = [cy - 150, cy + 150];
+
     this.bg.rect(-400, -400, 1520, this.h + 800).fill({ color: 0x03080b, alpha: 0.94 });
     this.bg.eventMode = 'static';
     this.drawSpot();
@@ -97,7 +111,10 @@ export class PackOpenScene extends Container {
     this.skipBtn.x = 630; this.skipBtn.y = 70;
     this.ui.addChild(title, paid, this.skipBtn);
 
-    this.addChild(this.bg, this.rays, this.pack, this.stage2, this.hint, this.ui);
+    this.arcC = { x: 360, y: cy + 210 };
+    this.drawClock();
+    this.clock.alpha = 0;
+    this.addChild(this.bg, this.rays, this.clock, this.pack, this.stage2, this.hint, this.ui);
     this.eventMode = 'static';
     this.hitArea = { contains: () => true };
     this.pack.on('pointerdown', (e) => this.onDown(e));
@@ -114,6 +131,31 @@ export class PackOpenScene extends Container {
     this.dead = true;
     this.ticker.remove(this.tick);
     super.destroy({ children: true });
+  }
+
+  private drawClock() {
+    const g = new Graphics();
+    const { x, y } = this.arcC, R = ARC_R + 70;
+    g.circle(x, y, R).stroke({ color: COLORS.brass, width: 2, alpha: 0.35 });
+    g.circle(x, y, R - 22).stroke({ color: COLORS.brass, width: 1, alpha: 0.2 });
+    for (let i = 0; i < 60; i++) {
+      const a = (i / 60) * Math.PI * 2, l = i % 5 ? 8 : 18;
+      g.moveTo(x + Math.cos(a) * R, y + Math.sin(a) * R).lineTo(x + Math.cos(a) * (R - l), y + Math.sin(a) * (R - l)).stroke({ color: COLORS.brass, width: i % 5 ? 1 : 2, alpha: 0.4 });
+    }
+    const hub = new Graphics().circle(x, y, 26).fill(COLORS.brassDeep).circle(x, y, 26).stroke({ color: 0xfff0c4, width: 3 }).circle(x, y, 8).fill(0xfff0c4);
+    this.clockHand.x = x; this.clockHand.y = y;
+    this.clockHand.moveTo(0, 0).lineTo(0, -(ARC_R - 150)).stroke({ color: 0xfff3d4, width: 9, cap: 'round' });
+    this.clockHand.poly([-12, -(ARC_R - 150), 12, -(ARC_R - 150), 0, -(ARC_R - 120)]).fill(0xfff3d4);
+    this.clock.addChild(g, this.clockHand, hub);
+  }
+  /** Point the clock hand at the first card still face down. */
+  private aimHand() {
+    const i = this.slots.findIndex((x) => !x.open);
+    if (i < 0) return;
+    const to = HOURS[i];
+    const from = this.handA;
+    this.handA = to;
+    void this.tw.run(260, (k) => (this.clockHand.rotation = from + (to - from) * k), ease.outBack);
   }
 
   private drawSpot() {
@@ -241,7 +283,7 @@ export class PackOpenScene extends Container {
       const glow = GLOW[pull.rarity];
       for (let k = 0; k < 6; k++) aura.roundRect(-92 - k * 5, -125 - k * 5, 184 + k * 10, 250 + k * 10, 16 + k * 4).stroke({ color: glow, width: 6, alpha: 0.28 - k * 0.04 });
       aura.blendMode = 'add';
-      const card = new Sprite(backTex()); card.anchor.set(0.5); card.scale.set(CARD_S * 0.2);
+      const card = new Sprite(backTex(this.host.back)); card.anchor.set(0.5); card.scale.set(CARD_S * 0.2);
       const badge = new Container();
       c.addChild(aura, card, badge);
       c.x = origin.x; c.y = origin.y; c.alpha = 0;
@@ -262,22 +304,25 @@ export class PackOpenScene extends Container {
     // the empty wrapper falls away; once gone it must not catch taps meant for the buttons below
     void Promise.all([this.tw.to(this.pack, { y: this.pack.y + 700, alpha: 0 }, 600, ease.inCubic), this.tw.to(this.pack, { rotation: 0.3 }, 600)]).then(() => { if (!this.dead) this.pack.visible = false; });
     await this.tw.wait(120);
+    void this.tw.to(this.clock, { alpha: 1 }, 400);
     await Promise.all(this.slots.map((s, i) => (async () => {
       await this.tw.wait(i * 90);
-      const to = SLOTS[i];
+      const a = HOURS[i];
+      const to = { x: this.arcC.x + Math.sin(a) * ARC_R, y: this.arcC.y - Math.cos(a) * ARC_R };
       audio.play('flip');
       await Promise.all([
-        this.tw.to(s.c, { x: to.x, y: this.rowY[to.y] }, 460, ease.outBack),
+        this.tw.to(s.c, { x: to.x, y: to.y }, 460, ease.outBack),
         this.tw.to(s.card.scale, { x: CARD_S, y: CARD_S }, 460, ease.outCubic),
-        this.tw.run(460, (k) => (s.c.rotation = (1 - k) * (i - 2) * 0.2)),
+        this.tw.run(460, (k) => (s.c.rotation = (1 - k) * (i - 2) * 0.2 + k * a)),
       ]);
     })()));
     this.phase = 'reveal';
-    this.allBtn = new Button('すべてめくる', 260, 70, 'primary', undefined, () => void this.revealAll(false));
-    this.allBtn.x = 360; this.allBtn.y = this.rowY[1] + 230;
+    this.aimHand();
+    this.allBtn = new Button('全部めくる', 260, 70, 'primary', undefined, () => void this.revealAll(false));
+    this.allBtn.x = 360; this.allBtn.y = Math.min(this.h - 90, this.arcC.y + 230);
     this.ui.addChild(this.allBtn);
-    const tip = label('カードをタップしてめくる', 20, COLORS.mute, { align: 'center' });
-    tip.anchor.set(0.5); tip.x = 360; tip.y = this.rowY[0] - 175;
+    const tip = label('タップでめくる（針の指すカードから）', 20, COLORS.mute, { align: 'center' });
+    tip.anchor.set(0.5); tip.x = 360; tip.y = this.arcC.y + 120;
     tip.label = 'tip';
     this.ui.addChild(tip);
   }
@@ -296,6 +341,8 @@ export class PackOpenScene extends Container {
     await this.tw.run(quick ? 110 : 200, (k) => (s.card.scale.x = sx * k), ease.outBack);
     void this.tw.to(s.aura, { alpha: r === 'C' ? 0 : 0.6 }, 300);
     if (r !== 'C') { audio.play(r === 'L' ? 'rareL' : r === 'E' ? 'rareE' : 'rareR'); void this.fx.ring(s.c.x, s.c.y, GLOW[r], 30, 200, 520, 6); }
+    if (r === 'L') haptics.big('legend');
+    this.aimHand();
     if (!quick) this.fx.burst(s.c.x, s.c.y, GLOW[r], r === 'C' ? 8 : 22, 260, { grav: 60, life: 0.6, shape: 'spark' });
     this.decorate(s);
     if (big) await this.spot(s);
@@ -325,35 +372,57 @@ export class PackOpenScene extends Container {
     }
   }
 
-  /** Full-screen moment for 秘宝 and 伝説. Waits for a tap (or a few seconds). */
+  /**
+   * Full-screen moment for 秘宝 and 伝説: the card's art fills the top, the card stands to the right with a crest of
+   * its rarity at the lower left and its name on a slanted band. Waits for a tap (or a few seconds).
+   */
   private async spot(s: Slot) {
     const r = s.pull.rarity;
     const d = cardDef(s.pull.card);
     const col = GLOW[r];
+    const cy = this.h * 0.42;
     const layer = new Container();
-    const dim = new Graphics().rect(-400, -400, 1520, this.h + 800).fill({ color: 0x020507, alpha: 0.85 });
+    const dim = new Graphics().rect(-400, -400, 1520, this.h + 800).fill({ color: 0x020507, alpha: 0.9 });
     dim.eventMode = 'static';
     dim.on('pointertap', () => this.spotDone?.());
-    const rays = new Graphics(); rays.x = 360; rays.y = this.h * 0.44; rays.blendMode = 'add';
-    const big = new Sprite(faceTex(s.pull.card)); big.anchor.set(0.5); big.x = s.c.x; big.y = s.c.y; big.scale.set(CARD_S);
+    // the art, full width, fading into the dark below
+    const art = new Sprite(Texture.from(cardArt(s.pull.card, 360, 300)));
+    art.anchor.set(0.5, 0); art.x = 360; art.y = 0; art.width = 920; art.height = 760; art.alpha = 0;
+    const fade = new Graphics();
+    for (let i = 0; i < 24; i++) fade.rect(-200, 420 + i * 16, 1120, 16).fill({ color: 0x020507, alpha: Math.min(1, i / 20) });
+    fade.rect(-200, 800, 1120, this.h).fill(0x020507);
+    const rays = new Graphics(); rays.x = 360; rays.y = cy; rays.blendMode = 'add';
+    const big = new Sprite(faceTex(s.pull.card)); big.anchor.set(0.5); big.x = s.c.x; big.y = s.c.y; big.scale.set(CARD_S); big.rotation = s.c.rotation;
     big.eventMode = 'static'; big.on('pointertap', () => this.spotDone?.());
+    const sheen = new Graphics(); sheen.blendMode = 'add';
+    // crest: a hexagon in brass (伝説) or violet (秘宝) with the rarity name
+    const crest = new Container();
+    const hex = (rad: number) => Array.from({ length: 6 }, (_, i) => { const a = -Math.PI / 2 + (i * Math.PI) / 3; return [Math.cos(a) * rad, Math.sin(a) * rad]; }).flat();
+    const cg = new Graphics().poly(hex(104)).fill(r === 'L' ? 0xe0b25c : 0x9a6fd8).poly(hex(92)).fill(0x140b04).poly(hex(80)).stroke({ color: col, width: 2.5 });
+    const cn = label(RARITY_NAMES[r], 52, r === 'L' ? 0xfff0c4 : 0xe8dcff, { font: FONTS.display, weight: '700', align: 'center' });
+    cn.anchor.set(0.5); cn.y = -10;
+    const ce = label(r === 'L' ? 'LEGEND' : 'TREASURE', 16, col, { font: FONTS.num, weight: '700', align: 'center', spacing: 4 });
+    ce.anchor.set(0.5); ce.y = 40;
+    crest.addChild(cg, cn, ce);
+    crest.x = 170; crest.y = cy + 150; crest.scale.set(0.3); crest.alpha = 0;
+    // the name on a slanted band
     const band = new Container();
-    const bandBg = new Graphics().rect(-360, -62, 720, 124).fill({ color: 0x05090c, alpha: 0.85 }).rect(-360, -62, 720, 2).fill(col).rect(-360, 60, 720, 2).fill(col);
-    const rn = label(`${RARITY_NAMES[r]}${r === 'L' ? '  LEGEND' : ''}`, 22, col, { font: FONTS.num, weight: '700', align: 'center', spacing: 6 });
-    rn.anchor.set(0.5); rn.y = -28;
-    const nm = label(d.name, 40, 0xffffff, { font: FONTS.display, weight: '700', align: 'center' });
-    nm.anchor.set(0.5); nm.y = 16;
-    if (nm.width > 660) nm.scale.set(660 / nm.width);
-    band.addChild(bandBg, rn, nm);
-    band.x = 360; band.y = this.h * 0.44 + 330; band.alpha = 0;
+    const bandBg = new Graphics().rect(-460, -66, 920, 132).fill({ color: r === 'L' ? 0x2a1c0a : 0x1d1430, alpha: 0.96 }).rect(-460, -66, 920, 3).fill(col).rect(-460, 63, 920, 3).fill(col);
+    const nm = label(d.name, 46, 0xfff3d4, { font: FONTS.display, weight: '700', align: 'center' });
+    nm.anchor.set(0.5); nm.y = 6;
+    if (nm.width > 640) nm.scale.set(640 / nm.width);
+    const sub = label(`${d.kind === 'unit' ? `刻${d.cost} ・ 攻${d.atk} ・ 体${d.hp}` : `術 ・ 刻${d.cost}`}`, 18, col, { weight: '700', align: 'center' });
+    sub.anchor.set(0.5); sub.y = -40;
+    band.addChild(bandBg, sub, nm);
+    band.x = 360; band.y = cy + 400; band.rotation = -0.07; band.alpha = 0;
     const tap = label('タップして続ける', 18, COLORS.mute, { align: 'center' });
-    tap.anchor.set(0.5); tap.x = 360; tap.y = band.y + 100; tap.alpha = 0;
-    layer.addChild(dim, rays, big, band, tap);
+    tap.anchor.set(0.5); tap.x = 360; tap.y = Math.min(this.h - 60, band.y + 130); tap.alpha = 0;
+    layer.addChild(dim, art, fade, rays, crest, big, sheen, band, tap);
     if (s.pull.isNew) {
       const nb = label('NEW', 26, 0xffffff, { font: FONTS.num, weight: '700', align: 'center' });
       const ng = new Graphics().roundRect(-52, -20, 104, 40, 20).fill(COLORS.foe);
       const nc = new Container(); nc.addChild(ng, nb); nb.anchor.set(0.5);
-      nc.x = 360 + 150; nc.y = this.h * 0.44 - 250; nc.rotation = 0.2;
+      nc.x = 610; nc.y = cy - 200; nc.rotation = 0.2;
       layer.addChild(nc);
     }
     this.addChild(layer);
@@ -363,17 +432,26 @@ export class PackOpenScene extends Container {
     this.spotDone = () => { want = true; };
     drawRays(rays, r === 'L' ? 28 : 18, 0.05, col);
     rays.alpha = 0.12;
-    const rayFn = (t: Ticker) => { rays.rotation += (t.deltaMS / 1000) * (r === 'L' ? 0.35 : 0.2); };
+    let st = 0;
+    const rayFn = (t: Ticker) => {
+      rays.rotation += (t.deltaMS / 1000) * (r === 'L' ? 0.35 : 0.2);
+      // a sheen crossing the card now and then
+      st = (st + t.deltaMS / 1600) % 1;
+      const x = big.x - 220 + st * 440;
+      sheen.clear().poly([x - 30, big.y - 230, x + 30, big.y - 230, x - 10, big.y + 230, x - 70, big.y + 230]).fill({ color: 0xffffff, alpha: 0.18 });
+    };
     this.ticker.add(rayFn);
     if (r === 'L') { void this.fx.flash(0xffd66e, 0.5, 900); void this.fx.shake(10, 450); }
     await Promise.all([
       this.tw.to(dim, { alpha: 1 }, 260),
-      this.tw.to(big, { x: 360, y: this.h * 0.44 }, 480, ease.outBack),
-      this.tw.to(big.scale, { x: 1.05, y: 1.05 }, 480, ease.outBack),
+      this.tw.to(art, { alpha: 0.85 }, 600),
+      this.tw.to(big, { x: 470, y: cy + 60, rotation: 0.07 }, 480, ease.outBack),
+      this.tw.to(big.scale, { x: 0.86, y: 0.86 }, 480, ease.outBack),
     ]);
-    void this.fx.ring(360, this.h * 0.44, col, 80, 520, 800, 12);
-    this.fx.burst(360, this.h * 0.44, col, r === 'L' ? 70 : 36, r === 'L' ? 560 : 380, { grav: 120, life: 1.3, shape: 'spark' });
-    if (r === 'L') this.fx.burst(360, this.h * 0.44, 0xffffff, 30, 300, { grav: -40, life: 1.6, size: 3 });
+    void this.fx.ring(470, cy + 60, col, 80, 520, 800, 12);
+    this.fx.burst(470, cy + 60, col, r === 'L' ? 70 : 36, r === 'L' ? 560 : 380, { grav: 120, life: 1.3, shape: 'spark' });
+    if (r === 'L') this.fx.burst(470, cy + 60, 0xffffff, 30, 300, { grav: -40, life: 1.6, size: 3 });
+    await Promise.all([this.tw.to(crest, { alpha: 1 }, 260), this.tw.to(crest.scale, { x: 1, y: 1 }, 380, ease.outBack)]);
     await Promise.all([this.tw.to(band, { alpha: 1 }, 300), this.tw.to(tap, { alpha: 1 }, 600)]);
     await new Promise<void>((res) => {
       let done = false;
@@ -383,7 +461,7 @@ export class PackOpenScene extends Container {
       void this.tw.wait(r === 'L' ? 6000 : 4000).then(fin);
     });
     if (this.dead) return;
-    await Promise.all([this.tw.to(layer, { alpha: 0 }, 260), this.tw.to(big.scale, { x: CARD_S, y: CARD_S }, 260), this.tw.to(big, { x: s.c.x, y: s.c.y }, 260)]);
+    await Promise.all([this.tw.to(layer, { alpha: 0 }, 260), this.tw.to(big.scale, { x: CARD_S, y: CARD_S }, 260), this.tw.to(big, { x: s.c.x, y: s.c.y, rotation: s.c.rotation }, 260)]);
     this.ticker.remove(rayFn);
     layer.destroy({ children: true });
   }
@@ -407,26 +485,60 @@ export class PackOpenScene extends Container {
   }
 
   // ------------------------------------------------------------------ stage 5: summary
+  /** The best card large at the top (it is always dealt last), the other four in a row, then the totals. */
   private async finish() {
     if (this.phase === 'done') return;
     this.phase = 'done';
     this.skipBtn.visible = false;
     this.allBtn?.destroy(); this.allBtn = null;
     this.ui.getChildByLabel('tip')?.destroy();
+    void this.tw.to(this.clock, { alpha: 0 }, 300);
+    const top = 200;
+    const bestY = top + 170, rowY = top + 470;
+    const head = label('手に入れたカード', 30, COLORS.ivory, { font: FONTS.display, weight: '700', align: 'center' });
+    head.anchor.set(0.5); head.x = 360; head.y = top - 30; head.alpha = 0;
+    this.ui.addChild(head);
+    const best = this.slots[this.slots.length - 1];
+    const rest = this.slots.slice(0, -1);
+    await Promise.all([
+      this.tw.to(head, { alpha: 1 }, 300),
+      this.tw.to(best.c, { x: 360, y: bestY, rotation: 0 }, 420, ease.outCubic),
+      this.tw.to(best.c.scale, { x: 1.15, y: 1.15 }, 420, ease.outCubic),
+      ...rest.map((s, i) => Promise.all([
+        this.tw.to(s.c, { x: 360 + (i - 1.5) * 160, y: rowY, rotation: 0 }, 420, ease.outCubic),
+        this.tw.to(s.c.scale, { x: 0.78, y: 0.78 }, 420, ease.outCubic),
+      ])),
+    ]);
+    if (this.dead) return;
+    for (const s of this.slots) s.aura.alpha = s.pull.rarity === 'C' ? 0 : 0.45;
+    // totals
     const news = this.o.pulls.filter((p) => p.isNew).length;
-    const coins = this.o.pulls.reduce((n, p) => n + p.dupeShards, 0);
-    const line = [news ? `新しいカード ${news}種` : '新しいカードはありませんでした', coins ? `欠片 +${coins}` : ''].filter(Boolean).join('　・　');
-    const t = label(line, 22, COLORS.ivory, { align: 'center' });
-    t.anchor.set(0.5); t.x = 360; t.y = this.rowY[1] + 185; t.alpha = 0;
-    this.ui.addChild(t);
+    const shards = this.o.pulls.reduce((n, p) => n + p.dupeShards, 0);
+    const left = this.host.pityLeft();
+    const lines: [string, string][] = [
+      ['新しく手に入れた', news ? `${news}種` : 'なし'],
+      ['時の欠片', shards ? `+${shards}（合計 ${this.host.shards()}）` : `合計 ${this.host.shards()}`],
+      ['伝説の確定まで', left <= 1 ? '次のパックで確定' : `あと ${left} パック`],
+    ];
+    const box = new Container();
+    const W = 560, H = 30 + lines.length * 38;
+    box.addChild(new Graphics().roundRect(-W / 2, 0, W, H, 16).fill({ color: COLORS.ink2, alpha: 0.92 }).roundRect(-W / 2, 0, W, H, 16).stroke({ color: COLORS.line, width: 2 }));
+    lines.forEach(([a, b], i) => {
+      const l = label(a, 20, COLORS.mute, {}); l.x = -W / 2 + 22; l.y = 16 + i * 38;
+      const r = label(b, 21, i === 2 ? COLORS.brass : COLORS.ivory, { weight: '700' }); r.anchor.set(1, 0); r.x = W / 2 - 22; r.y = 15 + i * 38;
+      box.addChild(l, r);
+    });
+    box.x = 360; box.y = rowY + 150; box.alpha = 0;
+    this.ui.addChild(box);
     const ag = this.host.again();
     const btns: Button[] = [];
     const ws: number[] = [];
-    if (ag) { const b = new Button('もう1パック', 300, 76, 'primary', ag.label, () => this.host.onAgain()); b.enabled = ag.enabled; btns.push(b); ws.push(300); }
-    btns.push(new Button('閉じる', ag ? 180 : 260, 76, 'plain', undefined, () => this.host.onClose())); ws.push(ag ? 180 : 260);
+    btns.push(new Button('OK', ag ? 200 : 260, 76, 'plain', undefined, () => this.host.onClose())); ws.push(ag ? 200 : 260);
+    if (ag) { const b = new Button('もう1パック', 320, 76, 'primary', ag.label, () => this.host.onAgain()); b.enabled = ag.enabled; btns.push(b); ws.push(320); }
     const total = ws.reduce((n, w) => n + w, 0) + (btns.length - 1) * 20;
     let x = 360 - total / 2;
-    btns.forEach((b, i) => { b.x = x + ws[i] / 2; b.y = this.rowY[1] + 270; x += ws[i] + 20; b.alpha = 0; this.ui.addChild(b); });
-    await Promise.all([this.tw.to(t, { alpha: 1 }, 300), ...btns.map((b) => this.tw.to(b, { alpha: b.enabled ? 1 : 0.42 }, 300))]);
+    const by = Math.min(this.h - 70, box.y + H + 80);
+    btns.forEach((b, i) => { b.x = x + ws[i] / 2; b.y = by; x += ws[i] + 20; b.alpha = 0; this.ui.addChild(b); });
+    await Promise.all([this.tw.to(box, { alpha: 1 }, 300), ...btns.map((b) => this.tw.to(b, { alpha: b.enabled ? 1 : 0.42 }, 300))]);
   }
 }

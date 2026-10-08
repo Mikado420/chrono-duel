@@ -11,6 +11,16 @@ const TAU = Math.PI * 2;
 
 interface Pin { c: Container; pi: PlayerIndex; T: number; card: string | null; face: Container; echo: boolean; stem: Graphics }
 
+/** Clock faces (looks bought in the shop). Only colours change: the layout and the hands stay the same. */
+export interface DialSkin { face: number; faceAlpha: number; rim: number; inner: number; tick: number; minor: number; num: number; star?: boolean }
+export const DIAL_SKINS: Record<string, DialSkin> = {
+  'dial:brass': { face: COLORS.ink2, faceAlpha: 0.9, rim: COLORS.brassDeep, inner: COLORS.line, tick: COLORS.brass, minor: COLORS.mute, num: COLORS.brass },
+  'dial:verdigris': { face: 0x0c2a26, faceAlpha: 0.92, rim: 0x3fa58f, inner: 0x1f6b5c, tick: 0x8fe3c8, minor: 0x5f9f8f, num: 0x9ff0dc },
+  'dial:ember': { face: 0x1d0f0b, faceAlpha: 0.92, rim: 0xc8642f, inner: 0x6e2a12, tick: 0xffb07a, minor: 0xb06a48, num: 0xffc08a },
+  'dial:ivory': { face: 0x26231d, faceAlpha: 0.94, rim: 0xe9dfc8, inner: 0x6b6352, tick: 0xf6efdc, minor: 0xb5ab95, num: 0xf6efdc },
+  'dial:night': { face: 0x0b1030, faceAlpha: 0.94, rim: 0xb9c6e6, inner: 0x2f3a6a, tick: 0xe6e2ff, minor: 0x8a93c4, num: 0xd6dcff, star: true },
+};
+
 /**
  * The shared clock. Two hands (yours and the opponent's) point at each side's time.
  * Reservations sit as pins outside the rim. The rim from DOOM_AT on burns red.
@@ -37,8 +47,10 @@ export class Dial extends Container {
   private doomLevel = 0;
   private glowT = 0;
 
-  constructor(private tw: Tweener) {
+  private skin: DialSkin;
+  constructor(private tw: Tweener, skin = 'dial:brass') {
     super();
+    this.skin = DIAL_SKINS[skin] ?? DIAL_SKINS['dial:brass'];
     this.addChild(this.band, this.doomBand, this.ticks);
     this.drawStatic();
     const mk = (pi: PlayerIndex) => {
@@ -112,25 +124,31 @@ export class Dial extends Container {
 
   private drawStatic() {
     const { cx, cy, R } = this;
+    const k = this.skin;
     const b = this.band.clear();
     // face
-    b.moveTo(cx - R - 26, cy).arc(cx, cy, R + 26, Math.PI, TAU).lineTo(cx - R - 26, cy).fill({ color: COLORS.ink2, alpha: 0.9 });
-    b.arc(cx, cy, R + 26, Math.PI, TAU).stroke({ color: COLORS.brassDeep, width: 3 });
-    b.arc(cx, cy, R - 60, Math.PI, TAU).stroke({ color: COLORS.line, width: 1.5 });
-    b.moveTo(cx - R - 26, cy).lineTo(cx + R + 26, cy).stroke({ color: COLORS.brassDeep, width: 3 });
+    b.moveTo(cx - R - 26, cy).arc(cx, cy, R + 26, Math.PI, TAU).lineTo(cx - R - 26, cy).fill({ color: k.face, alpha: k.faceAlpha });
+    if (k.star) {
+      let seed = 11;
+      const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+      for (let i = 0; i < 70; i++) { const a = Math.PI + rnd() * Math.PI, r = 40 + rnd() * (R - 20); b.circle(cx + Math.cos(a) * r, cy + Math.sin(a) * r, 0.8 + rnd() * 1.6).fill({ color: 0xffffff, alpha: 0.25 + rnd() * 0.5 }); }
+    }
+    b.arc(cx, cy, R + 26, Math.PI, TAU).stroke({ color: k.rim, width: 3 });
+    b.arc(cx, cy, R - 60, Math.PI, TAU).stroke({ color: k.inner, width: 1.5 });
+    b.moveTo(cx - R - 26, cy).lineTo(cx + R + 26, cy).stroke({ color: k.rim, width: 3 });
     // inner guilloché
     for (let i = 0; i < 36; i++) {
       const a = Math.PI + (i / 36) * Math.PI;
-      b.moveTo(cx + Math.cos(a) * 40, cy + Math.sin(a) * 40).lineTo(cx + Math.cos(a) * (R - 64), cy + Math.sin(a) * (R - 64)).stroke({ color: COLORS.line, width: 1, alpha: 0.35 });
+      b.moveTo(cx + Math.cos(a) * 40, cy + Math.sin(a) * 40).lineTo(cx + Math.cos(a) * (R - 64), cy + Math.sin(a) * (R - 64)).stroke({ color: k.inner, width: 1, alpha: 0.35 });
     }
     const t = this.ticks.clear();
     for (let i = 0; i <= RULES.END; i++) {
       const major = i % 5 === 0;
       const p1 = this.point(i, R + 22), p2 = this.point(i, R + (major ? 4 : 12));
-      t.moveTo(p1.x, p1.y).lineTo(p2.x, p2.y).stroke({ color: major ? COLORS.brass : COLORS.mute, width: major ? 3 : 1.5, alpha: major ? 1 : 0.6 });
+      t.moveTo(p1.x, p1.y).lineTo(p2.x, p2.y).stroke({ color: major ? k.tick : k.minor, width: major ? 3 : 1.5, alpha: major ? 1 : 0.6 });
       if (major) {
         const lp = this.point(i, R - 16);
-        const tx = label(String(i), 17, COLORS.brass, { font: FONTS.num, weight: '700' });
+        const tx = label(String(i), 17, k.num, { font: FONTS.num, weight: '700' });
         tx.anchor.set(0.5); tx.x = lp.x; tx.y = lp.y + (i === 0 || i === RULES.END ? -10 : 0);
         this.addChild(tx);
       }
@@ -138,8 +156,8 @@ export class Dial extends Container {
     for (const bell of RULES.BELLS) {
       const p = this.point(bell, R - 40);
       const g = new Graphics();
-      g.moveTo(-8, 6).bezierCurveTo(-7, -2, -6, -9, 0, -9).bezierCurveTo(6, -9, 7, -2, 8, 6).closePath().fill({ color: COLORS.brass, alpha: 0.85 });
-      g.circle(0, 8, 2.5).fill(COLORS.brass);
+      g.moveTo(-8, 6).bezierCurveTo(-7, -2, -6, -9, 0, -9).bezierCurveTo(6, -9, 7, -2, 8, 6).closePath().fill({ color: k.tick, alpha: 0.85 });
+      g.circle(0, 8, 2.5).fill(k.tick);
       g.x = p.x; g.y = p.y;
       this.addChild(g);
     }

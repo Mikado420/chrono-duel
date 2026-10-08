@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { PRESET_DECKS } from '../core/decks';
 import { legalActions, mulberry32, type GameState } from '../core/engine';
-import { NET, viewState, type ClientMsg, type ServerMsg } from '../core/net';
+import { NET, viewState, watchState, type ClientMsg, type ServerMsg } from '../core/net';
 import { Room, type Conn, type RoomEnv } from '../server/room';
 import type { RoomLog } from '../server/stats';
 import { replay } from '../core/gamelog';
@@ -239,5 +239,58 @@ const truth = () => (room as unknown as { game: GameState }).game;
   }
   assert.ok(charged > 0 && echoesSeen > 0, 'charge and echoes were exercised');
   console.log(`pack cards ok: ${games} games, ${charged} charged plays accepted, opponent echoes visible`);
+}
+// ---------------------------------------------------------------- spectators: both hands hidden, nothing to play, they leave quietly
+{
+  room = new Room('WATCH', env);
+  const a = new Client(R, 'アリス'), b = new Client(R, 'ボブ'), w = new Client(R, '見る人');
+  w.send({ t: 'hello', name: 'w', deck: [], mode: 'watch' });
+  assert.deepEqual(w.errors(), ['gone'], 'nothing to watch in an empty room');
+  a.send({ t: 'hello', name: 'アリス', deck: a.deck, mode: 'create', profile: { title: 'first', fav: 'dragon' } });
+  assert.ok(room.expired() === false);
+  w.inbox = [];
+  w.send({ t: 'hello', name: 'w', deck: [], mode: 'watch' });
+  assert.equal(w.last('watching')?.phase, 'lobby', 'a spectator can wait in the lobby');
+  assert.equal(w.last('watching')?.seats[0]?.name, 'アリス');
+  assert.equal(w.last('watching')?.seats[0]?.title, 'first', 'a known title is passed on');
+  // lobby setup: a new deck and name before the game starts; bad decks and fake titles are refused
+  a.send({ t: 'setup', deck: ['scout'] });
+  assert.ok(a.errors().includes('deck'));
+  a.send({ t: 'setup', name: 'アリス2', deck: PRESET_DECKS[1].cards, profile: { title: 'no-such-title', fav: 'dragon' } });
+  assert.equal(w.last('watching')?.seats[0]?.name, 'アリス2');
+  assert.equal(w.last('watching')?.seats[0]?.title, undefined, 'unknown titles are dropped');
+  b.send({ t: 'hello', name: 'ボブ', deck: b.deck, mode: 'join' });
+  assert.equal(b.last('foe')?.foe?.name, 'アリス2');
+  assert.equal(b.last('foe')?.foe?.fav, 'dragon');
+  const g = w.last('game')!;
+  assert.equal(g.fresh, true, 'the spectator gets the start of the game');
+  const hidden = (v: GameState) => {
+    assert.ok(v.players.every((p) => p.hand.every((h) => h.card === '?')), 'a hand leaked to a spectator');
+    assert.ok(v.players.every((p) => p.resv.every((r) => r.revealed || r.card === '?')), 'a reservation leaked to a spectator');
+  };
+  hidden(g.state);
+  w.send({ t: 'act', n: 0, a: { t: 'wait' } });
+  assert.equal(truth().actions, 0, 'spectators can not play');
+  const rand = mulberry32(11);
+  let steps = 0;
+  while (!a.result && steps++ < 400) {
+    const ps = [a, b];
+    const i = ps.findIndex((p) => legalActions(p.view!, 0).length > 0);
+    const legal = legalActions(ps[i].view!, 0);
+    const pool = legal.filter((x) => x.t !== 'wait' && x.t !== 'draw');
+    const src = pool.length && rand() < 0.85 ? pool : legal;
+    ps[i].send({ t: 'act', n: ps[i].view!.actions, a: src[Math.floor(rand() * src.length)] });
+    const ev = w.last('events')!;
+    for (const e of ev.events) if (e.e === 'draw' || e.e === 'reserve') assert.equal(e.card, '?', `${e.e} leaked to a spectator`);
+    assert.deepEqual(ev.state, watchState(truth()), 'the spectator view follows the game');
+  }
+  assert.ok(w.last('over'), 'the spectator sees the end');
+  const ra = (a.result as Extract<ServerMsg, { t: 'over' }>).result;
+  assert.deepEqual(w.last('over')!.result, ra, 'seat 0 is the spectator\'s point of view');
+  // a spectator leaving does not touch the players
+  w.send({ t: 'leave' });
+  assert.equal(w.closedWith, 1000);
+  assert.equal(room.expired(), false);
+  console.log('spectators ok');
 }
 console.log('all net tests passed');
