@@ -732,7 +732,7 @@ export class Screens {
         h('button', { class: 'title-item', 'aria-pressed': String(!cur), onclick: () => { m.title = '-'; store.saveMeta(); ref.close(); done(); } }, h('span', { class: 'ribbon', style: 'background:#16303d;color:#8fa9ad' }, 'つけない'), h('small', {}, '称号を表示しない')),
         ...TITLES.map((t) => {
           const has = got.includes(t.id);
-          return h('button', { class: `title-item${has ? '' : ' locked'}`, 'aria-pressed': String(cur === t.id), disabled: !has, onclick: () => { m.title = t.id; store.saveMeta(); audio.play('select'); ref.close(); done(); void syncRated(); } },
+          return h('button', { class: `title-item${has ? '' : ' locked'}`, 'aria-pressed': String(cur === t.id), 'aria-disabled': has ? undefined : 'true', onclick: () => { if (!has) return; m.title = t.id; store.saveMeta(); audio.play('select'); ref.close(); done(); void syncRated(); } },
             ribbon(t.id), h('small', {}, has ? t.how : `未獲得：${t.how}`), fresh.has(t.id) ? newTag() : null);
         })),
     ], [], done);
