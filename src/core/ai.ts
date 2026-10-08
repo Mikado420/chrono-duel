@@ -49,7 +49,7 @@ export function evaluate(s: GameState, pi: PlayerIndex, W: Weights = BASE_WEIGHT
 }
 
 /** Hide what `pi` should not know: the opponent's unrevealed reservations and both deck orders. */
-function fogged(s: GameState, pi: PlayerIndex): GameState {
+export function fogged(s: GameState, pi: PlayerIndex): GameState {
   const c = clone(s);
   const op = c.players[other(pi)];
   op.resv = op.resv.filter((r) => r.revealed);
@@ -57,7 +57,7 @@ function fogged(s: GameState, pi: PlayerIndex): GameState {
   return c;
 }
 
-function pruneReserves(s: GameState, pi: PlayerIndex, acts: Action[]): Action[] {
+export function pruneReserves(s: GameState, pi: PlayerIndex, acts: Action[]): Action[] {
   // keep a few representative times per card to limit the search
   const keep: Action[] = [];
   const byHand = new Map<number, number[]>();
@@ -82,7 +82,7 @@ function pruneReserves(s: GameState, pi: PlayerIndex, acts: Action[]): Action[] 
  * 破約の刃 needs targets. How many reservations the opponent has and when they fire is public (the pins on the dial),
  * but `fogged` drops the unrevealed ones, so judge it on the real state: use it only when something is there to cut.
  */
-function breakBonus(s: GameState, pi: PlayerIndex, a: Action): number {
+export function breakBonus(s: GameState, pi: PlayerIndex, a: Action): number {
   if (a.t !== 'cast' && a.t !== 'reserve') return 0;
   const h = s.players[pi].hand.find((x) => x.uid === a.hand);
   if (!h || cardDef(h.card).effect !== 'eBreak') return 0;
@@ -92,7 +92,7 @@ function breakBonus(s: GameState, pi: PlayerIndex, a: Action): number {
   const hidden = resv.some((r) => !r.revealed && !r.echo) ? 1.5 : 0;
   return 2 + hidden + Math.min(n, a.t === 'cast' ? 1 : 2) * 1.2;
 }
-function intentBonus(s: GameState, pi: PlayerIndex, a: Action, card?: string): number {
+export function intentBonus(s: GameState, pi: PlayerIndex, a: Action, card?: string): number {
   if (a.t !== 'reserve') return 0;
   const d = cardDef(card ?? s.players[pi].hand.find((x) => x.uid === a.hand)!.card);
   const op = s.players[other(pi)];
@@ -130,8 +130,8 @@ function intentBonus(s: GameState, pi: PlayerIndex, a: Action, card?: string): n
   return b - wait * 0.12;
 }
 
-function bestReply(s: GameState, pi: PlayerIndex, depth = 0): number {
-  if (s.pending) { const c = clone(s); apply(c, chooseChoice(c, c.pending!.pi)); return bestReply(c, pi, depth); }
+export function bestReply(s: GameState, pi: PlayerIndex, depth = 0, skipLane = -1): number {
+  if (s.pending) { const c = clone(s); apply(c, chooseChoice(c, c.pending!.pi)); return bestReply(c, pi, depth, skipLane); }
   const q = actor(s);
   if (q === -1) return evaluate(s, pi);
   if (q === pi) {
@@ -142,7 +142,7 @@ function bestReply(s: GameState, pi: PlayerIndex, depth = 0): number {
       if (a.t === 'reserve') continue;
       const c = clone(s);
       apply(c, a);
-      best = Math.max(best, bestReply(c, pi, depth + 1));
+      best = Math.max(best, bestReply(c, pi, depth + 1, skipLane));
     }
     return best === -Infinity ? evaluate(s, pi) : best;
   }
@@ -150,6 +150,8 @@ function bestReply(s: GameState, pi: PlayerIndex, depth = 0): number {
   let worst = Infinity;
   for (const a of legalActions(s, q)) {
     if (a.t !== 'attack' && a.t !== 'wait') continue;
+    // 脅威の見落とし (rated rivals): one of the opponent's lanes is left out of the reply
+    if (a.t === 'attack' && a.lane === skipLane) continue;
     const c = clone(s);
     apply(c, a);
     worst = Math.min(worst, evaluate(c, pi));
@@ -162,7 +164,7 @@ function bestReply(s: GameState, pi: PlayerIndex, depth = 0): number {
  * plies, then lets the opponent answer with its known threats (attacks, drawing, waiting) for up to `theirs` plies.
  * The opponent's hand is never used, so the AI does not peek at hidden cards.
  */
-function deepValue(s: GameState, pi: PlayerIndex, mine: number, theirs: number): number {
+export function deepValue(s: GameState, pi: PlayerIndex, mine: number, theirs: number): number {
   const W = EXPERT_WEIGHTS;
   if (s.pending && !s.over) { const c = clone(s); apply(c, chooseChoice(c, c.pending!.pi)); return deepValue(c, pi, mine, theirs); }
   const q = actor(s);
@@ -236,7 +238,7 @@ export async function chooseActionSpecAsync(s: GameState, pi: PlayerIndex, spec:
  * One guess of the hidden information for `pi`: the opponent's hand and deck become random cards, our own deck
  * is our real remaining cards in a random order (we know our deck list but not its order).
  */
-function determinize(s: GameState, pi: PlayerIndex, ownDeck: string[], rand: () => number): GameState {
+export function determinize(s: GameState, pi: PlayerIndex, ownDeck: string[], rand: () => number): GameState {
   const c = clone(s);
   const op = c.players[other(pi)];
   const pool = CARD_LIST;
@@ -248,7 +250,7 @@ function determinize(s: GameState, pi: PlayerIndex, ownDeck: string[], rand: () 
   return c;
 }
 /** Plays greedily (with a little noise) for up to `depth` actions and scores the result for `pi`. */
-function rollout(s: GameState, pi: PlayerIndex, depth: number, rand: () => number): number {
+export function rollout(s: GameState, pi: PlayerIndex, depth: number, rand: () => number): number {
   for (let i = 0; i < depth && !s.over; i++) {
     const q = actor(s);
     if (q === -1) break;

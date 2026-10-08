@@ -422,10 +422,9 @@ export class Screens {
       if (cancelled || !search.isConnected) return;
       stop();
       const first = (Math.random() < 0.5 ? 0 : 1) as 0 | 1;
-      // the opponent's featured card: one of the strong cards a player at that rating would show
-      const pool = CARD_LIST.filter((c) => c.rarity === 'L' || c.rarity === 'E');
-      const foeCard = pool[Math.floor(Math.random() * pool.length)]?.id ?? 'dragon';
-      const foeTitle = TITLES[Math.floor(Math.random() * Math.min(TITLES.length, 12))].id;
+      // the opponent's featured card and title: each rival always shows the same ones
+      const foeCard = o.card ?? 'dragon';
+      const foeTitle = o.title;
       this.clear();
       this.versus(
         { name: store.settings.name || 'あなた', card: favCard(), first: first === 0, tierRating: me.rating, title: shownTitle()?.id, deck: deck.name },

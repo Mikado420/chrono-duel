@@ -5,6 +5,7 @@
  * authoritative number, so both always agree.
  */
 import type { AiLevel, AiSpec } from '../core/ai';
+import { ROSTER, rivalById, rivalCard, rivalDeck, rivalId, rivalLevel, rivalTitle } from './roster';
 
 export const START_RATING = 1000;
 export const MIN_RATING = 100;
@@ -44,7 +45,12 @@ export const RATED_FOES: RatedFoe[] = [
   { id: 'expert+', rating: 1530, spec: { level: 'expert', search: { candidates: 8, rollouts: 24, depth: 30 } } },
   { id: 'expert++', rating: 1600, spec: { level: 'expert', search: { candidates: 12, rollouts: 40, depth: 30 } } },
 ];
-export const foeById = (id: string): RatedFoe | undefined => RATED_FOES.find((f) => f.id === id);
+/** A rated opponent by id: the 120 rivals of the roster ('rv:' + name), or one of the older strength steps (games recorded before the roster). */
+export function foeById(id: string): RatedFoe | undefined {
+  const r = rivalById(id);
+  if (r) return { id, rating: r.rating, spec: { level: rivalLevel(r.lv) } };
+  return RATED_FOES.find((f) => f.id === id);
+}
 /** The plain level a rated opponent is closest to (rewards, statistics, which decks it may use). */
 export const foeLevel = (id: string): AiLevel => foeById(id)?.spec.level ?? 'normal';
 /** How wide the choice around the player's rating is: steps further away than this are rare. */
@@ -95,15 +101,29 @@ export const PLAYER_NAMES = [
   'ちひろ', 'Shiro', 'かなで', 'まっちゃ', 'Kei', 'いぶき', 'ひろと', 'ruri', 'つむぎ', '終焉の鐘', 'Haru', 'れん',
   'のぞみ', 'Aki', 'ゆうと', 'しずく', 'Natsu', 'けいた', 'ことは', 'Mugi', 'はやて', 'すず', 'Ryo', 'あかね',
 ];
-/** `ai` is the rated opponent's id (RATED_FOES). */
-export interface Opponent { ai: string; name: string; rating: number }
-/** Draws the next rated opponent: an AI level for the player's rating, dressed as a player. */
-export function makeOpponent(rating: number, myName: string, recent: string[], rand: () => number = Math.random): Opponent {
-  const ai = pickOpponent(rating, rand);
-  const pool = PLAYER_NAMES.filter((n) => n !== myName && !recent.includes(n));
-  const name = pool[Math.floor(rand() * pool.length)] ?? PLAYER_NAMES[0];
-  const shown = Math.round(foeById(ai)!.rating + (rand() * 2 - 1) * OPP_SPREAD);
-  return { ai, name, rating: Math.max(MIN_RATING, shown) };
+/** `ai` is the rated opponent's id (a rival of the roster). `deck` is the deck it brings; `card` and `title` are what it shows. */
+export interface Opponent { ai: string; name: string; rating: number; deck?: string; card?: string; title?: string }
+/** How likely each rival is to be drawn at a rating: the nearer its rating, the likelier (the same width as before). */
+export function rivalPool(rating: number, exclude: string[] = []): [string, number][] {
+  const raw = ROSTER.filter((r) => !exclude.includes(r.name)).map((r) => [rivalId(r), Math.exp(-(((rating - r.rating) / MATCH_WIDTH) ** 2))] as [string, number]).filter(([, w]) => w > 0.02);
+  if (!raw.length) {
+    const near = [...ROSTER].sort((a, b) => Math.abs(a.rating - rating) - Math.abs(b.rating - rating))[0];
+    return [[rivalId(near), 1]];
+  }
+  const sum = raw.reduce((a, [, w]) => a + w, 0);
+  return raw.map(([id, w]) => [id, w / sum]);
+}
+/**
+ * Draws the next rated opponent: a rival of the roster near the player's rating (not one of the last few), with the
+ * deck it brings today. `lastScore` tells, per rival name, how the player's last game against it ended.
+ */
+export function makeOpponent(rating: number, myName: string, recent: string[], rand: () => number = Math.random, lastScore: Record<string, number> = {}): Opponent {
+  const pool = rivalPool(rating, [...recent, myName]);
+  let x = rand(), id = pool[pool.length - 1][0];
+  for (const [k, w] of pool) { if (x < w) { id = k; break; } x -= w; }
+  const r = rivalById(id)!;
+  const deck = rivalDeck(r, lastScore[r.name] === 1, rand);
+  return { ai: id, name: r.name, rating: r.rating, deck, card: rivalCard(deck), title: rivalTitle(r) };
 }
 
 // ------------------------------------------------------------------ the player's rated record

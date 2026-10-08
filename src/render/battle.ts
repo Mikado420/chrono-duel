@@ -1,5 +1,6 @@
 import { Container, FederatedPointerEvent, Graphics, type Sprite, type Ticker } from 'pixi.js';
 import { AI_LEVEL_NAMES, chooseAction, chooseActionAsync, chooseActionSpecAsync, type AiLevel, type AiSpec } from '../core/ai';
+import { chooseRivalAsync, newMind, thinkMs, type RivalCfg, type RivalMind } from '../core/rival';
 import { KEYWORD_HELP, cardDef, keywordsOf } from '../core/cards';
 import {
   actor, apply, attackTarget, canShift, cardCost, createGame, isReady, legalActions, other, resvCount, resvRange,
@@ -28,6 +29,8 @@ export interface BattleConfig {
   /** Rated play: the opponent's exact strength (may sit between or above the levels). Defaults to `level`. */
   aiSpec?: AiSpec;
   seed?: number;
+  /** Rated play: the rival of the roster playing the opponent's side (its Lv, persona, deck plan and quirks). */
+  rival?: RivalCfg;
   /** Rated game (surrendering or leaving counts as a loss). The opponent is shown only by `foeName`. */
   rated?: boolean;
   /** Name shown for the opponent instead of "AI" (rated play). */
@@ -310,17 +313,33 @@ export class BattleScene extends Container {
         if (this.cfg.rated) this.setTimer(NET.TURN_MS);
         this.refreshControls();
         // a person takes a moment to decide; rated opponents do too (the AI's own thinking counts towards it)
-        const pause = this.cfg.rated ? 700 + Math.random() * 1900 : 420;
+        let pause = this.cfg.rated ? 700 + Math.random() * 1900 : 420;
         const t0 = performance.now();
-        const act = this.cfg.aiSpec ? await chooseActionSpecAsync(this.s, 1, this.cfg.aiSpec) : await chooseActionAsync(this.s, 1, this.cfg.level);
+        let act: Action;
+        let hesitate = false;
+        if (this.cfg.rival) {
+          const rv = this.cfg.rival;
+          const mv = await chooseRivalAsync(this.s, 1, rv, (this.mind ??= newMind()));
+          if (this.destroyed_) return;
+          if (mv.surrender) { await this.tw.wait(1200); if (!this.destroyed_) this.foeSurrender(); return; }
+          act = mv.action;
+          pause = thinkMs(mv, rv, this.s, { streak: this.aiStreak, first: !this.aiMoved });
+          // 迷いの演出: a card is lifted from the hand and put back before the one played
+          hesitate = mv.kind === 'torn' && mv.alt !== undefined && Math.random() < 0.3;
+        } else act = this.cfg.aiSpec ? await chooseActionSpecAsync(this.s, 1, this.cfg.aiSpec) : await chooseActionAsync(this.s, 1, this.cfg.level);
         if (this.destroyed_) return;
-        await this.tw.wait(Math.max(0, pause - (performance.now() - t0)));
+        const left = Math.max(0, pause - (performance.now() - t0));
+        if (hesitate && left > 900) { await this.tw.wait(left - 900); if (this.destroyed_) return; await this.liftFoeCard(); }
+        else await this.tw.wait(left);
         if (this.destroyed_) return;
+        this.aiMoved = true;
+        this.aiStreak = true;
         const ev = apply(this.s, act);
         this.log?.actions.push(act);
         if (this.log) this.cfg.onProgress?.(this.log, this.myActs);
         await this.play(ev);
       } else if (a === 0) {
+        this.aiStreak = false;
         this.busy = false;
         if (this.cfg.rated) this.setTimer(NET.TURN_MS);
         this.refreshControls();
@@ -450,6 +469,29 @@ export class BattleScene extends Container {
   }
 
   /** Test hook (only exposed with #debug in the URL). */
+  private mind: RivalMind | null = null;
+  private aiMoved = false;
+  private aiStreak = false;
+  /** 迷いの演出: one of the opponent's cards rises a little and goes back. */
+  private async liftFoeCard() {
+    const n = this.foeHandLayer.children.length;
+    if (!n) { await this.tw.wait(900); return; }
+    const c = this.foeHandLayer.children[Math.floor(Math.random() * n)];
+    const y = c.y;
+    await this.tw.to(c, { y: y + 26 }, 180);
+    await this.tw.wait(400);
+    await this.tw.to(c, { y }, 180);
+    await this.tw.wait(140);
+  }
+  /** A rated rival gives up (降参): the player wins. */
+  private foeSurrender() {
+    if (this.s.over || this.finished) return;
+    this.finished = true;
+    this.busy = true;
+    this.timerEnd = null;
+    this.toast(`${this.foe}が降参しました`);
+    this.onEnd({ winner: 0, reason: 'surrender', myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats }, played: [...this.played], ...(this.log ? { log: this.log } : {}) });
+  }
   debug() { return { s: this.s, busy: this.busy, mode: this.mode.k, use: (uid: number, lane: number | null) => this.use(uid, lane), act: (a: Action) => this.tryAction(a), auto: () => (this.cfg.net ? legalActions(this.s, 0).filter((x) => x.t !== 'wait' && x.t !== 'draw')[0] ?? { t: 'wait' } : chooseAction(this.s, 0, 'normal')), finished: this.finished, hand: () => [...this.handViews].map(([uid, v]) => ({ uid, card: v.card, x: v.x, y: v.y })), lanes: { x: [...LANE_X], y: ROW_Y[0] }, redraw: () => this.syncAll(false), giveUp: () => this.surrender('surrender') }; }
   surrender(reason: 'surrender' | 'timeout' = 'surrender') {
     if (this.cfg.net) { this.cfg.net.send({ t: 'surrender' }); return; }

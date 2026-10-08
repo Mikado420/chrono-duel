@@ -1,6 +1,7 @@
 /* Rated play and the friends' ranking: `npm run test:rating` */
 import assert from 'node:assert/strict';
-import { AI_RATING, NEW_RATED, OPP_SPREAD, PLAYER_NAMES, RATED_FOES, START_RATING, finishRated, foeById, makeOpponent, nextRating, opponentPool, pickOpponent, startRated, tierOf } from '../meta/rating';
+import { AI_RATING, NEW_RATED, RATED_FOES, START_RATING, finishRated, foeById, makeOpponent, nextRating, opponentPool, pickOpponent, rivalPool, startRated, tierOf } from '../meta/rating';
+import { ROSTER, deckAvailable, rivalById, rivalDeck, rivalId } from '../meta/roster';
 import { Leaderboard, MIN_GAME_MS, rankDay, type KV } from '../server/leaderboard';
 import { mulberry32 } from '../core/engine';
 
@@ -38,13 +39,32 @@ for (let i = 0; i < 3000; i++) { r = nextRating(r, g++, AI_RATING.expert, rr() <
 assert.ok(r > AI_RATING.expert && r < AI_RATING.expert + 200, `60% vs 超つよい settles near ${r}`);
 
 // local record: pending → finished, outbox
-// opponents look like players: a name from the pool, a rating near their level, never the player's own name
+// opponents are the roster's rivals: near the player's rating, never the player's own name or a recent one
+const names = new Set(ROSTER.map((x) => x.name));
 for (let i = 0; i < 300; i++) {
-  const o = makeOpponent(1000 + i * 3, 'ときのすけ', ['Rei_0423'], rand);
-  assert.ok(PLAYER_NAMES.includes(o.name) && o.name !== 'ときのすけ' && o.name !== 'Rei_0423');
-  assert.ok(Math.abs(o.rating - foeById(o.ai)!.rating) <= OPP_SPREAD);
+  const o = makeOpponent(950 + i * 4, 'たっくん', ['二度寝の刻'], rand);
+  assert.ok(names.has(o.name) && o.name !== 'たっくん' && o.name !== '二度寝の刻');
+  assert.equal(o.rating, foeById(o.ai)!.rating, 'a rival always shows its own rating');
+  assert.ok(o.deck && deckAvailable(o.deck), 'a deck that exists in the game');
   assert.ok(!/AI|つよい|やさしい|ふつう/.test(o.name), 'names never give the AI away');
 }
+for (let r = 900; r <= 2200; r += 50) {
+  const pool = rivalPool(r);
+  assert.ok(Math.abs(pool.reduce((a, [, w]) => a + w, 0) - 1) < 1e-9);
+  const gap = pool.reduce((a, [id, w]) => a + w * Math.abs(foeById(id)!.rating - r), 0);
+  if (r >= 1000 && r <= 2100) assert.ok(gap <= 90, `rivals near ${r} (average gap ${gap.toFixed(0)})`);
+}
+assert.equal(ROSTER.length, 120);
+assert.ok(ROSTER.every((x) => rivalById(rivalId(x)) === x && foeById(rivalId(x))!.rating === x.rating), 'every rival id resolves');
+// 第2弾 is not out: a rival whose main deck is 第2弾 brings its second deck
+const g2 = ROSTER.find((x) => x.deck.startsWith('g_'))!;
+assert.equal(rivalDeck(g2, false), g2.sub);
+// a rival that lost last time sometimes switches decks
+const both = ROSTER.find((x) => !x.deck.startsWith('g_') && !x.sub.startsWith('g_'))!;
+const switched = Array.from({ length: 400 }, () => rivalDeck(both, true, rand)).filter((d) => d === both.sub).length;
+assert.ok(switched > 80 && switched < 160, `about 30% switch (${switched}/400)`);
+assert.ok(Array.from({ length: 50 }, () => rivalDeck(both, false, rand)).every((d) => d === both.deck));
+
 const me = NEW_RATED();
 assert.equal(finishRated(me, 1, 10, 1000, 'x'), null, 'nothing to finish without a start');
 startRated(me, { ai: 'normal', name: 'みなと', rating: 1010 }, 'balance', 1000);

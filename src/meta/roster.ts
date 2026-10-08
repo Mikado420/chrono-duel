@@ -4,9 +4,15 @@
  * 各Lvの内訳：攻め型4・守り型2・策士型4・堅実型2。
  * デッキ：Lv1〜3は弱め、Lv4〜7は普通〜やや強め、Lv8〜10は環境デッキ。deck / sub は src/sim/metaDecks.ts と set2Decks.ts の id。
  * 第2弾のデッキ（g_*）がメインの相手は、第2弾の配信まではサブを使う。
- * NOT IN THE GAME YET: the rated mode still uses RATED_FOES and PLAYER_NAMES (src/meta/rating.ts).
+ * Rated play draws its opponents from here (rating.ts makeOpponent); the brain is src/core/rival.ts.
+ * Ids are 'rv:' + name. They are stored in players' records and checked by the ranking server, so names never change.
  */
-export type Persona = 'attack' | 'guard' | 'schemer' | 'steady';
+import { cardDef } from '../core/cards';
+import { quirksOf, type Persona, type RivalCfg } from '../core/rival';
+import { META_DECKS } from '../sim/metaDecks';
+import { SET2_TEST_DECKS } from '../sim/set2Decks';
+import { TITLES } from './titles';
+export type { Persona };
 export const PERSONA_NAMES: Record<Persona, string> = { attack: '攻め型', guard: '守り型', schemer: '策士型', steady: '堅実型' };
 export interface Rival { name: string; lv: number; rating: number; persona: Persona; deck: string; sub: string }
 /** Lvごとの目安レート（Lv10は2000〜）。 */
@@ -133,3 +139,46 @@ export const ROSTER: Rival[] = [
   {name: "天",lv: 10,rating: 2080,persona: "steady",deck: "control",sub: "burn"},
   {name: "神様の暇つぶし",lv: 10,rating: 2140,persona: "steady",deck: "reso",sub: "control"},
 ];
+
+export const rivalId = (r: Rival) => `rv:${r.name}`;
+const BY_ID = new Map(ROSTER.map((r) => [rivalId(r), r]));
+export const rivalById = (id: string): Rival | undefined => BY_ID.get(id);
+
+/** Every deck a rival may use, by id. 第2弾 decks count only once the set is in the card pool. */
+const DECKS = [...META_DECKS, ...SET2_TEST_DECKS];
+export function deckAvailable(id: string): boolean {
+  const d = DECKS.find((x) => x.id === id);
+  if (!d) return false;
+  try { d.cards.forEach((c) => cardDef(c)); return true; } catch { return false; }
+}
+export const rivalDeckCards = (id: string): string[] => DECKS.find((x) => x.id === id)?.cards ?? DECKS[0].cards;
+export const rivalDeckName = (id: string): string => DECKS.find((x) => x.id === id)?.name ?? id;
+/**
+ * The deck a rival brings: its main deck, or its second deck when the main one is not out yet (第2弾) or, 30% of
+ * the time, when it lost to this player last time (デッキの持ち替え).
+ */
+export function rivalDeck(r: Rival, lostLastTime: boolean, rand: () => number = Math.random): string {
+  const main = deckAvailable(r.deck), sub = deckAvailable(r.sub);
+  if (main && sub && lostLastTime && rand() < 0.3) return r.sub;
+  if (main) return r.deck;
+  if (sub) return r.sub;
+  return 'balance';
+}
+/** The card a rival shows on the VS screen: the rarest, then dearest card of its deck. */
+export function rivalCard(deck: string): string {
+  const R = { C: 0, R: 1, E: 2, L: 3 } as const;
+  return [...new Set(rivalDeckCards(deck))].sort((a, b) => R[cardDef(b).rarity] - R[cardDef(a).rarity] || cardDef(b).cost - cardDef(a).cost)[0];
+}
+/** A title that fits the rival's Lv, always the same for the same name (some show none). */
+export function rivalTitle(r: Rival): string | undefined {
+  const h = (rivalHash(r.name) >>> 16) % 100;
+  if (h < 15) return undefined;
+  const tones = r.lv <= 3 ? ['green', 'teal'] : r.lv <= 7 ? ['teal', 'blue', 'purple'] : ['purple', 'gold'];
+  const pool = TITLES.filter((t) => tones.includes(t.tone));
+  return pool[h % pool.length]?.id;
+}
+const rivalHash = (n: string) => { let h = 2166136261; for (const ch of n) { h ^= ch.codePointAt(0)!; h = Math.imul(h, 16777619) >>> 0; } return h; };
+/** What the battle needs to play a rival. */
+export const rivalCfg = (r: Rival, deck: string): RivalCfg => ({ name: r.name, lv: r.lv, persona: r.persona, deck, quirks: quirksOf(r.name) });
+/** The rival's strength as one of the four plain levels (rewards and statistics). */
+export const rivalLevel = (lv: number) => (lv <= 1 ? 'easy' : lv <= 3 ? 'normal' : lv <= 5 ? 'hard' : 'expert') as 'easy' | 'normal' | 'hard' | 'expert';

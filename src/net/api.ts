@@ -28,7 +28,9 @@ export async function syncRated(): Promise<boolean> {
   const games = r.outbox.slice(0, 20);
   const res = await post<SubmitRes>('/api/rated', { id: acc.id, secret: acc.secret, name: store.settings.name, title: shownTitle()?.id ?? '', fav: favCard(), games });
   if (!res) return false;
-  const done = new Set([...res.accepted, ...res.refused]);
+  // a server that does not know the roster yet refuses rivals ('rv:'): keep those until it is updated
+  const keep = new Set(r.outbox.filter((g) => g.ai.startsWith('rv:') && res.refused.includes(g.gid)).map((g) => g.gid));
+  const done = new Set([...res.accepted, ...res.refused.filter((id) => !keep.has(id))]);
   r.outbox = r.outbox.filter((g) => !done.has(g.gid));
   // the server is authoritative once everything has been delivered
   if (!r.outbox.length) { r.rating = res.rating; r.games = res.games; r.wins = res.wins; r.peak = Math.max(r.peak, res.peak); }

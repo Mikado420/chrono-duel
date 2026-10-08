@@ -16,8 +16,7 @@ import { LOOKS, PITY } from './meta/economy';
 import { deckKey, deckLook, favCard, shownTitle } from './ui/profile';
 import { CARD_LIST } from './core/cards';
 import { finishRated, foeById, foeLevel, makeOpponent, startRated, type RatedGame } from './meta/rating';
-import { PRESET_DECKS } from './core/decks';
-import { PACK_TEST_DECKS } from './sim/packDecks';
+import { rivalById, rivalCfg, rivalDeckCards, rivalDeckName } from './meta/roster';
 import { reportMatch, saveLiveGame, syncRated, takeLiveGame } from './net/api';
 import { VERSION } from './version';
 import { codeFromHash } from './net/config';
@@ -214,17 +213,23 @@ async function boot() {
    */
   const startRatedGame = (deck: DeckDef) => {
     const recent = store.rated.history.slice(0, 5).map((g) => g.foe);
-    const o = makeOpponent(store.rated.rating, store.settings.name, recent);
+    // how the player's last game against each rival ended (a rival that lost may come back with its other deck)
+    const last: Record<string, number> = {};
+    for (const g of [...store.rated.history].reverse()) if (g.foe) last[g.foe] = g.score;
+    const o = makeOpponent(store.rated.rating, store.settings.name, recent, Math.random, last);
+    const r = rivalById(o.ai);
     const level = foeLevel(o.ai);
-    const pool = level === 'easy' || level === 'normal' ? PRESET_DECKS : [...PRESET_DECKS, ...PACK_TEST_DECKS];
-    const aiDeck = pool[Math.floor(Math.random() * pool.length)];
+    const aiDeckId = o.deck ?? 'balance';
     endBattle();
     screens.matching(o, deck, (first) => {
       // the game only counts (and a disconnect only loses) once it has actually started
       startRated(store.rated, o, deck.id, Date.now());
       store.saveRated();
       screens.clear();
-      run({ myDeck: deck.cards, myDeckName: deck.name, myDeckId: deck.id, aiDeck: aiDeck.cards, aiDeckName: aiDeck.name, level, aiSpec: foeById(o.ai)?.spec, rated: true, foeName: o.name, first, looks: looksFor(deck.id, true) });
+      run({
+        myDeck: deck.cards, myDeckName: deck.name, myDeckId: deck.id, aiDeck: rivalDeckCards(aiDeckId), aiDeckName: rivalDeckName(aiDeckId), level,
+        rival: r ? rivalCfg(r, aiDeckId) : undefined, aiSpec: r ? undefined : foeById(o.ai)?.spec, rated: true, foeName: o.name, first, looks: looksFor(deck.id, true),
+      });
     }, () => screens.rated());
   };
   // a rated game left unfinished last time (app closed, tab killed) counts as a loss
