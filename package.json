@@ -24,7 +24,8 @@
     "logs": "tsx src/sim/logs.ts",
     "meta": "tsx src/sim/meta.ts",
     "sim:rivals": "tsx src/sim/rivals.ts",
-    "test:rivals": "tsx src/sim/rivaltest.ts"
+    "test:rivals": "tsx src/sim/rivaltest.ts",
+    "test:env": "tsx src/sim/envtest.ts"
   },
   "dependencies": {
     "pixi.js": "8.6.6"

@@ -4,6 +4,7 @@ import type { MatchReport, StatsAgg } from '../server/stats';
 import { serverUrl } from './config';
 import { store } from '../ui/storage';
 import { favCard, shownTitle } from '../ui/profile';
+import { cleanBook, EMPTY_BOOK, type DeckBook } from '../meta/deckbook';
 
 const httpBase = () => serverUrl()?.replace(/^ws/, 'http') ?? null;
 export const rankingAvailable = () => httpBase() !== null;
@@ -81,4 +82,19 @@ export interface RankingRes { total: number; top: RankRow[]; me: (RankRow & { pl
 export async function fetchRanking(): Promise<RankingRes | null> {
   const acc = store.account();
   return post<RankingRes>('/api/ranking', { id: acc.id, secret: acc.secret });
+}
+
+// ------------------------------------------------------------------ AIのデッキ帳
+const BOOK = 'cd.deckBook';
+let book: DeckBook = (() => { try { return cleanBook(JSON.parse(localStorage.getItem(BOOK) ?? 'null')); } catch { return EMPTY_BOOK; } })();
+/** The rivals' deck book in use (the last one fetched, checked; empty = the built-in lists). */
+export const deckBook = () => book;
+/** Fetches the deck book (at start). Keeps the previous one when the server cannot be reached or sends an older one. */
+export async function refreshDeckBook(): Promise<void> {
+  const raw = await post<unknown>('/api/decks', {});
+  if (!raw) return;
+  const b = cleanBook(raw);
+  if (b.version < book.version) return;
+  book = b;
+  try { localStorage.setItem(BOOK, JSON.stringify(b)); } catch { /* storage full or blocked */ }
 }

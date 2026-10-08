@@ -118,5 +118,9 @@ export async function handleApi(lb: Leaderboard, path: string, method: string, b
   if (stats && path === '/api/match') return stats.record(b);
   if (stats && path === '/api/stats') return stats.summary(b);
   if (stats && path === '/api/logs') return stats.logs(b);
+  if (stats && path === '/api/env') return stats.env.env(b);
+  if (stats && path === '/api/env/lists') return stats.env.lists(b);
+  if (stats && path === '/api/decks') return stats.env.book();
+  if (stats && path === '/api/decks/publish') return stats.env.publish(b);
   return bad(404, 'not found');
 }

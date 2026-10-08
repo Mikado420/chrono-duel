@@ -14,9 +14,10 @@ import { CARDS } from '../core/cards';
 import { isGameLog, replay, type GameLog } from '../core/gamelog';
 import type { PlayerIndex } from '../core/engine';
 import type { ApiResult, KV, PlayerRec } from './leaderboard';
+import { EnvStats, type RatedInfo } from './env';
 
 export type PlayMode = 'free' | 'rated' | 'online';
-export interface MatchReport {
+export interface MatchReport extends RatedInfo {
   gid: string;
   /** Anonymous device id (the same one the ranking uses). */
   id: string;
@@ -88,7 +89,11 @@ export const modeKey = (r: Pick<MatchReport, 'mode' | 'ai'>) => (r.mode === 'fre
 
 export class PlayStats {
   /** `adminToken`: the secret that unlocks /api/logs (unset = the logs cannot be read through the API). */
-  constructor(private kv: KV, private now: () => number, private adminToken?: string) {}
+  /** 環境の集計 (rated games, friend games, the deck book). */
+  readonly env: EnvStats;
+  constructor(private kv: KV, private now: () => number, private adminToken?: string) {
+    this.env = new EnvStats(kv, now, adminToken);
+  }
 
   /** POST /api/match: one finished game. Refusals are quiet: the client just drops the report. */
   async record(body: Partial<MatchReport>): Promise<ApiResult> {
@@ -122,7 +127,8 @@ export class PlayStats {
     for (const c of new Set(r.played)) { const x = cell(c); x[2]++; x[3] += r.score!; }
     agg.updated = this.now();
     await this.kv.put(key, agg);
-    return { status: 200, body: { ok: true, logged } };
+    const env = r.mode === 'rated' ? await this.env.rated(r as MatchReport) : false;
+    return { status: 200, body: { ok: true, logged, env } };
   }
 
   /**
@@ -155,6 +161,7 @@ export class PlayStats {
   async keepRoom(r: RoomLog): Promise<void> {
     const rec: StoredLog = { gid: r.gid, v: r.v, at: r.at, src: 'room', mode: 'online', names: r.names, winner: r.winner, reason: r.reason, ms: r.ms, log: r.log };
     await this.kv.put(logKey(r.v, r.at, r.gid), rec);
+    if (isGameLog(r.log) && r.log.actions.length >= MIN_REPORT_ACTIONS) await this.env.friend(r.log, r.winner);
   }
 
   /**

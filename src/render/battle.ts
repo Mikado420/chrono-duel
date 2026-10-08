@@ -31,6 +31,8 @@ export interface BattleConfig {
   seed?: number;
   /** Rated play: the rival of the roster playing the opponent's side (its Lv, persona, deck plan and quirks). */
   rival?: RivalCfg;
+  /** Version of the rival's list (AIのデッキ帳; 1 = the built-in list). */
+  aiDeckV?: number;
   /** Rated game (surrendering or leaving counts as a loss). The opponent is shown only by `foeName`. */
   rated?: boolean;
   /** Name shown for the opponent instead of "AI" (rated play). */

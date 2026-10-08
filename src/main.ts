@@ -17,7 +17,8 @@ import { deckKey, deckLook, favCard, shownTitle } from './ui/profile';
 import { CARD_LIST } from './core/cards';
 import { finishRated, foeById, foeLevel, makeOpponent, startRated, type RatedGame } from './meta/rating';
 import { rivalById, rivalCfg, rivalDeckCards, rivalDeckName } from './meta/roster';
-import { reportMatch, saveLiveGame, syncRated, takeLiveGame } from './net/api';
+import { deckBook, refreshDeckBook, reportMatch, saveLiveGame, syncRated, takeLiveGame } from './net/api';
+import { listFor } from './meta/deckbook';
 import { VERSION } from './version';
 import { codeFromHash } from './net/config';
 import { OnlineFlow } from './net/flow';
@@ -198,6 +199,8 @@ async function boot() {
       score: r.winner === 0 ? 1 : r.winner === -1 ? 0.5 : 0, reason: r.reason, actions: r.myActions, ms: Date.now() - battleStartedAt,
       // games against the AI carry the whole record (online games are recorded by the server)
       ...(!online && r.log ? { log: r.log, deckName: lastCfg?.myDeckName, foe: lastCfg?.aiDeckName } : {}),
+      // rated play: who the rival was and which list it played, and the player's rating before (環境の集計)
+      ...(rated && lastCfg?.rival ? { rival: `rv:${lastCfg.rival.name}`, rivalLv: lastCfg.rival.lv, rivalDeck: lastCfg.rival.deck, rivalDeckV: lastCfg.aiDeckV ?? 1, rating: rated.before } : {}),
     });
     // the final board stays visible behind the result screen until the player moves on
     if (online) screens.resultOnline(r, endBattle, rw, xp, missions, card);
@@ -220,6 +223,8 @@ async function boot() {
     const r = rivalById(o.ai);
     const level = foeLevel(o.ai);
     const aiDeckId = o.deck ?? 'balance';
+    // the rival's list: the deck book's (checked against its 設計図), or the built-in one
+    const list = listFor(deckBook(), aiDeckId, newId(), rivalDeckCards(aiDeckId));
     endBattle();
     screens.matching(o, deck, (first) => {
       // the game only counts (and a disconnect only loses) once it has actually started
@@ -227,7 +232,7 @@ async function boot() {
       store.saveRated();
       screens.clear();
       run({
-        myDeck: deck.cards, myDeckName: deck.name, myDeckId: deck.id, aiDeck: rivalDeckCards(aiDeckId), aiDeckName: rivalDeckName(aiDeckId), level,
+        myDeck: deck.cards, myDeckName: deck.name, myDeckId: deck.id, aiDeck: list.cards, aiDeckV: list.v, aiDeckName: rivalDeckName(aiDeckId), level,
         rival: r ? rivalCfg(r, aiDeckId) : undefined, aiSpec: r ? undefined : foeById(o.ai)?.spec, rated: true, foeName: o.name, first, looks: looksFor(deck.id, true),
       });
     }, () => screens.rated());
@@ -239,6 +244,7 @@ async function boot() {
     if (g) pendingNotice = `前回のレート戦は途中で終了したため敗北として記録されました（レート ${g.before} → ${g.after}）`;
   }
   void syncRated();
+  void refreshDeckBook();
   // a game against the AI left unfinished last time (app closed) is still recorded, as abandoned
   const leftOver = takeLiveGame();
   void reportMatch(leftOver ?? undefined);
