@@ -30,9 +30,17 @@ export type EndKind = 'ko' | 'time' | 'surrender' | 'timeout' | 'disconnect';
 /** Result seen by one player: winner 0 is "me". */
 export interface NetResult { winner: PlayerIndex | -1; reason: EndKind }
 
+/** What a player shows of themselves in a room (title id and featured card id; both optional and checked by the room). */
+export interface Profile { title?: string; fav?: string }
+
 export type ClientMsg =
-  /** `mode`: 'create' needs an empty room, 'join' needs someone already waiting. A rejoin with `token` ignores it. */
-  | { t: 'hello'; name: string; deck: string[]; token?: string; mode?: 'create' | 'join' }
+  /**
+   * `mode`: 'create' needs an empty room, 'join' needs someone already waiting, 'watch' looks on without a seat.
+   * A rejoin with `token` ignores it.
+   */
+  | { t: 'hello'; name: string; deck: string[]; token?: string; mode?: 'create' | 'join' | 'watch'; profile?: Profile }
+  /** In the lobby only: change the name or the deck brought (before the game starts). */
+  | { t: 'setup'; name?: string; deck?: string[]; profile?: Profile }
   | { t: 'act'; n: number; a: Action }
   | { t: 'rematch' }
   | { t: 'surrender' }
@@ -50,10 +58,12 @@ export type ServerMsg =
   | { t: 'timer'; left: number | null }
   | { t: 'over'; result: NetResult }
   | { t: 'rematch'; rematch: RematchState }
+  /** To a spectator: who sits in the room (seat 0 is shown at the bottom). Sent on joining and when a seat changes. */
+  | { t: 'watching'; code: string; phase: Phase; seats: [Presence | null, Presence | null]; watchers: number }
   | { t: 'error'; code: ErrCode; msg: string };
 
 /** `left`: ms until an absent player forfeits. */
-export interface Presence { name: string; online: boolean; left: number | null }
+export interface Presence { name: string; online: boolean; left: number | null; title?: string; fav?: string }
 export interface RematchState { me: boolean; foe: boolean }
 
 // ------------------------------------------------------------------ helpers
@@ -117,6 +127,16 @@ export function viewEvent(e: GameEvent, v: PlayerIndex): GameEvent {
 }
 export const viewEvents = (evs: GameEvent[], v: PlayerIndex): GameEvent[] => evs.map((e) => viewEvent(e, v));
 
+/** Spectators see the board from seat 0 with both hands and every unrevealed reservation hidden. */
+export function watchState(s: GameState): GameState {
+  return { ...viewState(s, 0), players: [viewPlayer(s.players[0], false), viewPlayer(s.players[1], false)] };
+}
+export function watchEvent(e: GameEvent): GameEvent {
+  if (e.e === 'draw' || e.e === 'reserve' || e.e === 'fetch') return { ...e, card: HIDDEN };
+  return viewEvent(e, 0);
+}
+export const watchEvents = (evs: GameEvent[]): GameEvent[] => evs.map(watchEvent);
+
 export function viewResult(r: { winner: PlayerIndex | -1; reason: EndKind }, v: PlayerIndex): NetResult {
   return { winner: r.winner === -1 ? -1 : mapSide(v)(r.winner), reason: r.reason };
 }
@@ -125,6 +145,8 @@ export function viewResult(r: { winner: PlayerIndex | -1; reason: EndKind }, v: 
 export type LinkStatus = 'connecting' | 'open' | 'reconnecting' | 'closed';
 export interface NetLink {
   foeName: string;
+  /** Looking on: seat 0 is drawn at the bottom under its own name and nothing can be played. */
+  watch?: { names: [string, string] };
   /** The `game` message that started (or resumed) this battle. */
   init: Extract<ServerMsg, { t: 'game' }>;
   status(): LinkStatus;

@@ -5,13 +5,15 @@
  * The room owns the authoritative GameState. Clients send intentions; the room validates them against the
  * engine's legal actions and answers each player with a redacted view (see core/net.ts).
  */
+import { CARDS } from '../core/cards';
 import { validateDeck } from '../core/decks';
+import { titleById } from '../meta/titles';
 import { actor, apply, createGame, legalActions, other, type Action, type GameState, type PlayerIndex } from '../core/engine';
 import { VERSION } from '../version';
 import type { RoomLog } from './stats';
 import {
-  NET, cleanName, sameAction, viewEvents, viewResult, viewState,
-  type ClientMsg, type EndKind, type ErrCode, type Phase, type Presence, type RematchState, type ServerMsg,
+  NET, cleanName, sameAction, viewEvents, viewResult, viewState, watchEvents, watchState,
+  type ClientMsg, type EndKind, type ErrCode, type Phase, type Presence, type Profile, type RematchState, type ServerMsg,
 } from '../core/net';
 
 export interface Conn { cid: string; send(m: ServerMsg): void; close(code: number, reason: string): void }
@@ -21,7 +23,7 @@ export interface RoomEnv {
   onLog?(r: RoomLog): void;
 }
 
-interface PlayerRec { token: string; name: string; deck: string[]; cid: string | null; offlineSince: number | null; strikes: number; rematch: boolean }
+interface PlayerRec { token: string; name: string; deck: string[]; cid: string | null; offlineSince: number | null; strikes: number; rematch: boolean; title?: string; fav?: string }
 interface Outcome { winner: PlayerIndex | -1; reason: EndKind }
 export interface RoomSnapshot {
   v: 1; code: string; phase: Phase; players: [PlayerRec | null, PlayerRec | null]; game: GameState | null;
@@ -33,6 +35,16 @@ interface GameRec { seed: number; startedAt: number; actions: Action[]; logged: 
 
 /** An empty lobby or finished room is dropped after this long. */
 const IDLE_MS = 10 * 60_000;
+/** People looking on at once. */
+export const MAX_WATCHERS = 8;
+
+/** Only known titles and real, collectible cards are passed on to the other side. */
+function cleanProfile(p: Profile | undefined): { title?: string; fav?: string } {
+  const out: { title?: string; fav?: string } = {};
+  if (p && typeof p.title === 'string' && titleById(p.title)) out.title = p.title;
+  if (p && typeof p.fav === 'string' && CARDS[p.fav] && !CARDS[p.fav].token) out.fav = p.fav;
+  return out;
+}
 
 export class Room {
   private phase: Phase = 'lobby';
@@ -43,6 +55,8 @@ export class Room {
   private result: Outcome | null = null;
   private emptySince: number | null;
   private conns: [Conn | null, Conn | null] = [null, null];
+  /** Spectators. Not kept in snapshots: after the host restarts they simply reconnect. */
+  private watchers: Conn[] = [];
   private rec: GameRec | null = null;
 
   constructor(readonly code: string, private env: RoomEnv, snap?: RoomSnapshot) {
@@ -65,7 +79,7 @@ export class Room {
   private presence(of: PlayerIndex): Presence | null {
     const p = this.players[of];
     if (!p) return null;
-    return { name: p.name, online: p.cid !== null, left: p.offlineSince === null ? null : Math.max(0, p.offlineSince + NET.RECONNECT_MS - this.env.now()) };
+    return { name: p.name, online: p.cid !== null, left: p.offlineSince === null ? null : Math.max(0, p.offlineSince + NET.RECONNECT_MS - this.env.now()), ...(p.title ? { title: p.title } : {}), ...(p.fav ? { fav: p.fav } : {}) };
   }
   private rematchState(slot: PlayerIndex): RematchState { return { me: !!this.players[slot]?.rematch, foe: !!this.players[other(slot)]?.rematch }; }
   private left(): number | null { return this.deadline === null ? null : Math.max(0, this.deadline - this.env.now()); }
@@ -84,8 +98,19 @@ export class Room {
   private send(slot: PlayerIndex, m: ServerMsg) { this.conns[slot]?.send(m); }
   private both(f: (slot: PlayerIndex) => ServerMsg) { for (const s of [0, 1] as PlayerIndex[]) this.send(s, f(s)); }
   private err(conn: Conn, code: ErrCode, msg: string) { conn.send({ t: 'error', code, msg }); }
-  private sendFoe() { this.both((s) => ({ t: 'foe', foe: this.presence(other(s)) })); }
-  private sendTimer() { const left = this.left(); this.both(() => ({ t: 'timer', left })); }
+  private sendFoe() { this.both((s) => ({ t: 'foe', foe: this.presence(other(s)) })); this.sendSeats(); }
+  private sendTimer() { const left = this.left(); this.both(() => ({ t: 'timer', left })); this.watch({ t: 'timer', left }); }
+  private watch(m: ServerMsg) { for (const w of this.watchers) w.send(m); }
+  private seatsMsg(): ServerMsg { return { t: 'watching', code: this.code, phase: this.phase, seats: [this.presence(0), this.presence(1)], watchers: this.watchers.length }; }
+  private sendSeats() { if (this.watchers.length) this.watch(this.seatsMsg()); }
+  /** The game as a spectator sees it (seat 0 at the bottom, both hands hidden). */
+  private watchGameMsg(fresh: boolean): ServerMsg {
+    const g = this.game!;
+    return {
+      t: 'game', state: watchState(g), first: this.first, fresh, left: this.left(),
+      result: this.result ? viewResult(this.result, 0) : null, foe: this.presence(1)!, rematch: { me: false, foe: false },
+    };
+  }
   private gameMsg(slot: PlayerIndex, fresh: boolean): ServerMsg {
     const g = this.game!;
     return {
@@ -107,6 +132,7 @@ export class Room {
   }
 
   onClose(conn: Conn) {
+    if (this.dropWatcher(conn)) return;
     const s = this.slotOf(conn);
     if (s === null) return;
     const p = this.players[s]!;
@@ -121,10 +147,15 @@ export class Room {
   onMessage(conn: Conn, m: ClientMsg) {
     if (!m || typeof m !== 'object' || typeof (m as { t?: unknown }).t !== 'string') return this.err(conn, 'bad', 'bad message');
     if (m.t === 'hello') return this.hello(conn, m);
+    if (this.watchers.some((w) => w.cid === conn.cid)) {
+      if (m.t === 'leave') { this.dropWatcher(conn); conn.close(1000, 'left'); }
+      return;
+    }
     const s = this.slotOf(conn);
     if (s === null) return this.err(conn, 'bad', 'say hello first');
     switch (m.t) {
       case 'act': return this.act(s, conn, m);
+      case 'setup': return this.setup(s, conn, m);
       case 'surrender':
         if (this.phase === 'playing') this.finish(other(s), 'surrender');
         return;
@@ -142,6 +173,7 @@ export class Room {
       if (i >= 0) slot = i as PlayerIndex;
     }
     if (slot !== null) return this.rebind(slot, conn);
+    if (m.mode === 'watch') return this.addWatcher(conn);
 
     const occupied = this.players.some((p) => p);
     if (m.mode === 'create' && occupied) return this.err(conn, 'taken', 'このあいことばは使用中です');
@@ -153,12 +185,42 @@ export class Room {
     if (!deck || !validateDeck(deck).ok) return this.err(conn, 'deck', 'デッキが正しくありません');
 
     const s = free as PlayerIndex;
-    this.players[s] = { token: this.env.uuid(), name, deck: deck.slice(), cid: conn.cid, offlineSince: null, strikes: 0, rematch: false };
+    this.players[s] = { token: this.env.uuid(), name, deck: deck.slice(), cid: conn.cid, offlineSince: null, strikes: 0, rematch: false, ...cleanProfile(m.profile) };
     this.conns[s] = conn;
     this.touch();
     this.send(s, { t: 'welcome', token: this.players[s]!.token, code: this.code, phase: this.phase, foe: this.presence(other(s)) });
     this.sendFoe();
     if (this.players[0] && this.players[1]) this.startGame();
+  }
+
+  private addWatcher(conn: Conn) {
+    if (!this.players.some((p) => p)) return this.err(conn, 'gone', 'そのあいことばの部屋は見つかりませんでした。あいことばを確かめてください');
+    if (this.watchers.length >= MAX_WATCHERS) return this.err(conn, 'full', '観戦できる人数がいっぱいです');
+    this.watchers = [...this.watchers.filter((w) => w.cid !== conn.cid), conn];
+    conn.send(this.seatsMsg());
+    if (this.phase !== 'lobby' && this.game) conn.send(this.watchGameMsg(false));
+    this.sendSeats();
+  }
+  private dropWatcher(conn: Conn): boolean {
+    const n = this.watchers.length;
+    this.watchers = this.watchers.filter((w) => w.cid !== conn.cid);
+    if (this.watchers.length === n) return false;
+    this.sendSeats();
+    return true;
+  }
+
+  /** Lobby only: a player changes their name or the deck they brought. */
+  private setup(s: PlayerIndex, conn: Conn, m: Extract<ClientMsg, { t: 'setup' }>) {
+    if (this.phase !== 'lobby') return this.err(conn, 'phase', '対戦が始まると変えられません');
+    const p = this.players[s]!;
+    if (m.deck !== undefined) {
+      const deck = Array.isArray(m.deck) && m.deck.every((c) => typeof c === 'string') ? m.deck : null;
+      if (!deck || !validateDeck(deck).ok) return this.err(conn, 'deck', 'デッキが正しくありません');
+      p.deck = deck.slice();
+    }
+    if (m.name !== undefined) p.name = cleanName(m.name);
+    if (m.profile !== undefined) { delete p.title; delete p.fav; Object.assign(p, cleanProfile(m.profile)); }
+    this.sendFoe();
   }
 
   private rebind(s: PlayerIndex, conn: Conn) {
@@ -194,6 +256,7 @@ export class Room {
     for (const p of this.players) if (p) { p.strikes = 0; p.rematch = false; }
     this.arm(14); // the opening deal takes a moment to play
     this.both((s) => this.gameMsg(s, true));
+    this.watch(this.watchGameMsg(true));
   }
 
   /** Starts the clock of whoever is to act, unless they are away (then the clock waits for them). */
@@ -225,7 +288,8 @@ export class Room {
       this.phase = 'over'; this.deadline = null;
     } else this.arm(ev.length);
     this.both((s) => ({ t: 'events', events: viewEvents(ev, s), state: viewState(g, s), left: this.left(), auto }));
-    if (this.result) { this.both((s) => ({ t: 'over', result: viewResult(this.result!, s) })); this.emitLog(); }
+    this.watch({ t: 'events', events: watchEvents(ev), state: watchState(g), left: this.left(), auto });
+    if (this.result) { this.both((s) => ({ t: 'over', result: viewResult(this.result!, s) })); this.watch({ t: 'over', result: viewResult(this.result, 0) }); this.emitLog(); }
   }
 
   /** Hands the finished game's record to the statistics, once. */
@@ -245,6 +309,7 @@ export class Room {
     this.phase = 'over'; this.deadline = null;
     for (const p of this.players) if (p) p.rematch = false;
     this.both((s) => ({ t: 'over', result: viewResult(this.result!, s) }));
+    this.watch({ t: 'over', result: viewResult(this.result, 0) });
     this.emitLog();
   }
 

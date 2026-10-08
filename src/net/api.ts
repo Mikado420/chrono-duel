@@ -3,6 +3,7 @@ import type { RankRow } from '../server/leaderboard';
 import type { MatchReport, StatsAgg } from '../server/stats';
 import { serverUrl } from './config';
 import { store } from '../ui/storage';
+import { favCard, shownTitle } from '../ui/profile';
 
 const httpBase = () => serverUrl()?.replace(/^ws/, 'http') ?? null;
 export const rankingAvailable = () => httpBase() !== null;
@@ -25,7 +26,7 @@ interface SubmitRes { rating: number; games: number; wins: number; peak: number;
 export async function syncRated(): Promise<boolean> {
   const r = store.rated, acc = store.account();
   const games = r.outbox.slice(0, 20);
-  const res = await post<SubmitRes>('/api/rated', { id: acc.id, secret: acc.secret, name: store.settings.name, games });
+  const res = await post<SubmitRes>('/api/rated', { id: acc.id, secret: acc.secret, name: store.settings.name, title: shownTitle()?.id ?? '', fav: favCard(), games });
   if (!res) return false;
   const done = new Set([...res.accepted, ...res.refused]);
   r.outbox = r.outbox.filter((g) => !done.has(g.gid));

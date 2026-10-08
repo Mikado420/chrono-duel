@@ -5,7 +5,9 @@
  * The server never trusts a rating number from a client. Clients report finished games and the server replays the
  * same rating rules (src/meta/rating.ts). Games that are too short, too frequent or repeated are refused.
  */
+import { CARDS } from '../core/cards';
 import { cleanName } from '../core/net';
+import { titleById } from '../meta/titles';
 import { OPP_SPREAD, START_RATING, foeById, nextRating, tierOf, type SubmitReq } from '../meta/rating';
 import type { PlayStats } from './stats';
 
@@ -16,8 +18,13 @@ export interface KV {
   /** Up to `limit` entries under `prefix` whose keys sort after `after`, in key order (for large collections). */
   page?<T>(prefix: string, after: string | undefined, limit: number): Promise<[string, T][]>;
 }
-export interface PlayerRec { id: string; key: string; name: string; rating: number; games: number; wins: number; peak: number; lastAt: number; lastGids: string[]; created: number }
-export interface RankRow { name: string; rating: number; tier: string; games: number; wins: number; peak: number; me?: boolean }
+export interface PlayerRec { id: string; key: string; name: string; rating: number; games: number; wins: number; peak: number; lastAt: number; lastGids: string[]; created: number; title?: string; fav?: string }
+/** `prev`: the place at the end of the previous day the ranking was looked at (null: was not ranked then). */
+export interface RankRow { name: string; rating: number; tier: string; games: number; wins: number; peak: number; me?: boolean; title?: string; fav?: string; prev?: number | null }
+/** Places by player id for one day (Japan time), kept to show how places moved since the day before. */
+interface PlaceSnap { day: string; prev: Record<string, number>; cur: Record<string, number> }
+/** The ranking's day, in Japan time (the players' day). */
+export const rankDay = (ms: number) => new Date(ms + 9 * 3600_000).toISOString().slice(0, 10);
 
 /** A rated game against the AI takes longer than this (it also stops scripted spamming). */
 export const MIN_GAME_MS = 60_000;
@@ -46,10 +53,13 @@ export class Leaderboard {
   }
 
   /** POST /api/rated: { id, secret, name, games: SubmitReq[] } → the authoritative record. */
-  async submit(body: { id?: unknown; secret?: unknown; name?: unknown; games?: unknown }): Promise<ApiResult> {
+  async submit(body: { id?: unknown; secret?: unknown; name?: unknown; games?: unknown; title?: unknown; fav?: unknown }): Promise<ApiResult> {
     const rec = await this.auth(body.id, body.secret, body.name);
     if ('status' in rec) return rec;
     if (body.name !== undefined) rec.name = cleanName(body.name);
+    // what others see next to the name: a real title and a real card, or nothing
+    if (body.title !== undefined) { if (typeof body.title === 'string' && titleById(body.title)) rec.title = body.title; else delete rec.title; }
+    if (body.fav !== undefined) { if (typeof body.fav === 'string' && CARDS[body.fav] && !CARDS[body.fav].token) rec.fav = body.fav; else delete rec.fav; }
     const games = Array.isArray(body.games) ? (body.games as SubmitReq[]).slice(0, 20) : [];
     const accepted: string[] = [], refused: string[] = [];
     for (const g of games) {
@@ -77,7 +87,17 @@ export class Leaderboard {
   async ranking(body: { id?: unknown; secret?: unknown }, limit = 50): Promise<ApiResult> {
     const all = (await this.kv.list<PlayerRec>('p:')).filter((p) => p.games > 0);
     all.sort((a, b) => b.rating - a.rating || b.wins - a.wins || a.created - b.created);
-    const row = (p: PlayerRec, me: boolean): RankRow => ({ name: p.name, rating: p.rating, tier: tierOf(p.rating).tier.id, games: p.games, wins: p.wins, peak: p.peak, ...(me ? { me: true } : {}) });
+    // yesterday's places: the last places seen on an earlier day
+    const day = rankDay(this.now());
+    const cur: Record<string, number> = {};
+    all.forEach((p, i) => { cur[p.id] = i + 1; });
+    const old = await this.kv.get<PlaceSnap>('rk:snap');
+    const snap: PlaceSnap = !old ? { day, prev: {}, cur } : old.day === day ? { ...old, cur } : { day, prev: old.cur, cur };
+    await this.kv.put('rk:snap', snap);
+    const row = (p: PlayerRec, me: boolean): RankRow => ({
+      name: p.name, rating: p.rating, tier: tierOf(p.rating).tier.id, games: p.games, wins: p.wins, peak: p.peak,
+      ...(p.title ? { title: p.title } : {}), ...(p.fav ? { fav: p.fav } : {}), prev: snap.prev[p.id] ?? null, ...(me ? { me: true } : {}),
+    });
     let meId: string | null = null;
     if (validId(body.id) && validId(body.secret)) {
       const rec = await this.kv.get<PlayerRec>(`p:${body.id}`);

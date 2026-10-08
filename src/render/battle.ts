@@ -6,12 +6,13 @@ import {
   type Action, type GameEvent, type GameState, type PlayerIndex, type Target,
 } from '../core/engine';
 import type { GameLog } from '../core/gamelog';
-import { NET, type NetLink, type NetResult, type ServerMsg } from '../core/net';
+import { HIDDEN, NET, type NetLink, type NetResult, type ServerMsg } from '../core/net';
 import { RULES } from '../core/rules';
 import { audio } from './audio';
+import { haptics } from './haptics';
 import { Dial } from './dial';
 import type { Fx } from './fx';
-import { COLORS } from './theme';
+import { COLORS, FONTS } from './theme';
 import { ease, type Tweener } from './tween';
 import { Button, label } from './ui';
 import { HandCardView, Hud, UnitView, UNIT_H, UNIT_W, makeBack, makeFace } from './views';
@@ -19,6 +20,8 @@ import { HandCardView, Hud, UnitView, UNIT_H, UNIT_W, makeBack, makeFace } from 
 export interface BattleConfig {
   myDeck: string[];
   myDeckName: string;
+  /** Id of the stored deck played (for its looks and the match history). */
+  myDeckId?: string;
   aiDeck: string[];
   aiDeckName: string;
   level: AiLevel;
@@ -33,6 +36,12 @@ export interface BattleConfig {
   net?: NetLink;
   /** Games against the AI: called after every action with the record so far (kept in case the app is closed mid-game). */
   onProgress?: (log: GameLog, myActions: number) => void;
+  /** Looks: your card back and clock face, and the back of the opponent's cards. */
+  looks?: { back: string; dial: string; foeBack?: string };
+  /** While a unit is held, show what the attack will do (設定「攻撃の前に結果を見せる」). */
+  attackPreview?: boolean;
+  /** Who moves first, when it was decided before the battle (the VS screen shows it). */
+  first?: PlayerIndex;
 }
 export interface BattleResult { winner: PlayerIndex | -1; reason: 'ko' | 'time' | 'surrender' | 'timeout' | 'disconnect'; myHp: number; foeHp: number; actions: number; myActions: number; stats: { spells: number; summons: number; reserves: number; attacks: number };
   /** Every card the player used (summoned, cast or reserved) this game, for the play statistics. */
@@ -44,7 +53,8 @@ const LANE_X = [150, 360, 570];
 /** Vertical layout in design units. Tall phones get extra height, which is shared out by `applyLayout`. */
 const L = { front: 647, youHud: 922, hand: 1128, bar: 1112 };
 const ROW_Y: Record<PlayerIndex, number> = { 1: 522, 0: 772 };
-const DECK_POS = { x: 58, y: 1040 };
+/** Your deck pile, between your counters and the draw button. */
+const DECK_POS = { x: 396, y: 922 };
 const FOE_HAND_POS = { x: 640, y: 40 };
 
 type Mode =
@@ -107,15 +117,26 @@ export class BattleScene extends Container {
   private played = new Set<string>();
   private log: GameLog | null = null;
 
-  private get foe(): string { return this.cfg.net?.foeName ?? this.cfg.foeName ?? 'AI'; }
+  private get foe(): string { return this.cfg.net?.watch?.names[1] ?? this.cfg.net?.foeName ?? this.cfg.foeName ?? 'AI'; }
+  /** Looking on at someone else's game: nothing can be played and seat 0 goes by its own name. */
+  private get watching() { return !!this.cfg.net?.watch; }
+  private get me(): string { return this.cfg.net?.watch?.names[0] ?? 'あなた'; }
+  private deckPile = new Container();
+  private deckPileTxt = label('', 15, COLORS.ivory, { font: FONTS.num, weight: '700', align: 'center' });
+  // ---- attack preview: chevrons to the real target, a ring on it and the outcome
+  private aim: { lane: number; finger: { x: number; y: number } | null } | null = null;
+  private aimT = 0;
+  private aimRing = new Graphics();
+  private aimPanel = new Container();
+  private watchChip = new Container();
   /** Online and rated games run a move timer (45s, then an automatic wait; three in a row forfeits). */
   private get timed() { return !!this.cfg.net || !!this.cfg.rated; }
   private strikes = 0;
 
   constructor(private tw: Tweener, private fx: Fx, private ticker: Ticker, private cfg: BattleConfig, private onEnd: (r: BattleResult) => void, private onMenu: () => void, private onLog: (text: string, side: PlayerIndex | -1) => void = () => {}, private onLogToggle: () => void = () => {}) {
     super();
-    this.dial = new Dial(tw);
-    this.huds = [new Hud(0, 'あなた'), new Hud(1, cfg.net ? cfg.net.foeName : cfg.foeName ?? `AI（${AI_LEVEL_NAMES[cfg.level]}）・ ${cfg.aiDeckName}`)];
+    this.dial = new Dial(tw, cfg.looks?.dial);
+    this.huds = [new Hud(0, cfg.net?.watch?.names[0] ?? 'あなた'), new Hud(1, cfg.net?.watch ? cfg.net.watch.names[1] : cfg.net ? cfg.net.foeName : cfg.foeName ?? `AI（${AI_LEVEL_NAMES[cfg.level]}）・ ${cfg.aiDeckName}`)];
     this.huds[1].x = 16; this.huds[1].y = 44;
     this.huds[0].x = 16;
     this.drawBtn = new Button('ドロー', 124, 66, 'plain', `${RULES.COST_DRAW}刻`, () => this.tryAction({ t: 'draw' }));
@@ -126,7 +147,19 @@ export class BattleScene extends Container {
     this.logBtn = this.makeLogButton();
     this.board.addChild(this.slotG, this.laneHi);
     this.applyLayout(0);
-    this.addChild(this.vignette, this.board, this.dial, this.units, this.huds[0], this.huds[1], this.foeHandLayer, this.drawBtn, this.waitBtn, this.menuBtn, this.logBtn, this.handLayer, this.arrowG, this.actionBar, this.overlay, this.toastC);
+    for (let i = 0; i < 3; i++) { const b = makeBack(cfg.looks?.back); b.scale.set(0.13); b.x = -i * 1.5; b.y = -i * 2.5; this.deckPile.addChild(b); }
+    this.deckPileTxt.anchor.set(0.5); this.deckPileTxt.y = 44;
+    this.deckPile.addChild(this.deckPileTxt);
+    this.deckPile.eventMode = 'none';
+    if (cfg.net?.watch) {
+      const t = label(`観戦中 ・ ${cfg.net.watch.names[0]} 対 ${cfg.net.watch.names[1]}`, 18, COLORS.brass, { weight: '700', align: 'center' });
+      t.anchor.set(0.5);
+      const w = t.width + 36;
+      this.watchChip.addChild(new Graphics().roundRect(-w / 2, -18, w, 36, 18).fill({ color: COLORS.ink, alpha: 0.88 }).roundRect(-w / 2, -18, w, 36, 18).stroke({ color: COLORS.brassDeep, width: 2 }), t);
+      this.watchChip.x = 360; this.watchChip.y = 76;
+      this.drawBtn.visible = false; this.waitBtn.visible = false;
+    }
+    this.addChild(this.vignette, this.board, this.dial, this.units, this.aimRing, this.huds[0], this.huds[1], this.foeHandLayer, this.deckPile, this.drawBtn, this.waitBtn, this.menuBtn, this.logBtn, this.handLayer, this.arrowG, this.aimPanel, this.actionBar, this.overlay, this.watchChip, this.toastC);
     this.eventMode = 'static';
     this.hitArea = { contains: () => true };
     this.on('globalpointermove', (e) => this.onMove(e));
@@ -152,6 +185,7 @@ export class BattleScene extends Container {
 
   private tickFn = (t: Ticker) => {
     this.dial.tick(t.deltaMS);
+    if (this.aim) { this.aimT += t.deltaMS / 1000; this.paintAim(); }
     for (const v of this.unitViews.values()) v.tick(t.deltaMS);
     this.huds[0].tick(t.deltaMS); this.huds[1].tick(t.deltaMS);
     if (this.timed) {
@@ -199,7 +233,8 @@ export class BattleScene extends Container {
   /** Spread the lower half of the board over any extra height a tall screen offers. */
   applyLayout(extra: number) {
     const e = Math.max(0, Math.min(extra, 320));
-    L.front = 647 + e * 0.12; ROW_Y[0] = 772 + e * 0.24; L.youHud = 922 + e * 0.42; L.hand = 1128 + e * 0.8; L.bar = 1112 + e * 0.8; DECK_POS.y = 1040 + e * 0.7;
+    L.front = 647 + e * 0.12; ROW_Y[0] = 772 + e * 0.24; L.youHud = 922 + e * 0.42; L.hand = 1128 + e * 0.8; L.bar = 1112 + e * 0.8; DECK_POS.y = L.youHud - 6;
+    this.deckPile.x = DECK_POS.x; this.deckPile.y = DECK_POS.y;
     this.huds[0].y = L.youHud; this.drawBtn.y = L.youHud; this.waitBtn.y = L.youHud;
     this.actionBar.y = L.bar;
     this.toastC.y = L.front;
@@ -231,7 +266,7 @@ export class BattleScene extends Container {
 
   private async start() {
     const seed = this.cfg.seed ?? Math.floor(Math.random() * 1e9);
-    const first = (Math.random() < 0.5 ? 0 : 1) as PlayerIndex;
+    const first = this.cfg.first ?? ((Math.random() < 0.5 ? 0 : 1) as PlayerIndex);
     const { state } = createGame([this.cfg.myDeck, this.cfg.aiDeck], seed, first);
     this.s = state;
     this.log = { seed, first, decks: [this.cfg.myDeck.slice(), this.cfg.aiDeck.slice()], actions: [] };
@@ -254,7 +289,7 @@ export class BattleScene extends Container {
       await this.tw.wait(110 + i++ * 10);
     }
     await this.tw.wait(350);
-    await this.fx.banner(first === 0 ? 'あなたが先手' : `${this.foe}が先手`, '時計が遅れている方が行動します', first === 0 ? COLORS.you : COLORS.foe, 360, 640);
+    await this.fx.banner(first === 0 ? `${this.me}が先手` : `${this.foe}が先手`, '時計が遅れている方が行動します', first === 0 ? COLORS.you : COLORS.foe, 360, 640);
   }
 
   // ------------------------------------------------------------------ turn loop
@@ -338,7 +373,7 @@ export class BattleScene extends Container {
     if (g.fresh) await this.dealIntro(g.first);
     if (this.destroyed_) return;
     this.ready = true;
-    this.busy = actor(this.s) !== 0;
+    this.busy = this.watching || actor(this.s) !== 0;
     this.refreshControls();
     void this.pump();
   }
@@ -351,7 +386,7 @@ export class BattleScene extends Container {
       case 'foe': this.setFoe(m.foe, false); break;
       case 'error':
         this.toast(m.msg);
-        if (!this.pumping && !this.inbox.length && !this.finished) { this.flyFrom = null; this.busy = actor(this.s) !== 0; this.syncAll(false); }
+        if (!this.pumping && !this.inbox.length && !this.finished) { this.flyFrom = null; this.busy = this.watching || actor(this.s) !== 0; this.syncAll(false); }
         break;
       default: break;
     }
@@ -370,7 +405,7 @@ export class BattleScene extends Container {
           this.refreshControls();
           this.s = m.state;
           this.setTimer(m.left);
-          if (m.auto) { const who = m.events[0]?.e === 'act' ? m.events[0].pi : 0; this.toast(who === 0 ? '時間切れ：待機しました' : `${this.foe}が時間切れ`); }
+          if (m.auto) { const who = m.events[0]?.e === 'act' ? m.events[0].pi : 0; this.toast(who === 0 ? (this.watching ? `${this.me}が時間切れ` : '時間切れ：待機しました') : `${this.foe}が時間切れ`); }
           await this.play(m.events);
         } else if (m.t === 'game') {
           this.s = m.state;
@@ -380,7 +415,7 @@ export class BattleScene extends Container {
         } else if (m.t === 'over') this.netResult = m.result;
       }
       if (this.netResult) await this.finish();
-      else if (!this.destroyed_) { this.busy = actor(this.s) !== 0; this.refreshControls(); }
+      else if (!this.destroyed_) { this.busy = this.watching || actor(this.s) !== 0; this.refreshControls(); }
     } finally { this.pumping = false; }
   }
 
@@ -401,7 +436,7 @@ export class BattleScene extends Container {
     else if (this.timerEnd !== null) {
       const sec = Math.max(0, Math.ceil((this.timerEnd - performance.now()) / 1000));
       const mine = actor(this.s) === 0;
-      text = `${mine ? 'あなた' : this.foe}　残り ${sec} 秒`;
+      text = `${mine ? this.me : this.foe}　残り ${sec} 秒`;
       color = sec <= 10 ? COLORS.doom : mine ? COLORS.you : COLORS.foe;
     }
     if (!force && text === this.timerShown) return;
@@ -453,7 +488,7 @@ export class BattleScene extends Container {
   }
   private layoutFoeHand() {
     const n = this.s.players[1].hand.length;
-    while (this.foeHandLayer.children.length < n) { const b = makeBack(); b.scale.set(0.14); this.foeHandLayer.addChild(b); }
+    while (this.foeHandLayer.children.length < n) { const b = makeBack(this.cfg.looks?.foeBack); b.scale.set(0.14); this.foeHandLayer.addChild(b); }
     while (this.foeHandLayer.children.length > n) this.foeHandLayer.removeChildAt(this.foeHandLayer.children.length - 1).destroy();
     this.foeHandLayer.children.forEach((c, i) => {
       const off = i - (n - 1) / 2;
@@ -461,7 +496,7 @@ export class BattleScene extends Container {
     });
   }
   private addHandView(uid: number, card: string) {
-    const v = new HandCardView(uid, card);
+    const v = new HandCardView(uid, card, this.cfg.looks?.back);
     v.on('pointerdown', (e) => this.onCardDown(v, e));
     this.handViews.set(uid, v);
     this.handLayer.addChild(v);
@@ -506,7 +541,7 @@ export class BattleScene extends Container {
       for (const [uid] of this.dial.pinsFor(pi)) if (!want.has(uid)) void this.dial.removePin(uid, 'fire');
       for (const r of p.resv) {
         const info = this.dial.pinInfo(r.uid);
-        const show = pi === 0 || r.revealed ? r.card : null;
+        const show = (pi === 0 || r.revealed) && r.card !== HIDDEN ? r.card : null;
         if (!info) this.dial.addPin(r.uid, pi, r.T, show, !!r.echo).on('pointertap', (e) => { e.stopPropagation(); this.onPinTap(r.uid); });
         else {
           if (show && !info.card) this.dial.revealPin(r.uid, show);
@@ -521,6 +556,8 @@ export class BattleScene extends Container {
     for (const h of s.players[0].hand) if (!this.handViews.has(h.uid)) this.addHandView(h.uid, h.card);
     this.layoutHand(animate);
     this.layoutFoeHand();
+    this.deckPile.visible = s.players[0].deck.length > 0;
+    this.deckPileTxt.text = String(s.players[0].deck.length);
     this.dial.setDoom(s.doom);
     this.drawVignette();
     this.refreshControls();
@@ -535,15 +572,16 @@ export class BattleScene extends Container {
 
   private refreshControls() {
     if (!this.s) return;
-    const mine = !this.busy && actor(this.s) === 0 && !this.s.over;
+    const mine = !this.watching && !this.busy && actor(this.s) === 0 && !this.s.over;
     this.drawBtn.enabled = mine && this.s.players[0].deck.length > 0;
     this.waitBtn.enabled = mine;
     const who = this.s.over ? -1 : actor(this.s);
     this.huds[0].setActive(who === 0); this.huds[1].setActive(who === 1);
     const [y, f] = this.s.players;
     if (this.s.over) this.dial.setStatus('決着', '', 'neutral');
-    else if (actor(this.s) === 1) this.dial.setStatus(`${this.foe}の番`, `${this.foe} ${f.time}刻 ・ あなた ${y.time}刻`, 'foe');
-    else if (this.mode.k === 'idle' && !this.drag) this.dial.setStatus('あなたの番', this.clockLine(), 'you');
+    else if (actor(this.s) === 1) this.dial.setStatus(`${this.foe}の番`, `${this.foe} ${f.time}刻 ・ ${this.me} ${y.time}刻`, 'foe');
+    else if (this.watching) this.dial.setStatus(`${this.me}の番`, `${this.me} ${y.time}刻 ・ ${this.foe} ${f.time}刻`, 'you');
+    else if (this.mode.k === 'idle' && !this.drag && !this.unitDrag) this.dial.setStatus('あなたの番', this.clockLine(), 'you');
     for (const v of this.handViews.values()) v.alpha = mine || this.busy ? 1 : 0.8;
   }
   private clockLine() {
@@ -567,7 +605,7 @@ export class BattleScene extends Container {
     const prev = this.mode;
     this.mode = m;
     if (prev.k === 'attack' || prev.k === 'shift') this.viewAt(0, prev.lane)?.select(false);
-    this.arrowG.clear();
+    this.clearAim();
     this.laneHi.clear();
     this.dial.showCursor(null);
     this.actionBar.removeChildren().forEach((c) => c.destroy({ children: true }));
@@ -613,6 +651,7 @@ export class BattleScene extends Container {
       v?.select(true);
       this.forecast(RULES.COST_ATTACK);
       this.drawAttackArrow(m.lane, null);
+      this.aimStatus(m.lane, false);
       const mv = this.moveLanes(m.lane);
       this.showLaneHi(mv, COLORS.you);
       this.bar([
@@ -679,7 +718,7 @@ export class BattleScene extends Container {
   private onCardDown(v: HandCardView, e: FederatedPointerEvent) {
     e.stopPropagation();
     audio.unlock();
-    if (this.modal) return;
+    if (this.modal || this.watching || v.card === HIDDEN) return;
     const p = this.local(e);
     this.drag = { view: v, sx: p.x, sy: p.y, moved: false, ox: v.x - p.x, oy: v.y - p.y };
   }
@@ -688,7 +727,7 @@ export class BattleScene extends Container {
     audio.unlock();
     if (this.modal) return;
     const lane = LANE_X.findIndex((x) => Math.abs(x - v.x) < 2);
-    if (v.owner === 0 && !this.busy && actor(this.s) === 0 && (v.ready || this.moveLanes(lane).length)) {
+    if (!this.watching && v.owner === 0 && !this.busy && actor(this.s) === 0 && (v.ready || this.moveLanes(lane).length)) {
       const p = this.local(e);
       this.unitDrag = { lane, sx: p.x, sy: p.y, moved: false };
     } else {
@@ -739,8 +778,11 @@ export class BattleScene extends Container {
       if (!u.moved && Math.hypot(p.x - u.sx, p.y - u.sy) > 16) { u.moved = true; this.setMode(ready ? { k: 'attack', lane: u.lane } : { k: 'shift', lane: u.lane }); }
       if (u.moved) {
         const l = this.laneAt(p.x, p.y), mv = this.moveLanes(u.lane);
-        if (mv.includes(l)) { this.arrowG.clear(); this.showLaneHi([l], COLORS.you); }
-        else { this.showLaneHi(mv, COLORS.brass); if (ready) this.drawAttackArrow(u.lane, p); }
+        if (mv.includes(l)) { this.clearAim(); this.showLaneHi([l], COLORS.you); this.dial.setStatus('離すと転移', `隣のレーンへ（${RULES.COST_MOVE}刻）`, 'you'); }
+        else {
+          this.showLaneHi(mv, COLORS.brass);
+          if (ready) { this.drawAttackArrow(u.lane, p); this.aimStatus(u.lane, true, p.y < L.front); }
+        }
       }
       return;
     }
@@ -815,9 +857,9 @@ export class BattleScene extends Container {
   private onPinTap(uid: number) {
     const info = this.dial.pinInfo(uid);
     if (!info) return;
-    if (info.card && info.echo) this.inspectCard(info.card, [`${info.pi === 0 ? 'あなた' : this.foe}の残響：両者の時計が${info.T}刻に達すると、弱い効果がもう一度起きる`]);
-    else if (info.card) this.inspectCard(info.card, [`${info.pi === 0 ? 'あなた' : this.foe}の予約：両者の時計が${info.T}刻に達すると発動`]);
-    else this.toast(`${this.foe}の予約：${info.T}刻に発動（中身は不明）`);
+    if (info.card && info.echo) this.inspectCard(info.card, [`${info.pi === 0 ? this.me : this.foe}の残響：両者の時計が${info.T}刻に達すると、弱い効果がもう一度起きる`]);
+    else if (info.card) this.inspectCard(info.card, [`${info.pi === 0 ? this.me : this.foe}の予約：両者の時計が${info.T}刻に達すると発動`]);
+    else this.toast(`${info.pi === 0 ? this.me : this.foe}の予約：${info.T}刻に発動（中身は不明）`);
   }
   /** Use a card right away. 充填 cards first ask how much extra time to pay. */
   private use(uid: number, lane: number | null) {
@@ -851,18 +893,125 @@ export class BattleScene extends Container {
     if (!t) return { x: this.huds[1].center.x + 40, y: this.huds[1].center.y + 10 };
     return { x: LANE_X[t.lane], y: ROW_Y[t.pi] };
   }
-  private drawAttackArrow(lane: number, finger: { x: number; y: number } | null) {
-    const from = { x: LANE_X[lane], y: ROW_Y[0] - UNIT_H / 2 };
-    const to = finger ?? this.targetPoint(attackTarget(this.s, 0, lane));
-    const g = this.arrowG.clear();
-    const mx = (from.x + to.x) / 2, my = Math.min(from.y, to.y) - 80;
-    g.moveTo(from.x, from.y).quadraticCurveTo(mx, my, to.x, to.y).stroke({ color: COLORS.foe, width: 10, alpha: 0.35 });
-    g.moveTo(from.x, from.y).quadraticCurveTo(mx, my, to.x, to.y).stroke({ color: 0xffd9c9, width: 3, alpha: 0.95 });
-    const a = Math.atan2(to.y - my, to.x - mx);
-    g.poly([to.x + Math.cos(a) * 16, to.y + Math.sin(a) * 16, to.x + Math.cos(a + 2.4) * 18, to.y + Math.sin(a + 2.4) * 18, to.x + Math.cos(a - 2.4) * 18, to.y + Math.sin(a - 2.4) * 18]).fill(0xffd9c9);
-    if (!finger) g.circle(to.x, to.y, 30).stroke({ color: COLORS.foe, width: 3, alpha: 0.8 });
+  /** What an attack from `lane` does, with the same numbers the engine uses (hooks that change the damage included). */
+  private attackOutcome(lane: number) {
+    const s = this.s, me = s.players[0], u = me.field[lane]!;
+    const t = attackTarget(s, 0, lane);
+    const hk = cardDef(u.card).hook;
+    let atk = u.atk + (hk === 'formation' ? me.field.filter((x) => x && x !== u).length : 0);
+    if (!t) {
+      const dmg = atk + (hk === 'flank' ? 2 : 0) + s.doom;
+      const hp = s.players[1].hp;
+      return { base: true as const, name: '拠点', before: hp, after: Math.max(0, hp - dmg), dmg, doom: s.doom };
+    }
+    const v = s.players[1].field[t.lane]!;
+    if (hk === 'tauntBreaker' && v.taunt) atk += 3;
+    const over = u.pierce && atk > v.hp ? atk - v.hp + s.doom : 0;
+    return { base: false as const, name: cardDef(v.card).name, before: v.hp, after: Math.max(0, v.hp - atk), myBefore: u.hp, myAfter: Math.max(0, u.hp - v.atk), pierce: over, blocked: t.lane !== lane, targetLane: t.lane };
   }
-
+  /** The line on the clock while a unit is chosen: what happens when you let go (or tap again). */
+  private aimStatus(lane: number, held: boolean, inRange = true) {
+    const o = this.attackOutcome(lane);
+    const t = this.s.players[0].time;
+    this.dial.setStatus(held ? (inRange ? '離すと攻撃' : '上へ引いて攻撃') : 'もう一度タップで攻撃', `${o.name}へ ・ ${RULES.COST_ATTACK}刻（あなた ${t}→${t + RULES.COST_ATTACK}刻）`, 'you');
+  }
+  private drawAttackArrow(lane: number, finger: { x: number; y: number } | null) {
+    const fresh = !this.aim || this.aim.lane !== lane;
+    this.aim = { lane, finger };
+    if (fresh) { this.aimT = 0; this.showAimPanel(lane); }
+    this.paintAim();
+  }
+  private clearAim() {
+    this.aim = null;
+    this.arrowG.clear();
+    this.aimRing.clear();
+    this.aimPanel.removeChildren().forEach((c) => c.destroy({ children: true }));
+    for (const v of this.unitViews.values()) if (v.owner === 1) v.alpha = 1;
+  }
+  /**
+   * Chevrons from the unit to the target the rules pick (the lane in front, or what a taunt draws in, or the base),
+   * moving towards it, and a pulsing ring on the target. Redrawn every frame while the aim is up.
+   */
+  private paintAim() {
+    const aim = this.aim;
+    if (!aim || !this.s.players[0].field[aim.lane]) { this.arrowG.clear(); this.aimRing.clear(); return; }
+    const t = attackTarget(this.s, 0, aim.lane);
+    const from = { x: LANE_X[aim.lane], y: ROW_Y[0] - UNIT_H / 2 + 6 };
+    const end = this.targetPoint(t);
+    const to = t ? { x: end.x, y: end.y + UNIT_H / 2 - 6 } : { x: end.x + 10, y: end.y + 40 };
+    const mx = (from.x + to.x) / 2, my = Math.min(from.y, to.y) - (t && t.lane === aim.lane ? 0 : 70);
+    const g = this.arrowG.clear();
+    const at = (k: number) => ({ x: (1 - k) * (1 - k) * from.x + 2 * (1 - k) * k * mx + k * k * to.x, y: (1 - k) * (1 - k) * from.y + 2 * (1 - k) * k * my + k * k * to.y });
+    const len = Math.hypot(to.x - from.x, to.y - from.y) + Math.abs(my - Math.min(from.y, to.y));
+    const n = Math.max(3, Math.round(len / 34));
+    const phase = (this.aimT * 1.6) % 1;
+    for (let i = 0; i < n; i++) {
+      const k = (i + phase) / n;
+      if (k <= 0.02 || k >= 0.98) continue;
+      const p = at(k), q = at(Math.min(1, k + 0.02));
+      const a = Math.atan2(q.y - p.y, q.x - p.x);
+      const w = 15, back = 11;
+      const alpha = 0.35 + 0.65 * Math.sin(k * Math.PI);
+      const px = (dx: number, dy: number) => [p.x + Math.cos(a) * dx - Math.sin(a) * dy, p.y + Math.sin(a) * dx + Math.cos(a) * dy];
+      const [x1, y1] = px(-back, -w), [x2, y2] = px(0, 0), [x3, y3] = px(-back, w);
+      g.moveTo(x1, y1).lineTo(x2, y2).lineTo(x3, y3).stroke({ color: 0x2a1d07, width: 9, alpha: alpha * 0.5, cap: 'round', join: 'round' });
+      g.moveTo(x1, y1).lineTo(x2, y2).lineTo(x3, y3).stroke({ color: 0xf4d692, width: 5, alpha, cap: 'round', join: 'round' });
+    }
+    // the ring on the target
+    const pulse = 0.55 + 0.45 * Math.sin(this.aimT * 6);
+    const r = this.aimRing.clear();
+    if (t) {
+      const x = LANE_X[t.lane], y = ROW_Y[1];
+      r.roundRect(x - UNIT_W / 2 - 9, y - UNIT_H / 2 - 9, UNIT_W + 18, UNIT_H + 18, 22).stroke({ color: 0xf4d692, width: 5, alpha: pulse });
+      r.roundRect(x - UNIT_W / 2 - 16, y - UNIT_H / 2 - 16, UNIT_W + 32, UNIT_H + 32, 28).stroke({ color: 0xf4d692, width: 3, alpha: pulse * 0.35 });
+      for (const v of this.unitViews.values()) if (v.owner === 1) v.alpha = Math.abs(v.x - x) < 2 ? 1 : 0.5;
+    } else {
+      const c = this.huds[1].center;
+      r.circle(c.x, c.y, 44).stroke({ color: 0xf4d692, width: 5, alpha: pulse }).circle(c.x, c.y, 54).stroke({ color: 0xf4d692, width: 3, alpha: pulse * 0.35 });
+      for (const v of this.unitViews.values()) if (v.owner === 1) v.alpha = 0.5;
+    }
+  }
+  /** The outcome card next to the target: its health before and after, and whether the attacker survives the blow back. */
+  private showAimPanel(lane: number) {
+    const c = this.aimPanel;
+    c.removeChildren().forEach((x) => x.destroy({ children: true }));
+    if (this.cfg.attackPreview === false) return;
+    const o = this.attackOutcome(lane);
+    const rows: [string, string, number][] = [];
+    const u = this.s.players[0].field[lane]!;
+    if (o.base) {
+      rows.push([`${this.foe}の拠点`, `${o.before} → ${o.after}`, o.after === 0 ? COLORS.doom : 0xf4d692]);
+      if (o.doom) rows.push(['終焉の刻', `+${o.doom}`, COLORS.doom]);
+      if (o.after === 0) rows.push(['', 'この一撃で勝利', 0xf4d692]);
+    } else {
+      rows.push([o.name, o.after === 0 ? '撃破' : `${o.before} → ${o.after}`, o.after === 0 ? 0xf4d692 : 0xffd9c9]);
+      rows.push([cardDef(u.card).name, o.myAfter === 0 ? '反撃で倒れる' : o.myAfter === o.myBefore ? '無傷' : `${o.myBefore} → ${o.myAfter}`, o.myAfter === 0 ? 0xff8f7f : 0x9ff0dc]);
+      if (o.pierce) rows.push(['貫通', `拠点に${o.pierce}`, 0xf4d692]);
+      if (o.blocked) rows.push(['', '挑発に引き寄せられる', COLORS.brass]);
+    }
+    const W = 250, pad = 14, lh = 34;
+    const H = 40 + rows.length * lh + 30;
+    const bg = new Graphics().roundRect(0, 0, W, H, 14).fill({ color: COLORS.ink, alpha: 0.96 }).roundRect(0, 0, W, H, 14).stroke({ color: COLORS.brassDeep, width: 2 });
+    const head = label('この攻撃の結果', 17, COLORS.brass, { weight: '700' }); head.x = pad; head.y = 10;
+    c.addChild(bg, head);
+    rows.forEach(([a, b, col], i) => {
+      const y = 42 + i * lh;
+      if (a) { const l = label(a, 17, COLORS.ivory, {}); l.x = pad; l.y = y; if (l.width > 120) l.scale.set(120 / l.width); c.addChild(l); }
+      const r = label(b, a ? 19 : 17, col, { weight: '700', font: /\d/.test(b) && !/[ぁ-ん]/.test(b) ? FONTS.num : FONTS.body }); r.anchor.set(1, 0); r.x = W - pad; r.y = y - 1;
+      c.addChild(r);
+    });
+    const hint = label('横へ外すとやめる', 14, COLORS.mute, {}); hint.x = pad; hint.y = H - 26;
+    c.addChild(hint);
+    // beside the target, on the side with more room
+    const t = attackTarget(this.s, 0, lane);
+    if (t) {
+      const x = LANE_X[t.lane];
+      c.x = x < 360 ? x + UNIT_W / 2 + 14 : x - UNIT_W / 2 - 14 - W;
+      c.y = Math.max(130, ROW_Y[1] - H / 2);
+    } else { c.x = 160; c.y = 110; }
+    c.alpha = 0;
+    void this.tw.to(c, { alpha: 1 }, 140);
+  }
   // ------------------------------------------------------------------ modals
   private closeModal() { if (this.modal) { this.modal.destroy({ children: true }); this.modal = null; } }
   private openModal(build: (c: Container) => void) {
@@ -980,7 +1129,7 @@ export class BattleScene extends Container {
   }
   /** Show a card big in the middle for a moment (opponent plays, spells). */
   private async present(card: string, from: { x: number; y: number }, faceDown = false) {
-    const s = faceDown ? makeBack() : makeFace(card);
+    const s = faceDown ? makeBack(this.cfg.looks?.foeBack) : makeFace(card);
     await this.fly(s, from, { x: 360, y: 600 }, 0.2, 0.72, 320);
     if (faceDown) {
       await this.tw.run(140, (k) => s.scale.x = 0.72 * (1 - k));
@@ -993,12 +1142,12 @@ export class BattleScene extends Container {
   }
 
   private logEvent(e: GameEvent) {
-    const nm = (pi: PlayerIndex) => (pi === 0 ? 'あなた' : this.foe);
-    const cn = (id: string) => `「${cardDef(id).name}」`;
+    const nm = (pi: PlayerIndex) => (pi === 0 ? this.me : this.foe);
+    const cn = (id: string) => (id === HIDDEN ? '伏せたカード' : `「${cardDef(id).name}」`);
     switch (e.e) {
       case 'summon': return this.onLog(`${nm(e.pi)}：${cn(e.unit.card)}を召喚`, e.pi);
       case 'cast': return this.onLog(`${nm(e.pi)}：${cn(e.card)}を使用`, e.pi);
-      case 'reserve': return this.onLog(e.pi === 0 ? `あなた：${cn(e.card)}を${e.T}刻に予約` : `${this.foe}：${e.T}刻に予約`, e.pi);
+      case 'reserve': return this.onLog(e.pi === 0 && e.card !== HIDDEN ? `${this.me}：${cn(e.card)}を${e.T}刻に予約` : `${nm(e.pi)}：${e.T}刻に予約`, e.pi);
       case 'trigger': return this.onLog(e.echo ? `${e.T}刻 ${nm(e.pi)}の${cn(e.card)}が残響` : `${e.T}刻 ${nm(e.pi)}の予約${cn(e.card)}が発動`, e.pi);
       case 'echo': return this.onLog(`${nm(e.pi)}：${cn(e.card)}の残響が${e.T}刻に響く`, e.pi);
       case 'attack': { const u = this.s.players[e.pi].field[e.lane]; return this.onLog(`${nm(e.pi)}：${u ? cn(u.card) : 'ユニット'}が${e.target ? '攻撃' : '拠点を攻撃'}`, e.pi); }
@@ -1020,7 +1169,8 @@ export class BattleScene extends Container {
     switch (e.e) {
       case 'act': {
         const a = e.action;
-        if (e.pi === 0) {
+        if (e.pi === 0 && !this.watching) {
+          if (a.t !== 'wait' && a.t !== 'draw') haptics.tap();
           this.myActs++;
           if (a.t === 'play') this.stats.summons++;
           else if (a.t === 'cast') this.stats.spells++;
@@ -1030,7 +1180,7 @@ export class BattleScene extends Container {
         if (e.pi === 0 && (a.t === 'play' || a.t === 'cast' || a.t === 'reserve')) {
           const v = this.handViews.get(a.hand);
           const card = v?.card ?? this.s.players[0].hand.find((h) => h.uid === a.hand)?.card;
-          if (card) this.played.add(card);
+          if (card && card !== HIDDEN && !this.watching) this.played.add(card);
           if (v) { this.flyFrom ??= { x: v.x, y: v.y }; v.destroy({ children: true }); this.handViews.delete(a.hand); this.layoutHand(); }
         }
         if (e.pi === 1 && (a.t === 'play' || a.t === 'cast' || a.t === 'reserve')) {
@@ -1039,7 +1189,7 @@ export class BattleScene extends Container {
           b?.destroy();
         }
         if (a.t === 'draw' || a.t === 'wait') {
-          const who = e.pi === 0 ? 'あなた' : this.foe;
+          const who = e.pi === 0 ? this.me : this.foe;
           void fx.floatText(this.dial.handTip(e.pi).x, this.dial.handTip(e.pi).y + 40, a.t === 'draw' ? 'ドロー' : '待機', e.pi === 0 ? COLORS.you : COLORS.foe, 24, 30, 700);
           if (e.pi === 1) this.dial.setStatus(`${this.foe}：${a.t === 'draw' ? 'ドロー' : '待機'}`, `${who}の時計が進む`, 'foe');
         }
@@ -1048,7 +1198,7 @@ export class BattleScene extends Container {
       case 'time': {
         this.dial.showGhost(null);
         await this.dial.setHand(e.pi, e.to, true, () => audio.play('tick'));
-        if (e.pi === 1) this.dial.setStatus(`${this.foe}の番`, `${this.foe} ${e.to}刻 ・ あなた ${this.s.players[0].time}刻`, 'foe');
+        if (e.pi === 1) this.dial.setStatus(`${this.foe}の番`, `${this.foe} ${e.to}刻 ・ ${this.me} ${this.s.players[0].time}刻`, 'foe');
         break;
       }
       case 'clock': {
@@ -1073,10 +1223,12 @@ export class BattleScene extends Container {
         if (e.pi === 0) {
           const v = this.addHandView(e.uid, e.card);
           v.x = DECK_POS.x; v.y = DECK_POS.y; v.scale.set(0.2); v.rotation = -0.4;
+          this.deckPileTxt.text = String(this.s.players[0].deck.length);
+          this.deckPile.visible = this.s.players[0].deck.length > 0;
           this.layoutHand();
           await tw.wait(160);
         } else {
-          const b = makeBack(); b.scale.set(0.14);
+          const b = makeBack(this.cfg.looks?.foeBack); b.scale.set(0.14);
           this.foeHandLayer.addChild(b);
           b.x = 40; b.y = 110;
           const n = this.foeHandLayer.children.length;
@@ -1085,8 +1237,8 @@ export class BattleScene extends Container {
         this.huds[e.pi].setInfo(this.s.players[e.pi].deck.length, e.pi === 1 ? this.foeHandLayer.children.length : null, this.s.players[e.pi].resv.length);
         break;
       }
-      case 'burn': this.toast(`${e.pi === 0 ? 'あなた' : this.foe}：手札が一杯で「${cardDef(e.card).name}」を失った`); await tw.wait(500); break;
-      case 'deckout': this.toast(`${e.pi === 0 ? 'あなた' : this.foe}：山札がありません`); await tw.wait(400); break;
+      case 'burn': this.toast(`${e.pi === 0 ? this.me : this.foe}：手札が一杯で${e.card === HIDDEN ? 'カード' : `「${cardDef(e.card).name}」`}を失った`); await tw.wait(500); break;
+      case 'deckout': this.toast(`${e.pi === 0 ? this.me : this.foe}：山札がありません`); await tw.wait(400); break;
       case 'move': {
         const v = this.viewAt(e.pi, e.from);
         audio.play('select');
@@ -1095,8 +1247,8 @@ export class BattleScene extends Container {
       }
       case 'summon': {
         const to = { x: LANE_X[e.lane], y: ROW_Y[e.pi] };
-        if (e.pi === 1 && e.fromHand >= 0) {
-          const s = await this.present(e.unit.card, this.flyFrom ?? FOE_HAND_POS, true);
+        if ((e.pi === 1 || this.watching) && e.fromHand >= 0) {
+          const s = await this.present(e.unit.card, this.flyFrom ?? (e.pi === 1 ? FOE_HAND_POS : { x: 360, y: L.hand }), true);
           await this.fly(s, { x: s.x, y: s.y }, to, s.scale.x, 0.52, 260);
           s.destroy();
         } else if (this.flyFrom) {
@@ -1122,7 +1274,7 @@ export class BattleScene extends Container {
       }
       case 'cast': {
         audio.play('cast');
-        const s = e.pi === 1 ? await this.present(e.card, this.flyFrom ?? FOE_HAND_POS, true) : await this.present(e.card, this.flyFrom ?? { x: 360, y: L.hand });
+        const s = e.pi === 1 ? await this.present(e.card, this.flyFrom ?? FOE_HAND_POS, true) : await this.present(e.card, this.flyFrom ?? { x: 360, y: L.hand }, this.watching);
         void fx.burst(360, 600, 0xc9a8ff, 30, 320, { shape: 'spark', grav: 0, life: 0.6 });
         await Promise.all([tw.to(s, { alpha: 0 }, 260), tw.to(s.scale, { x: 0.9, y: 0.9 }, 260)]);
         s.destroy();
@@ -1132,12 +1284,13 @@ export class BattleScene extends Container {
       case 'reserve': {
         audio.play('reserve');
         const pinTo = this.dial.pinPoint(e.T, e.pi);
-        const s = e.pi === 0 ? makeFace(e.card) : makeBack();
-        await this.fly(s, this.flyFrom ?? (e.pi === 0 ? { x: 360, y: L.hand } : FOE_HAND_POS), pinTo, e.pi === 0 ? 0.5 : 0.14, 0.08, 420, 0.5);
+        const known = e.pi === 0 && e.card !== HIDDEN;
+        const s = known ? makeFace(e.card) : makeBack(e.pi === 0 ? this.cfg.looks?.back : this.cfg.looks?.foeBack);
+        await this.fly(s, this.flyFrom ?? (e.pi === 0 ? { x: 360, y: L.hand } : FOE_HAND_POS), pinTo, known ? 0.5 : 0.14, 0.08, 420, 0.5);
         s.destroy();
-        this.dial.addPin(e.uid, e.pi, e.T, e.pi === 0 ? e.card : null).on('pointertap', (ev) => { ev.stopPropagation(); this.onPinTap(e.uid); });
+        this.dial.addPin(e.uid, e.pi, e.T, known ? e.card : null).on('pointertap', (ev) => { ev.stopPropagation(); this.onPinTap(e.uid); });
         void fx.ring(pinTo.x, pinTo.y, e.pi === 0 ? COLORS.you : COLORS.foe, 6, 60, 400, 4);
-        if (e.pi === 1) this.dial.setStatus(`${this.foe}が予約した`, `${e.T}刻に何かが起きる`, 'foe');
+        if (e.pi === 1 || this.watching) this.dial.setStatus(`${e.pi === 0 ? this.me : this.foe}が予約した`, `${e.T}刻に何かが起きる`, e.pi === 0 ? 'you' : 'foe');
         this.flyFrom = null;
         await tw.wait(e.pi === 1 ? 600 : 150);
         break;
@@ -1177,8 +1330,8 @@ export class BattleScene extends Container {
         audio.play('reveal');
         void fx.ring(at.x, at.y, COLORS.brass, 6, 110, 600, 8);
         void this.dial.removePin(e.uid, 'fire');
-        await fx.banner('予約発動', `${e.pi === 0 ? 'あなた' : this.foe}の予約 ・ ${e.T}刻`, e.pi === 0 ? COLORS.you : COLORS.foe, 360, 640);
-        const s = makeBack(); s.scale.set(0.1);
+        await fx.banner('予約発動', `${e.pi === 0 ? this.me : this.foe}の予約 ・ ${e.T}刻`, e.pi === 0 ? COLORS.you : COLORS.foe, 360, 640);
+        const s = makeBack(e.pi === 0 ? this.cfg.looks?.back : this.cfg.looks?.foeBack); s.scale.set(0.1);
         await this.fly(s, at, { x: 360, y: 600 }, 0.1, 0.72, 300);
         await tw.run(140, (k) => s.scale.x = 0.72 * (1 - k));
         s.texture = makeFace(e.card).texture;
@@ -1222,6 +1375,7 @@ export class BattleScene extends Container {
         const h = this.huds[e.pi];
         h.setHp(e.hp);
         audio.play(e.amount >= 4 ? 'heavyHit' : 'base');
+        if (!this.watching && (e.amount >= 4 || e.hp <= 0)) haptics.big('hit');
         const c = h.center;
         void fx.floatText(c.x + 60, c.y + (e.pi === 1 ? 40 : -30), `-${e.amount}`, e.doom ? COLORS.doom : 0xff8f6b, 56, 60);
         if (e.doom) void fx.floatText(c.x + 150, c.y + (e.pi === 1 ? 60 : -10), `終焉+${this.s.doom}`, COLORS.doom, 22, 40, 900);
@@ -1280,7 +1434,7 @@ export class BattleScene extends Container {
         audio.play('reveal');
         const p = this.s.players[e.pi];
         for (const uid of e.uids) { const r = p.resv.find((x) => x.uid === uid); if (r) this.dial.revealPin(uid, r.card); }
-        this.toast(e.uids.length ? `${e.pi === 0 ? 'あなた' : this.foe}の予約を${e.uids.length}枚公開` : '公開する予約はなかった');
+        this.toast(e.uids.length ? `${e.pi === 0 ? this.me : this.foe}の予約を${e.uids.length}枚公開` : '公開する予約はなかった');
         await tw.wait(500);
         break;
       }
@@ -1301,7 +1455,8 @@ export class BattleScene extends Container {
         break;
       }
       case 'end': {
-        audio.play(e.winner === 0 ? 'win' : 'lose');
+        audio.play(e.winner === 0 || this.watching ? 'win' : 'lose');
+        if (!this.watching) haptics.big(e.winner === 0 ? 'win' : 'lose');
         break;
       }
     }

@@ -1,4 +1,5 @@
 import './ui/style.css';
+import './ui/skin.css';
 import { Application, Container } from 'pixi.js';
 import type { DeckDef } from './core/decks';
 import { audio } from './render/audio';
@@ -9,7 +10,11 @@ import { COLORS, DESIGN } from './render/theme';
 import { Tweener } from './render/tween';
 import { PackOpenScene } from './render/packOpen';
 import { MIN_ACTIONS, applyReward, canOpen, localDate, openPack, packById, reward, type Reward } from './meta/economy';
-import { recordBattle, track } from './meta/progress';
+import { dailyView, recordBattle, recordMatch, track } from './meta/progress';
+import { haptics } from './render/haptics';
+import { LOOKS, PITY } from './meta/economy';
+import { deckKey, deckLook, favCard, shownTitle } from './ui/profile';
+import { CARD_LIST } from './core/cards';
 import { finishRated, foeById, foeLevel, makeOpponent, startRated, type RatedGame } from './meta/rating';
 import { PRESET_DECKS } from './core/decks';
 import { PACK_TEST_DECKS } from './sim/packDecks';
@@ -18,7 +23,7 @@ import { VERSION } from './version';
 import { codeFromHash } from './net/config';
 import { OnlineFlow } from './net/flow';
 import { registerServiceWorker } from './pwa';
-import { Screens } from './ui/screens';
+import { Screens, type MissionDelta, type VsSide } from './ui/screens';
 import { store } from './ui/storage';
 
 async function loadFonts() {
@@ -104,6 +109,7 @@ async function boot() {
     audio.setMuted(s.muted);
     tw.speed = s.speed;
     tw.reduced = s.reduced || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    haptics.set({ big: s.vibeBig !== false, tap: s.vibeTap !== false });
   };
   applySettings();
 
@@ -138,9 +144,19 @@ async function boot() {
   let battleStartedAt = Date.now();
   /** The id of the game against the AI in progress (the same id is used if it has to be reported as abandoned). */
   let liveGid = '';
+  /** The stored deck a battle was played with (by id, else by matching its cards). */
+  const myDeckOf = (cfg: BattleConfig | null): DeckDef | undefined => {
+    if (!cfg) return undefined;
+    const cards = cfg.net ? flow.myDeck : cfg.myDeck;
+    const key = [...cards].sort().join(',');
+    return (cfg.myDeckId ? store.deckById(cfg.myDeckId) : undefined) ?? store.allDecks().find((d) => [...d.cards].sort().join(',') === key);
+  };
   const onResult = (r: BattleResult) => {
     const online = !!lastCfg?.net;
     saveLiveGame(null);
+    if (lastCfg?.net?.watch) { screens.resultWatch(r, () => { endBattle(); flow.leave(); screens.onlineMenu(); }); return; }
+    const today0 = localDate();
+    const before = dailyView(store.meta, today0).map((v) => ({ id: v.m.id, now: v.now }));
     const rec = online ? store.onlineRecord : store.record;
     if (r.winner === 0) rec.win++;
     else if (r.winner === 1) rec.lose++;
@@ -156,7 +172,18 @@ async function boot() {
       won: r.winner === 0, played: r.myActions >= MIN_ACTIONS, hard: !online && (lastCfg?.level === 'hard' || lastCfg?.level === 'expert'), online,
       spells: r.stats.spells, summons: r.stats.summons, reserves: r.stats.reserves, attacks: r.stats.attacks,
     }, today);
+    const missions: MissionDelta[] = dailyView(store.meta, today0).flatMap((v) => {
+      const b = before.find((x) => x.id === v.m.id)?.now ?? 0;
+      return v.now > b ? [{ text: v.m.text, before: b, after: v.now, goal: v.m.goal }] : [];
+    });
+    const deck = myDeckOf(lastCfg);
+    if (r.myActions >= MIN_ACTIONS) recordMatch(store.meta, {
+      at: Date.now(), mode: online ? 'online' : lastCfg?.rated ? 'rated' : 'free', result: r.winner === 0 ? 'win' : r.winner === 1 ? 'lose' : 'draw',
+      foe: online ? flow.foe?.name ?? lastCfg?.aiDeckName ?? '' : lastCfg?.rated ? lastCfg.foeName ?? '' : lastCfg?.aiDeckName ?? '',
+      deck: deck?.name ?? lastCfg?.myDeckName ?? '', deckId: deck?.id ?? '', myHp: r.myHp, foeHp: r.foeHp, reason: r.reason,
+    });
     store.saveMeta();
+    const card = deck ? deckKey(deck) : favCard();
     // rated play: the rating moves now; the ranking server gets the result in the background
     let rated: RatedGame | null = null;
     if (!online && lastCfg?.rated) {
@@ -174,11 +201,11 @@ async function boot() {
       ...(!online && r.log ? { log: r.log, deckName: lastCfg?.myDeckName, foe: lastCfg?.aiDeckName } : {}),
     });
     // the final board stays visible behind the result screen until the player moves on
-    if (online) screens.resultOnline(r, endBattle, rw, xp);
+    if (online) screens.resultOnline(r, endBattle, rw, xp, missions, card);
     else if (rated) {
-      const deck = store.deckById(rated.deck);
-      screens.result(r, () => { screens.clear(); if (deck && deck.valid) startRatedGame(deck); else { endBattle(); screens.rated(); } }, endBattle, rw, xp, rated);
-    } else screens.result(r, () => { screens.clear(); if (lastCfg) run(lastCfg); }, endBattle, rw, xp);
+      const rd = store.deckById(rated.deck);
+      screens.result(r, () => { screens.clear(); if (rd && rd.valid) startRatedGame(rd); else { endBattle(); screens.rated(); } }, endBattle, rw, xp, rated, missions, card);
+    } else screens.result(r, () => { screens.clear(); if (lastCfg) startFree(lastCfg); }, endBattle, rw, xp, null, missions, card);
   };
   const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
   /**
@@ -192,12 +219,12 @@ async function boot() {
     const pool = level === 'easy' || level === 'normal' ? PRESET_DECKS : [...PRESET_DECKS, ...PACK_TEST_DECKS];
     const aiDeck = pool[Math.floor(Math.random() * pool.length)];
     endBattle();
-    screens.matching(o, () => {
+    screens.matching(o, deck, (first) => {
       // the game only counts (and a disconnect only loses) once it has actually started
       startRated(store.rated, o, deck.id, Date.now());
       store.saveRated();
       screens.clear();
-      run({ myDeck: deck.cards, myDeckName: deck.name, aiDeck: aiDeck.cards, aiDeckName: aiDeck.name, level, aiSpec: foeById(o.ai)?.spec, rated: true, foeName: o.name });
+      run({ myDeck: deck.cards, myDeckName: deck.name, myDeckId: deck.id, aiDeck: aiDeck.cards, aiDeckName: aiDeck.name, level, aiSpec: foeById(o.ai)?.spec, rated: true, foeName: o.name, first, looks: looksFor(deck.id, true) });
     }, () => screens.rated());
   };
   // a rated game left unfinished last time (app closed, tab killed) counts as a loss
@@ -227,11 +254,38 @@ async function boot() {
         const pay = canOpen(store.wallet, pack);
         return { label: pay === 'ticket' ? 'チケット1枚' : pay ? `${pack.price} コイン` : `コイン不足（${store.wallet.coins}/${pack.price}）`, enabled: !!pay };
       },
+      pityLeft: () => Math.max(0, PITY - store.wallet.pity),
+      shards: () => store.wallet.shards,
+      back: deckLook(store.settings.lastDeck ?? '', 'back'),
       onAgain: () => openPackScene(packId),
       onClose: () => { closePack(); screens.shop(); },
     }, extra);
     shake.addChild(packScene);
     shake.addChild(fx.layer);
+  };
+  /** Card back and dial of a deck; the AI shows a random back. */
+  const looksFor = (deckId: string, ai: boolean) => {
+    const backs = LOOKS.filter((l) => l.kind === 'back');
+    return { back: deckLook(deckId, 'back'), dial: deckLook(deckId, 'dial'), foeBack: ai ? backs[Math.floor(Math.random() * backs.length)].id : undefined };
+  };
+  /** A free game against the AI: the VS screen, then the board (paused until the VS screen goes). */
+  const startFree = (cfg: BattleConfig) => {
+    const first = (Math.random() < 0.5 ? 0 : 1) as 0 | 1;
+    const c: BattleConfig = { ...cfg, first, looks: cfg.myDeckId ? looksFor(cfg.myDeckId, true) : cfg.looks };
+    const deck = c.myDeckId ? store.deckById(c.myDeckId) : undefined;
+    const aiCard = [...new Set(cfg.aiDeck)].sort((a, b) => 'CREL'.indexOf(CARD_LIST.find((x) => x.id === b)?.rarity ?? 'C') - 'CREL'.indexOf(CARD_LIST.find((x) => x.id === a)?.rarity ?? 'C'))[0] ?? 'dragon';
+    showVs(
+      { name: store.settings.name || 'あなた', card: deck ? deckKey(deck) : favCard(), first: first === 0, title: shownTitle()?.id, deck: cfg.myDeckName },
+      { name: `AI ・ ${cfg.aiDeckName}`, card: aiCard, first: first === 1 },
+      () => run(c));
+  };
+  /** Starts the board under the VS screen with the clock stopped, and lets it run when the VS screen goes. */
+  const showVs = (me: VsSide, foe: VsSide, start: () => void, live = false) => {
+    start();
+    if (live) { screens.versus(me, foe, () => {}); return; }
+    const speed = tw.speed;
+    tw.speed = 0;
+    screens.versus(me, foe, () => { tw.speed = store.settings.speed || speed || 1; });
   };
   const run = (cfg: BattleConfig) => {
     endBattle();
@@ -247,14 +301,17 @@ async function boot() {
       }),
     };
     audio.bgm('battle', true);
+    live.attackPreview = store.settings.attackPreview !== false;
+    if (!live.looks && cfg.net) live.looks = looksFor(myDeckOf(cfg)?.id ?? store.settings.lastDeck ?? '', false);
     battle = new BattleScene(tw, fx, app.ticker, live, onResult, () => {
+      if (cfg.net?.watch) { screens.watchMenu(() => {}, () => { endBattle(); flow.leave(); screens.onlineMenu(); }); return; }
       const speed = tw.speed;
       if (!cfg.net) tw.speed = 0; // pause animations and the AI while the menu is open (a live match cannot wait)
       const resume = () => { tw.speed = store.settings.speed || speed; };
       screens.battleMenu(resume, () => { resume(); battle?.surrender(); });
     }, log, () => setLogOpen(!document.body.classList.contains('log-open')));
     document.body.classList.add('in-battle');
-    if (!store.settings.guided) {
+    if (!store.settings.guided && !cfg.net?.watch) {
       const speed = tw.speed;
       tw.speed = 0;
       screens.guide(() => { store.settings.guided = true; store.saveSettings(); tw.speed = store.settings.speed || speed; });
@@ -266,9 +323,24 @@ async function boot() {
   };
   const flow: OnlineFlow = new OnlineFlow({
     showLobby: () => { endBattle(); screens.lobby(); },
+    showWatch: () => { endBattle(); screens.watchLobby(); },
+    profile: () => ({ title: shownTitle()?.id, fav: favCard() }),
     showConnecting: (msg) => screens.connecting(msg),
     showError: (msg) => { endBattle(); screens.error(msg, () => screens.onlineMenu()); },
-    startBattle: (link) => { screens.clear(); run({ myDeck: [], myDeckName: '', aiDeck: [], aiDeckName: link.foeName, level: 'normal', net: link }); },
+    startBattle: (link) => {
+      screens.clear();
+      const cfg: BattleConfig = { myDeck: [], myDeckName: '', aiDeck: [], aiDeckName: link.foeName, level: 'normal', net: link };
+      if (!link.init.fresh) { run(cfg); return; }
+      const f = link.init.foe, first = link.init.first;
+      if (link.watch) {
+        const [a, b] = link.watch.names, [sa, sb] = flow.seats;
+        showVs({ name: a, card: sa?.fav ?? 'gear', first: first === 0, title: sa?.title }, { name: b, card: sb?.fav ?? 'gear', first: first === 1, title: sb?.title }, () => run(cfg), true);
+        return;
+      }
+      const deck = myDeckOf(cfg);
+      showVs({ name: store.settings.name || 'あなた', card: deck ? deckKey(deck) : favCard(), first: first === 0, title: shownTitle()?.id, deck: deck?.name },
+        { name: f.name, card: f.fav ?? 'gear', first: first === 1, title: f.title }, () => run(cfg), true);
+    },
     hasBattle: () => battle !== null,
   });
   closePackRef = closePack;
@@ -278,8 +350,9 @@ async function boot() {
     takeNotice: () => { const n = pendingNotice; pendingNotice = ''; return n; },
     root,
     flow: () => flow,
-    startBattle: (deck: DeckDef, ai: DeckDef, level) => run({ myDeck: deck.cards, myDeckName: deck.name, aiDeck: ai.cards, aiDeckName: ai.name, level }),
+    startBattle: (deck: DeckDef, ai: DeckDef, level) => startFree({ myDeck: deck.cards, myDeckName: deck.name, myDeckId: deck.id, aiDeck: ai.cards, aiDeckName: ai.name, level }),
     applySettings,
+    openLog: () => setLogOpen(true),
   });
 
   if (location.hash === '#debug' || /[?&]debug\b/.test(location.search)) (window as unknown as { __cd: unknown }).__cd = { battle: () => battle?.debug(), app, screens, audio };

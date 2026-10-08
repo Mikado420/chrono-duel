@@ -25,8 +25,27 @@ export interface Meta {
   /** Card shown large on the home screen. */
   favorite: string;
   battles: number;
+  /** 称号 shown under the name ('' = none). */
+  title: string;
+  /** Titles the player has already looked at in the title list (the rest show NEW). */
+  titlesSeen: string[];
+  /** ひとこと on the profile. */
+  comment: string;
+  /** Recent matches, newest first (戦歴 and the deck rings on the profile). */
+  history: MatchRec[];
+  /** Matches per deck since this was added, keyed by deck id. */
+  deckUse: Record<string, { name: string; n: number }>;
+  /** Presents already taken, newest first (受け取り履歴). */
+  presentLog: PresentLog[];
+  /** `seq` when the present box was last opened: presents above it show NEW. */
+  presentsSeen: number;
 }
-export const NEW_META = (): Meta => ({ v: 1, exp: 0, loginDays: 0, lastLogin: '', day: '', daily: {}, dailyClaimed: [], counters: {}, beginnerClaimed: [], presents: [], seq: 0, newsRead: [], favorite: '', battles: 0 });
+export interface MatchRec { at: number; mode: 'free' | 'rated' | 'online'; result: 'win' | 'lose' | 'draw'; foe: string; deck: string; deckId: string; myHp: number; foeHp: number; reason: string }
+export interface PresentLog { from: string; text: string; prize: Prize; at: string; got: string }
+export const NEW_META = (): Meta => ({
+  v: 1, exp: 0, loginDays: 0, lastLogin: '', day: '', daily: {}, dailyClaimed: [], counters: {}, beginnerClaimed: [], presents: [], seq: 0, newsRead: [], favorite: '', battles: 0,
+  title: '', titlesSeen: [], comment: '', history: [], deckUse: {}, presentLog: [], presentsSeen: 0,
+});
 
 // ------------------------------------------------------------------ rank
 /** EXP needed to go from rank r to r+1. */
@@ -42,9 +61,10 @@ export const rankPrize = (r: number): Prize => (r % 5 === 0 ? { coins: 50, ticke
 function give(m: Meta, from: string, text: string, prize: Prize, today: string) {
   m.presents.unshift({ id: `p${++m.seq}`, from, text, prize, at: today });
 }
-export function claimPresents(m: Meta, ids?: string[]): Prize {
+export function claimPresents(m: Meta, ids?: string[], today = ''): Prize {
   const take = m.presents.filter((p) => !ids || ids.includes(p.id));
   m.presents = m.presents.filter((p) => !take.includes(p));
+  m.presentLog = [...take.map((p) => ({ from: p.from, text: p.text, prize: p.prize, at: p.at, got: today })), ...(m.presentLog ?? [])].slice(0, 50);
   return take.reduce<Prize>((a, p) => ({ coins: (a.coins ?? 0) + (p.prize.coins ?? 0), tickets: (a.tickets ?? 0) + (p.prize.tickets ?? 0) }), {});
 }
 
@@ -162,9 +182,38 @@ export function recordBattle(meta: Meta, b: BattleStats, today: string): { exp: 
   return { exp, before, after };
 }
 
+// ------------------------------------------------------------------ match history
+/** Keeps a finished match for 戦歴 and counts it towards the deck it was played with. */
+export function recordMatch(meta: Meta, r: MatchRec) {
+  meta.history = [r, ...(meta.history ?? [])].slice(0, 30);
+  meta.deckUse ??= {};
+  const u = meta.deckUse[r.deckId] ?? { name: r.deck, n: 0 };
+  meta.deckUse[r.deckId] = { name: r.deck, n: u.n + 1 };
+}
+export interface DeckShare { id: string; name: string; n: number; share: number }
+/** Decks by how often they were played (largest first); the long tail is folded into one 'その他' slice. */
+export function deckShares(counts: Record<string, { name: string; n: number }>, keep = 3): DeckShare[] {
+  const rows = Object.entries(counts).map(([id, v]) => ({ id, name: v.name, n: v.n })).filter((r) => r.n > 0).sort((a, b) => b.n - a.n);
+  const total = rows.reduce((a, r) => a + r.n, 0);
+  if (!total) return [];
+  const head = rows.slice(0, keep), rest = rows.slice(keep).reduce((a, r) => a + r.n, 0);
+  const out = head.map((r) => ({ ...r, share: r.n / total }));
+  if (rest) out.push({ id: '', name: 'その他', n: rest, share: rest / total });
+  return out;
+}
+/** The same for the last `n` matches. */
+export function recentShares(meta: Meta, n = 20, keep = 3): DeckShare[] {
+  const counts: Record<string, { name: string; n: number }> = {};
+  for (const h of (meta.history ?? []).slice(0, n)) { const c = counts[h.deckId] ?? { name: h.deck, n: 0 }; c.n++; c.name = c.name || h.deck; counts[h.deckId] = c; }
+  return deckShares(counts, keep);
+}
+
 // ------------------------------------------------------------------ news
 export interface News { id: string; date: string; tag: 'お知らせ' | '新カード' | '機能追加' | '不具合修正'; title: string; body: string }
 export const NEWS: News[] = [
+  { id: 'n24', date: '2026-10-08', tag: '機能追加', title: '観戦と、部屋の中でのデッキ・名前変更に対応しました', body: 'フレンド対戦の「観戦する」から、あいことばで友達の対戦を見られるようになりました（両者の手札は伏せたまま表示されます）。また、対戦が始まる前なら部屋の中でデッキと名前を変えられます。' },
+  { id: 'n23', date: '2026-10-08', tag: '機能追加', title: '称号・着せ替え・攻撃の予告を追加しました', body: '遊んだ記録に応じて手に入る「称号」を20種追加しました。プロフィールで選ぶと、名前の下や対戦前のVS画面、ランキングに表示されます。ショップでカードの裏面と盤面の文字盤をコインで交換でき、デッキごとに選べます。対戦では攻撃できるユニットを選ぶと攻撃先と結果が先に見えるようになりました。ランキングには前日の順位が付きます。設定で振動のオン／オフを選べます。' },
+  { id: 'n22', date: '2026-10-08', tag: '機能追加', title: '画面のデザインを一新しました', body: 'ホーム・バトル・デッキ・ショップ・その他の画面を、真鍮の時計の世界観に合わせて作り直しました。対戦の前に両者のカードと先手・後手が出るVS画面、パック開封で時計の針が次のカードを指す演出、まとめて見られる開封結果、プロフィールの戦歴とよく使うデッキ、結果画面でのミッションの進み具合を追加しています。' },
   { id: 'n21', date: '2026-10-02', tag: 'お知らせ', title: '最強デッキ・カードランキングを更新しました', body: '攻略wikiの最強デッキランキングを、環境デッキ（ヴェルナループなど）からファンデッキまで16個に広げ、いちばん強いAI同士の総当たりでTier分けしました。最強カードランキングも同じ対戦から計算し直し、みんなの実際の対戦での成績も並べて見られるようにしました。' },
   { id: 'n20', date: '2026-10-02', tag: '機能追加', title: '攻略wikiをリニューアルしました', body: '攻略wikiの見た目を一新し、カードの画像つきで見られるようにしました。全カードを5段階で評価した「最強カードランキング」と「最強デッキランキング」を追加しました。カードをタップすると、ページを移らずにその場で詳しい性能が開き、「前へ／次へ」で同じデッキや一覧のカードを順番に確認できます。' },
   { id: 'n19', date: '2026-10-02', tag: '機能追加', title: 'レート戦のマッチングを改善しました', body: 'レート戦で、自分のレートとかけ離れた相手と当たることがある問題を直しました。相手の強さの段階を増やし、自分のレートに近い相手と当たるようになります（上位帯でも、より手強い相手が出るようになりました）。' },

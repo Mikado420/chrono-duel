@@ -289,20 +289,68 @@ export function cardFace(id: string): HTMLCanvasElement {
   return cv;
 }
 
-const backCache: { cv?: HTMLCanvasElement } = {};
-export function cardBack(): HTMLCanvasElement {
-  if (backCache.cv) return backCache.cv;
-  const W = CARD_W, H = CARD_H;
+const backCache = new Map<string, HTMLCanvasElement>();
+/**
+ * Card back. `style` is a look id ('back:gear', …) bought in the shop; unknown ids fall back to the brass clock.
+ * Every back keeps the brass frame and the CHRONO DUEL line so a card is always recognisable from behind.
+ */
+export function cardBack(style = 'back:brass'): HTMLCanvasElement {
+  const hit = backCache.get(style);
+  if (hit) return hit;
+  const W = CARD_W, H = CARD_H, cx = W / 2, cy = H / 2;
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const c = cv.getContext('2d')!;
-  rr(c, 0, 0, W, H, 22); const fg = c.createLinearGradient(0, 0, W, H); fg.addColorStop(0, '#caa057'); fg.addColorStop(1, '#6d4d1c'); c.fillStyle = fg; c.fill();
-  rr(c, 8, 8, W - 16, H - 16, 16); const bg = c.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, H * 0.6); bg.addColorStop(0, '#1b3b46'); bg.addColorStop(1, '#060d11'); c.fillStyle = bg; c.fill();
-  c.strokeStyle = '#e0b25c'; c.lineWidth = 2; c.globalAlpha = 0.8;
-  for (const r of [120, 100, 64]) { c.beginPath(); c.arc(W / 2, H / 2, r, 0, Math.PI * 2); c.stroke(); }
-  for (let i = 0; i < 60; i++) { const a = (i / 60) * Math.PI * 2, l = i % 5 ? 6 : 14; c.beginPath(); c.moveTo(W / 2 + Math.cos(a) * 120, H / 2 + Math.sin(a) * 120); c.lineTo(W / 2 + Math.cos(a) * (120 - l), H / 2 + Math.sin(a) * (120 - l)); c.stroke(); }
-  c.lineWidth = 5; c.beginPath(); c.moveTo(W / 2, H / 2); c.lineTo(W / 2, H / 2 - 90); c.moveTo(W / 2, H / 2); c.lineTo(W / 2 + 55, H / 2 + 20); c.stroke();
-  c.globalAlpha = 1; c.fillStyle = '#e0b25c'; c.font = `700 26px ${FONTS.display}`; c.textAlign = 'center'; c.fillText('CHRONO DUEL', W / 2, H - 50);
-  backCache.cv = cv;
+  const pal: Record<string, [string, string, string, string, string]> = {
+    // frame light, frame dark, field centre, field edge, ink
+    'back:brass': ['#caa057', '#6d4d1c', '#1b3b46', '#060d11', '#e0b25c'],
+    'back:gear': ['#d8b066', '#7a5418', '#2c2414', '#0b0905', '#f0c46a'],
+    'back:ember': ['#e08a4a', '#6e2a12', '#3a140c', '#0c0503', '#ffb07a'],
+    'back:tide': ['#8fd9c8', '#1f6b5c', '#0f3a40', '#030b0e', '#8ff0e0'],
+    'back:star': ['#c9c6e6', '#4a4a7a', '#1a1d45', '#04050f', '#e6e2ff'],
+  };
+  const [f0, f1, b0, b1, ink] = pal[style] ?? pal['back:brass'];
+  rr(c, 0, 0, W, H, 22); const fg = c.createLinearGradient(0, 0, W, H); fg.addColorStop(0, f0); fg.addColorStop(1, f1); c.fillStyle = fg; c.fill();
+  rr(c, 8, 8, W - 16, H - 16, 16); const bg = c.createRadialGradient(cx, cy, 10, cx, cy, H * 0.6); bg.addColorStop(0, b0); bg.addColorStop(1, b1); c.fillStyle = bg; c.fill();
+  c.save(); rr(c, 8, 8, W - 16, H - 16, 16); c.clip();
+  c.strokeStyle = ink; c.fillStyle = ink; c.lineWidth = 2; c.globalAlpha = 0.8;
+  const dial = (r: number) => {
+    for (const k of [r, r - 20, r - 56]) { c.beginPath(); c.arc(cx, cy, k, 0, Math.PI * 2); c.stroke(); }
+    for (let i = 0; i < 60; i++) { const a = (i / 60) * Math.PI * 2, l = i % 5 ? 6 : 14; c.beginPath(); c.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); c.lineTo(cx + Math.cos(a) * (r - l), cy + Math.sin(a) * (r - l)); c.stroke(); }
+  };
+  if (style === 'back:gear') {
+    // two meshing gears
+    const gear = (x: number, y: number, r: number, teeth: number, rot: number) => {
+      c.beginPath();
+      for (let i = 0; i < teeth * 2; i++) { const a = rot + (i / (teeth * 2)) * Math.PI * 2, k = i % 2 ? r * 0.84 : r; c.lineTo(x + Math.cos(a) * k, y + Math.sin(a) * k); c.lineTo(x + Math.cos(a + Math.PI / teeth) * k, y + Math.sin(a + Math.PI / teeth) * k); }
+      c.closePath(); c.stroke();
+      c.beginPath(); c.arc(x, y, r * 0.3, 0, Math.PI * 2); c.stroke();
+      for (let i = 0; i < 6; i++) { const a = rot + (i / 6) * Math.PI * 2; c.beginPath(); c.moveTo(x + Math.cos(a) * r * 0.3, y + Math.sin(a) * r * 0.3); c.lineTo(x + Math.cos(a) * r * 0.78, y + Math.sin(a) * r * 0.78); c.stroke(); }
+    };
+    c.lineWidth = 3; gear(cx - 34, cy - 40, 92, 14, 0.1); c.lineWidth = 2.5; gear(cx + 70, cy + 96, 58, 10, 0.32); gear(cx - 92, cy + 132, 36, 8, 0);
+  } else if (style === 'back:ember') {
+    dial(120);
+    c.globalAlpha = 0.35;
+    for (let i = 0; i < 9; i++) { const a = -Math.PI / 2 + (i - 4) * 0.22; c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + Math.cos(a) * 210, cy + Math.sin(a) * 210); c.stroke(); }
+    c.globalAlpha = 0.95; c.lineWidth = 6; c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx - 40, cy - 88); c.stroke(); c.lineWidth = 4; c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + 66, cy + 10); c.stroke();
+  } else if (style === 'back:tide') {
+    const ox = cx - 70;
+    c.beginPath(); c.arc(ox, cy, 14, 0, Math.PI * 2); c.fill();
+    for (let k = 1; k <= 7; k++) { c.globalAlpha = 0.85 - k * 0.09; c.beginPath(); c.arc(ox, cy, 22 + k * 30, -1.05, 1.05); c.stroke(); c.beginPath(); c.arc(ox + 140, cy, 22 + k * 30, Math.PI - 1.05, Math.PI + 1.05); c.stroke(); }
+  } else if (style === 'back:star') {
+    const R = rng(7);
+    for (let i = 0; i < 90; i++) { c.globalAlpha = 0.25 + R() * 0.75; c.beginPath(); c.arc(16 + R() * (W - 32), 16 + R() * (H - 32), R() * 1.8 + 0.4, 0, Math.PI * 2); c.fill(); }
+    c.globalAlpha = 0.7;
+    const pts = [[cx - 90, cy - 120], [cx - 30, cy - 70], [cx + 40, cy - 100], [cx + 80, cy - 20], [cx + 20, cy + 50], [cx - 60, cy + 30], [cx - 30, cy + 130]];
+    c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.stroke();
+    for (const [x, y] of pts) { c.globalAlpha = 1; c.beginPath(); c.arc(x, y, 4, 0, Math.PI * 2); c.fill(); }
+    c.globalAlpha = 0.5; c.beginPath(); c.arc(cx, cy, 150, 0, Math.PI * 2); c.stroke();
+  } else {
+    dial(120);
+    c.lineWidth = 5; c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx, cy - 90); c.moveTo(cx, cy); c.lineTo(cx + 55, cy + 20); c.stroke();
+  }
+  c.restore();
+  c.globalAlpha = 1; c.fillStyle = ink; c.font = `700 26px ${FONTS.display}`; c.textAlign = 'center'; c.fillText('CHRONO DUEL', cx, H - 50);
+  backCache.set(style, cv);
   return cv;
 }
 

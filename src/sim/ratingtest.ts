@@ -1,7 +1,7 @@
 /* Rated play and the friends' ranking: `npm run test:rating` */
 import assert from 'node:assert/strict';
 import { AI_RATING, NEW_RATED, OPP_SPREAD, PLAYER_NAMES, RATED_FOES, START_RATING, finishRated, foeById, makeOpponent, nextRating, opponentPool, pickOpponent, startRated, tierOf } from '../meta/rating';
-import { Leaderboard, MIN_GAME_MS, type KV } from '../server/leaderboard';
+import { Leaderboard, MIN_GAME_MS, rankDay, type KV } from '../server/leaderboard';
 import { mulberry32 } from '../core/engine';
 
 // tiers and matchmaking
@@ -98,5 +98,23 @@ assert.equal(rk.total, 2);
 assert.equal(rk.top[0].name, 'ボブ', 'sorted by rating');
 assert.ok(rk.top[1].me && rk.me.place === 2, 'my own row is marked');
 assert.ok(!JSON.stringify(res.body).includes(A.id) && !JSON.stringify(res.body).includes('key'), 'no ids or keys leak');
+// titles and featured cards: only real ones are kept; places of the day before come back as `prev`
+await lb.submit({ ...A, title: 'first', fav: 'dragon', games: [] });
+await lb.submit({ ...B, title: 'fake', fav: 'not-a-card', games: [] });
+type Row = { name: string; title?: string; fav?: string; prev?: number | null };
+let rows = ((await lb.ranking({})).body as { top: Row[] }).top;
+assert.equal(rows.find((r) => r.name === 'アリス')!.title, 'first');
+assert.equal(rows.find((r) => r.name === 'アリス')!.fav, 'dragon');
+assert.equal(rows.find((r) => r.name === 'ボブ')!.title, undefined, 'unknown titles are not kept');
+assert.equal(rows.find((r) => r.name === 'ボブ')!.fav, undefined, 'unknown cards are not kept');
+assert.equal(rows[0].prev, null, 'no earlier day yet');
+// the next day アリス overtakes ボブ: yesterday's places are reported
+now += 24 * 3600_000;
+for (let i = 0; i < 6; i++) { now += 2 * MIN_GAME_MS; await lb.submit({ ...A, games: [{ ...game(`a-up${i}`, 1, now), ai: 'expert' as const }] }); }
+rows = ((await lb.ranking({})).body as { top: Row[] }).top;
+assert.equal(rows[0].name, 'アリス');
+assert.equal(rows[0].prev, 2, 'アリス was 2nd the day before');
+assert.equal(rows[1].prev, 1, 'ボブ was 1st the day before');
+assert.equal(rankDay(Date.UTC(2026, 9, 8, 15, 30)), '2026-10-09', 'the ranking day is Japan time');
 console.log(`rating after one hard win: ${r1}; ranking ok`);
 console.log('all rating tests passed');

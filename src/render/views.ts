@@ -9,7 +9,7 @@ import { label } from './ui';
 
 const tex = new Map<string, Texture>();
 export function faceTex(id: string) { let t = tex.get('f:' + id); if (!t) { t = Texture.from(cardFace(id)); tex.set('f:' + id, t); } return t; }
-export function backTex() { let t = tex.get('back'); if (!t) { t = Texture.from(cardBack()); tex.set('back', t); } return t; }
+export function backTex(style = 'back:brass') { let t = tex.get('b:' + style); if (!t) { t = Texture.from(cardBack(style)); tex.set('b:' + style, t); } return t; }
 function artTex(id: string) { let t = tex.get('a:' + id); if (!t) { t = Texture.from(cardArt(id, 300, 220)); tex.set('a:' + id, t); } return t; }
 
 export const UNIT_W = 176, UNIT_H = 214;
@@ -134,10 +134,11 @@ export class HandCardView extends Container {
   private glow = new Graphics();
   private costBadge = new Container();
   homeX = 0; homeY = 0; homeR = 0; homeS = 0.5;
-  constructor(uid: number, card: string) {
+  constructor(uid: number, card: string, back?: string) {
     super();
     this.uid = uid; this.card = card;
-    this.sprite = new Sprite(faceTex(card));
+    // a spectator sees the hand from behind ('?')
+    this.sprite = new Sprite(card === '?' ? backTex(back) : faceTex(card));
     this.sprite.anchor.set(0.5);
     this.glow.roundRect(-176, -244, 352, 488, 28).stroke({ color: COLORS.brass, width: 8 });
     this.glow.visible = false;
@@ -161,9 +162,9 @@ export class HandCardView extends Container {
   }
 }
 
-/** Card back used for the opponent's hand and for flights. */
-export function makeBack(): Sprite {
-  const s = new Sprite(backTex());
+/** Card back used for the opponent's hand, the deck pile and for flights. */
+export function makeBack(style?: string): Sprite {
+  const s = new Sprite(backTex(style));
   s.anchor.set(0.5);
   return s;
 }
@@ -177,7 +178,8 @@ export function makeFace(id: string): Sprite {
 export class Hud extends Container {
   private hpTxt: Text;
   private bar = new Graphics();
-  private info: Text;
+  /** 山札・手札・予約 as small icons with numbers, in one capsule (readable at a glance). */
+  private info = new Container();
   private hp: number = RULES.BASE_HP;
   readonly medal = new Container();
   private glow = new Graphics();
@@ -196,8 +198,7 @@ export class Hud extends Container {
     this.glow.x = 44;
     const nm = label(name, 20, col, { font: FONTS.display, weight: '700' });
     nm.x = 92; nm.y = -30;
-    this.info = label('', 15, COLORS.mute, {});
-    this.info.x = 92; this.info.y = 12;
+    this.info.x = 92; this.info.y = 14;
     this.addChild(this.glow, this.bar, this.medal, nm, this.info);
     this.drawBar();
   }
@@ -219,9 +220,35 @@ export class Hud extends Container {
     this.glow.clear().circle(0, 0, 44).stroke({ color: col, width: 6, alpha: a }).circle(0, 0, 52).stroke({ color: col, width: 3, alpha: a * 0.4 });
   }
   setHp(hp: number) { this.hp = hp; this.hpTxt.text = String(Math.max(0, hp)); this.hpTxt.style.fill = hp <= 5 ? 0xff8f7a : 0xffffff; this.drawBar(); }
+  private shown = '';
   setInfo(deck: number, hand: number | null, resv: number, echoes = 0) {
-    this.info.text = `山札 ${deck}` + (hand !== null ? `　手札 ${hand}` : '') + `　予約 ${resv}/${RULES.MAX_RESV}` + (echoes ? `　残響 ${echoes}` : '');
+    const key = `${deck}|${hand}|${resv}|${echoes}`;
+    if (key === this.shown) return;
+    this.shown = key;
+    const c = this.info;
+    c.removeChildren().forEach((x) => x.destroy());
+    const col = this.pi === 0 ? COLORS.you : COLORS.foe;
+    const items: [(g: Graphics) => void, string, string?][] = [
+      [(g) => { g.roundRect(-6, -7, 12, 15, 2).stroke({ color: col, width: 2 }); g.moveTo(-2, -10).lineTo(9, -10).lineTo(9, 4).stroke({ color: col, width: 2 }); }, String(deck)],
+    ];
+    if (hand !== null) items.push([(g) => { g.roundRect(-9, -7, 9, 14, 2).stroke({ color: col, width: 2 }); g.roundRect(1, -8, 9, 14, 2).stroke({ color: col, width: 2 }); }, String(hand)]);
+    items.push([(g) => { g.circle(0, 0, 8).stroke({ color: col, width: 2 }); g.moveTo(0, -4).lineTo(0, 0).lineTo(3, 2).stroke({ color: col, width: 2 }); }, String(resv), `/${RULES.MAX_RESV}`]);
+    if (echoes) items.push([(g) => { g.circle(-4, 0, 2.5).fill(0x8ff0e0); for (const r of [6, 10]) g.arc(-4, 0, r, -0.9, 0.9).stroke({ color: 0x8ff0e0, width: 2 }); }, String(echoes)]);
+    let x = 12;
+    const parts = new Container();
+    for (const [icon, n, sub] of items) {
+      const g = new Graphics(); icon(g); g.x = x + 8; g.y = 12;
+      const t = label(n, 18, COLORS.ivory, { font: FONTS.num, weight: '700' }); t.x = x + 20; t.y = 1;
+      parts.addChild(g, t);
+      x += 22 + t.width;
+      if (sub) { const st = label(sub, 12, COLORS.mute, { font: FONTS.num, weight: '700' }); st.x = x; st.y = 6; parts.addChild(st); x += st.width; }
+      x += 14;
+    }
+    const bg = new Graphics().roundRect(0, 0, x - 4, 26, 13).fill({ color: COLORS.ink, alpha: 0.88 }).roundRect(0, 0, x - 4, 26, 13).stroke({ color: col, width: 1.5, alpha: 0.55 });
+    c.addChild(bg, parts);
   }
+  /** Right edge of the counter capsule (the deck pile sits beyond it). */
+  get infoRight() { return this.x + this.info.x + this.info.width; }
   get center() { return { x: this.x + this.medal.x, y: this.y }; }
   async hit(tw: Tweener) {
     await tw.run(260, (k) => { this.medal.scale.set(1 + Math.sin(k * Math.PI) * 0.25); this.medal.rotation = Math.sin(k * Math.PI * 4) * 0.15 * (1 - k); }, ease.outCubic);
