@@ -97,7 +97,7 @@ async function main() {
   const si = args.indexOf('--set2'); if (si >= 0) args.splice(si, 1);
   const xi = args.indexOf('--set1x'); if (xi >= 0) args.splice(xi, 1);
   if (args[0] === 'set1x') args.splice(0, 1, ...Object.keys(SET1X));
-  if (Object.keys(SET1X).some((id) => args.includes(id)) && !WITH_SET1X) { console.error('第1弾の追加カードを測るときは --set1x を付けてください'); proc.exit(1); }
+  // 第1弾の追加カードは 0.18.0 からカードプールに入っている（--set1x は不要）
   let cards = args[0] === 'set2' ? Object.keys(SET2).filter((id) => !SET2[id].token) : args.length && args[0] !== 'all' ? args : CARD_LIST.map((c) => c.id).filter((id) => id !== REF);
   if (args[0] === 'set2' && !WITH_SET2) { console.error('第2弾を測るときは --set2 を付けてください'); proc.exit(1); }
   const unknown = cards.filter((c) => !CARDS[c] || CARDS[c].token);

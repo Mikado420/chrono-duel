@@ -203,7 +203,7 @@ export function legalActions(s: GameState, pi: PlayerIndex): Action[] {
     if (d.kind === 'unit') {
       p.field.forEach((u, l) => { if (!u) for (const x of xs) out.push(x === undefined ? { t: 'play', hand: h.uid, lane: l } : { t: 'play', hand: h.uid, lane: l, x }); });
     } else {
-      for (const x of xs) out.push(x === undefined ? { t: 'cast', hand: h.uid } : { t: 'cast', hand: h.uid, x });
+      if (!d.reserveOnly) for (const x of xs) out.push(x === undefined ? { t: 'cast', hand: h.uid } : { t: 'cast', hand: h.uid, x });
       const r = resvCount(p) < RULES.MAX_RESV ? resvRange(s, pi, cardCost(s, pi, h.card)) : null;
       if (r) for (let T = r[0]; T <= r[1]; T++) out.push({ t: 'reserve', hand: h.uid, T });
     }
@@ -421,12 +421,17 @@ function storm(s: GameState, pi: PlayerIndex, qi: PlayerIndex, n: number, card: 
   if (!any) ev.push({ e: 'fizzle', pi, card });
   reap(s, ev);
 }
+/** A reservation of `qi` was destroyed by the other player: 囮の書 sets the destroyer's clock 4 ticks ahead. */
+function broken(s: GameState, qi: PlayerIndex, x: Reservation, ev: GameEvent[]) {
+  ev.push({ e: 'breakResv', pi: qi, uid: x.uid, card: x.card });
+  if (x.card === 'x_decoy' && !x.echo) shiftClock(s, other(qi), 4, ev);
+}
 function breakNearest(s: GameState, qi: PlayerIndex, ev: GameEvent[]): boolean {
   const r = s.players[qi].resv;
   const x = r.slice().sort((a, b) => a.T - b.T)[0];
   if (!x) return false;
   r.splice(r.indexOf(x), 1);
-  ev.push({ e: 'breakResv', pi: qi, uid: x.uid, card: x.card });
+  broken(s, qi, x, ev);
   return true;
 }
 function breakLatest(s: GameState, qi: PlayerIndex, ev: GameEvent[]): boolean {
@@ -434,7 +439,7 @@ function breakLatest(s: GameState, qi: PlayerIndex, ev: GameEvent[]): boolean {
   const x = r.slice().sort((a, b) => b.T - a.T)[0];
   if (!x) return false;
   r.splice(r.indexOf(x), 1);
-  ev.push({ e: 'breakResv', pi: qi, uid: x.uid, card: x.card });
+  broken(s, qi, x, ev);
   return true;
 }
 function revealAll(s: GameState, qi: PlayerIndex, ev: GameEvent[]) {
@@ -557,7 +562,7 @@ function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, e
       else {
         q.resv = q.resv.filter((x) => x !== r);
         if (q.hand.length < RULES.MAX_HAND) { const uid = s.nextUid++; q.hand.push({ uid, card: r.card }); ev.push({ e: 'bounce', pi: qi, uid, card: r.card }); }
-        else ev.push({ e: 'breakResv', pi: qi, uid: r.uid, card: r.card });
+        else broken(s, qi, r, ev);
       }
       if (boosted) drawCard(s, pi, ev);
       break;
@@ -581,16 +586,14 @@ function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, e
       if (!q.hand.length) ev.push({ e: 'fizzle', pi, card: d.id });
       else if (q.hand.length === 1) { const [h] = q.hand.splice(0, 1); ev.push({ e: 'discard', pi: qi, uid: h.uid, card: h.card }); }
       else s.pending = { pi: qi, kind: 'discard', options: q.hand.map((h) => h.uid), owner: pi };
+      // 忘却の砂 also draws a card for its user (two when it fires from a reservation)
+      drawCard(s, pi, ev);
       if (boosted) drawCard(s, pi, ev);
       break;
     }
     case 'xDecoy': {
-      // 囮の書: a pin the opponent cannot tell from a real reservation; nothing happens when it comes due
-      const uid = s.nextUid++, T = Math.min(RULES.END, p.time + 4);
-      p.resv.push({ uid, card: d.id, T, revealed: false, decoy: true });
-      ev.push({ e: 'reserve', pi, uid, card: d.id, T, fromHand: -1 });
+      // 囮の書 (予約専用): a card when it fires; destroyed by the opponent instead, it sets their clock ahead (see broken)
       drawCard(s, pi, ev);
-      if (boosted) drawCard(s, pi, ev);
       break;
     }
     // ---- 第2弾
@@ -688,7 +691,7 @@ function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, e
     case 'gErase': {
       const gone = s.players[qi].resv;
       s.players[qi].resv = [];
-      for (const x of gone) ev.push({ e: 'breakResv', pi: qi, uid: x.uid, card: x.card });
+      for (const x of gone) broken(s, qi, x, ev);
       for (let i = 0; i < Math.max(1, Math.min(gone.length, 2 + b)); i++) drawCard(s, pi, ev);
       break;
     }
@@ -846,6 +849,7 @@ export function apply(s: GameState, a: Action): GameEvent[] {
       if (!h) throw new Error('card not in hand');
       const d = cardDef(h.card);
       if (d.kind !== 'spell') throw new Error('not a spell');
+      if (d.reserveOnly) throw new Error('reservation only');
       const x = chargeOf(d, a.x);
       const cost = cardCost(s, pi, h.card) + x;
       const { idx, card } = takeHand(p, a.hand);

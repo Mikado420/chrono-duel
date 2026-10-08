@@ -1,4 +1,4 @@
-import { cleanName, randomCode, type ClientMsg, type LinkStatus, type NetLink, type Phase, type Presence, type Profile, type RematchState, type ServerMsg } from '../core/net';
+import { NET, cleanName, randomCode, type ClientMsg, type LinkStatus, type NetLink, type Phase, type Presence, type Profile, type RematchState, type ServerMsg } from '../core/net';
 import { store } from '../ui/storage';
 import { serverUrl } from './config';
 import { OnlineClient } from './client';
@@ -65,7 +65,7 @@ export class OnlineFlow {
     this.myName = cleanName(name);
     this.myDeck = [];
     this.resuming = false;
-    this.connect(code, () => ({ t: 'hello', name: this.myName, deck: [], mode: 'watch' }), null, true);
+    this.connect(code, () => ({ t: 'hello', name: this.myName, deck: [], mode: 'watch', p: NET.PROTOCOL }), null, true);
   }
 
   /** In the lobby: bring another deck or change the name shown to the other player. */
@@ -83,7 +83,7 @@ export class OnlineFlow {
     this.resuming = false;
     // the mode only matters for the first hello; reconnects carry the seat token instead
     // the deck may change in the lobby, so a reconnect sends the latest one
-    this.connect(code, (token) => (token ? { t: 'hello', name: this.myName, deck: this.myDeck, token, profile: this.host.profile() } : { t: 'hello', name: this.myName, deck: this.myDeck, mode, profile: this.host.profile() }), null);
+    this.connect(code, (token) => (token ? { t: 'hello', name: this.myName, deck: this.myDeck, token, profile: this.host.profile(), p: NET.PROTOCOL } : { t: 'hello', name: this.myName, deck: this.myDeck, mode, profile: this.host.profile(), p: NET.PROTOCOL }), null);
   }
 
   /** Rejoin the room saved by a previous page load. Returns false if there is nothing to resume. */
@@ -92,7 +92,7 @@ export class OnlineFlow {
     if (!s || Date.now() - s.at > RESUME_MS || !serverUrl()) { store.saveSession(null); return false; }
     this.myName = s.name;
     this.resuming = true;
-    this.connect(s.code, (token) => ({ t: 'hello', name: s.name, deck: [], token: token ?? undefined }), s.token);
+    this.connect(s.code, (token) => ({ t: 'hello', name: s.name, deck: [], token: token ?? undefined, p: NET.PROTOCOL }), s.token);
     return true;
   }
 

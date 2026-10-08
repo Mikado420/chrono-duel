@@ -1,6 +1,6 @@
 /* Home-screen progression checks: `npm run test:meta` */
 import assert from 'node:assert/strict';
-import { BEGINNER, LOGIN_CALENDAR, NEW_META, checkLogin, claimMission, claimPresents, claimable, dailyMissions, dailyView, deckShares, rankOf, recentShares, recordBattle, recordMatch, track } from '../meta/progress';
+import { BEGINNER, GIFTS, LOGIN_CALENDAR, NEW_META, checkLogin, claimMission, claimPresents, claimable, dailyMissions, dailyView, deckShares, rankOf, recentShares, recordBattle, recordMatch, track } from '../meta/progress';
 import { TITLES, earnedTitles, titleById } from '../meta/titles';
 
 const m = NEW_META();
@@ -9,13 +9,17 @@ assert.equal(checkLogin(m, '2026-10-01'), 1);
 assert.equal(checkLogin(m, '2026-10-01'), null, 'once a day');
 for (let d = 2; d <= 8; d++) checkLogin(m, `2026-10-0${d}`.replace('0-', ''));
 assert.equal(m.loginDays, 8);
-assert.equal(m.presents.length, 8);
+// the release gift (set1x) arrives once, with the first login before its end date
+const gifts = GIFTS.filter((g) => (g.until ?? '9999') >= '2026-10-01').length;
+assert.equal(m.presents.length, 8 + gifts);
+assert.equal(m.presents.filter((p) => p.from === '運営').length, gifts, 'each gift only once');
 const got = claimPresents(m, undefined, '2026-10-08');
-assert.equal(m.presentLog.length, 8, 'taken presents are kept in the log');
+assert.equal(m.presentLog.length, 8 + gifts, 'taken presents are kept in the log');
 assert.equal(m.presentLog[0].got, '2026-10-08');
 const expect = LOGIN_CALENDAR.reduce((a, p) => ({ c: a.c + (p.coins ?? 0), t: a.t + (p.tickets ?? 0) }), { c: 0, t: 0 });
 assert.equal(got.coins, expect.c + LOGIN_CALENDAR[0].coins!);
-assert.equal(got.tickets, expect.t);
+assert.equal(got.tickets, expect.t + GIFTS.filter((g) => (g.until ?? '9999') >= '2026-10-01').reduce((a, g) => a + (g.prize.tickets ?? 0), 0));
+const late = NEW_META(); checkLogin(late, '2026-12-01'); assert.equal(late.presents.filter((p) => p.from === '運営').length, 0, 'no gift after its end date');
 assert.equal(m.presents.length, 0);
 
 // daily missions: three a day, deterministic, reset daily

@@ -343,6 +343,7 @@ export class BattleScene extends Container {
       } else if (a === 0) {
         this.aiStreak = false;
         this.busy = false;
+        if (this.s.pending && !this.watching) { this.refreshControls(); this.showChoice(); return; }
         if (this.cfg.rated) this.setTimer(NET.TURN_MS);
         this.refreshControls();
         return;
@@ -471,6 +472,46 @@ export class BattleScene extends Container {
   }
 
   /** Test hook (only exposed with #debug in the URL). */
+  /**
+   * A choice the rules ask of the player (星読みの占者: a card from the top 3; 忘却の砂: the card to throw away;
+   * 記憶の司書ミレア: the spell to use again). The panel cannot be closed: the game waits for the answer.
+   */
+  private showChoice() {
+    const pd = this.s.pending;
+    if (!pd || pd.pi !== 0) return;
+    const hand = this.s.players[0].hand;
+    const cards = pd.options.map((o) => (typeof o === 'number' ? hand.find((h) => h.uid === o)?.card ?? HIDDEN : o));
+    const title = pd.kind === 'seer' ? '手札に加えるカードを1枚選ぶ' : pd.kind === 'discard' ? `${this.foe}の忘却の砂：捨てるカードを1枚選ぶ` : 'もう一度使う呪文を1枚選ぶ';
+    const sub = pd.kind === 'seer' ? '残りは山札の下に置かれます' : pd.kind === 'discard' ? '選んだカードは捨て札になります' : 'コストを払わずに使います';
+    audio.play('select');
+    this.closeModal();
+    const c = new Container();
+    c.addChild(new Graphics().rect(-400, -400, 1520, 2080).fill({ color: 0x03070a, alpha: 0.82 }));
+    (c.children[0] as Graphics).eventMode = 'static';
+    const t = label(title, 30, COLORS.ivory, { font: FONTS.display, weight: '700', align: 'center', wrap: 640 });
+    t.anchor.set(0.5); t.x = 360; t.y = 330;
+    const st = label(sub, 20, COLORS.mute, { align: 'center' });
+    st.anchor.set(0.5); st.x = 360; st.y = 378;
+    c.addChild(t, st);
+    const n = cards.length, sc = n <= 3 ? 0.58 : n <= 5 ? 0.4 : 0.3;
+    const w = 340 * sc + 16, cols = Math.min(n, Math.floor(680 / w)), rows = Math.ceil(n / cols);
+    cards.forEach((card, i) => {
+      const col = i % cols, row = Math.floor(i / cols);
+      const inRow = Math.min(cols, n - row * cols);
+      const f = card === HIDDEN ? makeBack(this.cfg.looks?.back) : makeFace(card);
+      f.scale.set(sc);
+      f.x = 360 + (col - (inRow - 1) / 2) * w; f.y = 420 + 476 * sc / 2 + row * (476 * sc + 18);
+      f.eventMode = 'static'; f.cursor = 'pointer';
+      f.on('pointertap', (e) => { e.stopPropagation(); this.closeModal(); audio.play('summon'); void this.tryAction({ t: 'choose', i }); });
+      c.addChild(f);
+    });
+    void rows;
+    this.overlay.addChild(c);
+    this.modal = c;
+    c.alpha = 0;
+    void this.tw.to(c, { alpha: 1 }, 160);
+    this.dial.setStatus('選んでください', title, 'you');
+  }
   private mind: RivalMind | null = null;
   private aiMoved = false;
   private aiStreak = false;
@@ -616,9 +657,12 @@ export class BattleScene extends Container {
 
   private refreshControls() {
     if (!this.s) return;
-    const mine = !this.watching && !this.busy && actor(this.s) === 0 && !this.s.over;
+    const choosing = !!this.s.pending && this.s.pending.pi === 0;
+    const mine = !this.watching && !this.busy && actor(this.s) === 0 && !this.s.over && !choosing;
     this.drawBtn.enabled = mine && this.s.players[0].deck.length > 0;
     this.waitBtn.enabled = mine;
+    // a pending choice always has its panel (if something closed it, it comes back)
+    if (choosing && !this.busy && !this.watching && !this.modal) queueMicrotask(() => this.showChoice());
     const who = this.s.over ? -1 : actor(this.s);
     this.huds[0].setActive(who === 0); this.huds[1].setActive(who === 1);
     const [y, f] = this.s.players;
@@ -848,7 +892,10 @@ export class BattleScene extends Container {
           if (r) { const T = Math.max(r[0], Math.min(r[1], this.dial.tFromPoint(p.x, p.y))); this.flyFrom = { x: d.view.x, y: d.view.y }; void this.tryAction({ t: 'reserve', hand: d.view.uid, T }); return; }
           audio.play('deny');
           this.toast(resvCount(this.s.players[0]) >= RULES.MAX_RESV ? `予約は${RULES.MAX_RESV}枚までです` : '予約するには時間が足りません');
-        } else if (p.y < L.youHud - 30) { this.flyFrom = { x: d.view.x, y: d.view.y }; this.use(d.view.uid, null); return; }
+        } else if (p.y < L.youHud - 30) {
+          if (def.reserveOnly) { audio.play('deny'); this.toast('予約専用：時計に重ねて予約してください'); }
+          else { this.flyFrom = { x: d.view.x, y: d.view.y }; this.use(d.view.uid, null); return; }
+        }
       }
       this.dial.showCursor(null);
       this.laneHi.clear();
@@ -909,10 +956,21 @@ export class BattleScene extends Container {
   private use(uid: number, lane: number | null) {
     const h = this.s.players[0].hand.find((x) => x.uid === uid);
     if (!h) return;
+    if (this.s.pending?.pi === 0) { this.showChoice(); return; } // answer the choice first
     const d = cardDef(h.card);
     this.flyFrom ??= this.handPos(uid);
     if (d.charge) { this.setMode({ k: 'charge', uid, x: 0, lane }); return; }
+    if (d.reserveOnly) { this.startResv(uid); return; }
     void this.tryAction(d.kind === 'unit' ? { t: 'play', hand: uid, lane: lane! } : { t: 'cast', hand: uid });
+  }
+  /** 予約専用 cards (and the 予約する button): choose the time on the clock. */
+  private startResv(uid: number) {
+    const h = this.s.players[0].hand.find((x) => x.uid === uid);
+    if (!h) return;
+    const r = resvCount(this.s.players[0]) < RULES.MAX_RESV ? resvRange(this.s, 0, cardCost(this.s, 0, h.card)) : null;
+    if (!r) { audio.play('deny'); this.toast(resvCount(this.s.players[0]) >= RULES.MAX_RESV ? `予約は${RULES.MAX_RESV}枚までです` : '予約するには時間が足りません'); this.flyFrom = null; return; }
+    this.flyFrom = null;
+    this.setMode({ k: 'resv', uid, T: Math.min(r[1], r[0] + 2) });
   }
   private chargeHint(card: string, x: number): string {
     const d = cardDef(card);
@@ -1121,6 +1179,14 @@ export class BattleScene extends Container {
       ]);
     } else {
       const r = resvCount(this.s.players[0]) < RULES.MAX_RESV ? resvRange(this.s, 0, cardCost(this.s, 0, d.id)) : null;
+      if (d.reserveOnly) {
+        const why = r ? 'ドラッグして時計に重ねても予約できます' : resvCount(this.s.players[0]) >= RULES.MAX_RESV ? `予約は${RULES.MAX_RESV}枚までです` : '予約できる時刻が残っていません';
+        this.inspectCard(v.card, [...rushNote, ...kn, why], [
+          ['閉じる', 'plain', () => { this.closeModal(); this.clearForecast(); }],
+          ['予約する', 'primary', () => { this.closeModal(); this.setMode({ k: 'resv', uid: v.uid, T: Math.min(r![1], r![0] + 2) }); }, !r],
+        ]);
+        return;
+      }
       const note = r ? 'ドラッグして盤面で離すと使用、時計に重ねると予約' : resvCount(this.s.players[0]) >= RULES.MAX_RESV ? `予約は${RULES.MAX_RESV}枚までです` : '予約できる時刻が残っていません';
       this.inspectCard(v.card, [...rushNote, ...kn, note], [
         ['閉じる', 'plain', () => { this.closeModal(); this.clearForecast(); }],
@@ -1202,6 +1268,11 @@ export class BattleScene extends Container {
       case 'bell': return this.onLog(`${nm(e.pi)}：${e.at}刻の鐘`, e.pi);
       case 'move': { const u = this.s.players[e.pi].field[e.to]; return this.onLog(`${nm(e.pi)}：${u ? cn(u.card) : 'ユニット'}が${e.to < e.from ? '左' : '右'}のレーンへ転移`, e.pi); }
       case 'doom': return this.onLog(`終焉の刻：ユニットが拠点に与えるダメージ+${e.level}`, -1);
+      case 'unsummon': return this.onLog(`${nm(e.pi)}の${cn(e.unit.card)}が手札に戻された${e.uid < 0 ? '（手札が一杯で失われた）' : ''}`, other(e.pi));
+      case 'discard': return this.onLog(`${nm(e.pi)}：${cn(e.card)}を捨てた`, e.pi);
+      case 'fetch': return this.onLog(`${nm(e.pi)}：${e.pi === 0 && e.card !== HIDDEN ? cn(e.card) : 'カード'}を手札に加えた`, e.pi);
+      case 'stealResv': return this.onLog(`${nm(other(e.pi))}が${nm(e.pi)}の予約${cn(e.card)}を奪った`, other(e.pi));
+      case 'breakResv': return this.onLog(`${nm(e.pi)}の予約${e.card === HIDDEN ? '' : cn(e.card)}が破棄された`, other(e.pi));
       case 'act': if (e.action.t === 'draw' || e.action.t === 'wait') this.onLog(`${nm(e.pi)}：${e.action.t === 'draw' ? 'ドロー' : '待機'}`, e.pi); return;
       default: return;
     }
@@ -1491,6 +1562,58 @@ export class BattleScene extends Container {
         break;
       }
       case 'fizzle': this.toast(`${cardDef(e.card).name}：対象がいない`); await tw.wait(300); break;
+      case 'unsummon': {
+        // the unit lifts off the board and goes back to its owner's hand
+        const v = this.unitViews.get(e.unit.uid);
+        audio.play('select');
+        if (v) {
+          const to = e.pi === 0 ? { x: 360, y: L.hand } : FOE_HAND_POS;
+          void fx.ring(v.x, v.y, 0x8ff0e0, 10, 90, 420, 5);
+          await Promise.all([tw.to(v, { x: to.x, y: to.y, alpha: 0 }, 420, ease.inCubic), tw.to(v.scale, { x: 0.3, y: 0.3 }, 420)]);
+          v.destroy({ children: true });
+          this.unitViews.delete(e.unit.uid);
+        }
+        this.toast(`「${cardDef(e.unit.card).name}」が手札に戻った${e.uid < 0 ? '（手札が一杯で失われた）' : ''}`);
+        await tw.wait(250);
+        break;
+      }
+      case 'discard': {
+        const s2 = await this.present(e.card, e.pi === 0 ? this.handPos(e.uid) ?? { x: 360, y: L.hand } : FOE_HAND_POS, e.pi === 1);
+        audio.play('destroy');
+        await Promise.all([tw.to(s2, { alpha: 0 }, 300), tw.to(s2, { y: s2.y + 60 }, 300)]);
+        s2.destroy();
+        if (e.pi === 1) this.foeHandLayer.children[this.foeHandLayer.children.length - 1]?.destroy();
+        break;
+      }
+      case 'fetch': {
+        audio.play('draw');
+        if (e.pi === 0 && e.card !== HIDDEN) {
+          const v = this.addHandView(e.uid, e.card);
+          v.x = 360; v.y = 600; v.scale.set(0.3);
+          this.toast(`「${cardDef(e.card).name}」を手札に加えた`);
+          this.layoutHand();
+          await tw.wait(300);
+        } else {
+          const b = makeBack(this.cfg.looks?.foeBack); b.scale.set(0.14);
+          this.foeHandLayer.addChild(b);
+          b.x = 360; b.y = 300;
+          const n = this.foeHandLayer.children.length;
+          await tw.to(b, { x: FOE_HAND_POS.x - 140 + ((n - 1) / 2) * 18, y: FOE_HAND_POS.y }, 260);
+        }
+        break;
+      }
+      case 'stealResv': {
+        // the pin crosses to the other side of the clock
+        const at = this.dial.pinAt(e.uid);
+        audio.play('clock');
+        if (at) void fx.ring(at.x, at.y, COLORS.brass, 6, 70, 500, 5);
+        await this.dial.removePin(e.uid, 'break');
+        const to = other(e.pi);
+        this.dial.addPin(e.uid, to, e.T, e.card, false).on('pointertap', (ev) => { ev.stopPropagation(); this.onPinTap(e.uid); });
+        this.toast(`${to === 0 ? this.me : this.foe}が予約「${cardDef(e.card).name}」を奪った`);
+        await tw.wait(400);
+        break;
+      }
       case 'doom': {
         audio.play('doom');
         this.dial.setDoom(e.level);

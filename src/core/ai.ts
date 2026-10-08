@@ -126,6 +126,11 @@ export function intentBonus(s: GameState, pi: PlayerIndex, a: Action, card?: str
     case 'gQuake': case 'gGearstorm': b = 1 + enemies * 1.2; break;
     case 'gMaze': b = 0.8 + enemies * 0.5; break;
     case 'gFortify': case 'gRally': case 'gTune': case 'gRewire': case 'gOverdrive': case 'gRing': case 'gMirror': b = 1; break;
+    // 第1弾 追加カード
+    case 'xGust': b = enemies ? 1.5 + Math.max(0, ...op.field.map((u) => u?.atk ?? 0)) * 0.3 : -2; break;
+    case 'xOblivion': b = 2.5 + Math.min(op.hand.length, 3) * 0.3; break;
+    // 囮の書 is reserve-only: a card when it fires, and a 4-tick swing if the opponent breaks it
+    case 'xDecoy': b = 2.5; break;
   }
   return b - wait * 0.12;
 }

@@ -66,6 +66,8 @@ export interface CardDef {
   rush?: number;
   /** 充填: you may pay up to this many extra ticks for a bigger effect (only when used right away). */
   charge?: number;
+  /** 予約専用: the spell can only be reserved (never cast right away). */
+  reserveOnly?: boolean;
   /** Emblem shape used by the procedural art. */
   motif: 'gear' | 'hourglass' | 'pendulum' | 'bell' | 'hand' | 'spiral' | 'eye' | 'shield' | 'flame' | 'crown' | 'wave';
 }
@@ -119,6 +121,15 @@ export const CARDS: Record<string, CardDef> = {
   e_storm: { id: 'e_storm', set: 'echo', name: '残響の嵐', kind: 'spell', rarity: 'E', cost: 4, effect: 'eStorm', echo: [{ delay: 2, effect: 'storm1' }, { delay: 4, effect: 'storm1' }], text: '敵ユニット全てに1ダメージ。残響2と残響4：もう一度。', resvText: '全てに2ダメージ。残響は発動時刻から。', flavor: '嵐は一度では終わらない。', motif: 'wave' },
   e_verna: { id: 'e_verna', set: 'echo', name: '刻を繰る者ヴェルナ', kind: 'unit', rarity: 'L', cost: 6, atk: 4, hp: 5, reload: 3, hook: 'resonateRewind', text: '共鳴：自分の時計を1戻す。', flavor: '響きが消えるたび、彼女は少し若返る。', motif: 'crown' },
   e_eternal: { id: 'e_eternal', set: 'echo', name: '永劫回帰', kind: 'spell', rarity: 'L', cost: 4, effect: 'eEternal', echo: [{ delay: 3, effect: 'ping2' }, { delay: 6, effect: 'ping2' }], text: '敵拠点に2ダメージ。残響3と残響6：敵拠点に2ダメージ。', resvText: '敵拠点に3ダメージ。残響は発動時刻から。', flavor: '同じ瞬間は、何度でも訪れる。', motif: 'crown' },
+  // ---- 第1弾 追加カード（8枚：通常3・希少3・秘宝1・伝説1）。1枚ごとに今のカードプールにない役割を1つ持つ
+  x_ram: { id: 'x_ram', set: 'echo', name: '城崩しの槌兵', kind: 'unit', rarity: 'C', cost: 3, atk: 2, hp: 3, reload: 2, hook: 'tauntBreaker', text: '挑発を持つユニットを攻撃するとき、攻撃+3。', flavor: '門は、叩くためにある。', motif: 'flame' },
+  x_sentry: { id: 'x_sentry', set: 'echo', name: '時計塔の衛士', kind: 'unit', rarity: 'C', cost: 3, atk: 1, hp: 4, reload: 2, keywords: ['taunt'], hook: 'oppResonateAtk', text: '挑発。相手の予約か残響が発動するたび、攻撃+1（最大+5）。', flavor: '敵の鐘の音を、数えている。', motif: 'shield' },
+  x_gust: { id: 'x_gust', set: 'echo', name: '送り返しの風', kind: 'spell', rarity: 'C', cost: 3, effect: 'xGust', text: '攻撃力が最も高い敵ユニットを持ち主の手札に戻す（手札がいっぱいなら失われる）。', resvText: 'さらにカードを1枚引く。', flavor: '来た道を、もう一度。', motif: 'wave' },
+  x_oblivion: { id: 'x_oblivion', set: 'echo', name: '忘却の砂', kind: 'spell', rarity: 'R', cost: 2, effect: 'xOblivion', text: '相手は手札を1枚選んで捨てる。カードを1枚引く。', resvText: 'さらにカードを1枚引く（合計2枚）。', flavor: '思い出せないなら、なかったのと同じ。', motif: 'hourglass' },
+  x_seer: { id: 'x_seer', set: 'echo', name: '星読みの占者', kind: 'unit', rarity: 'R', cost: 2, atk: 1, hp: 3, reload: 2, hook: 'seer', text: '登場時：山札の上3枚を見て1枚を選んで手札に加え、残りを山札の下に置く。', flavor: '明日の星は、もう見えている。', motif: 'eye' },
+  x_decoy: { id: 'x_decoy', set: 'echo', name: '囮の書', kind: 'spell', rarity: 'R', cost: 2, effect: 'xDecoy', reserveOnly: true, text: '予約専用。この予約が相手に破棄されたら、相手の時計を4進める。発動したら、カードを1枚引く。', flavor: 'どれが本物か、当ててごらん。', motif: 'spiral' },
+  x_usurper: { id: 'x_usurper', set: 'echo', name: '時の簒奪者', kind: 'unit', rarity: 'E', cost: 5, atk: 3, hp: 4, reload: 3, hook: 'stealResv', text: '登場時：相手の最も早い予約か残響を1つ奪い、自分のものにする。奪った予約は1刻早く発動する。', flavor: 'その時間は、私が使う。', motif: 'pendulum' },
+  x_mirea: { id: 'x_mirea', set: 'echo', name: '記憶の司書ミレア', kind: 'unit', rarity: 'L', cost: 5, atk: 3, hp: 5, reload: 3, hook: 'recall', text: '登場時：このゲームで自分が使った呪文（伝説を除く）を1枚選び、コストを払わずに使う。', flavor: '書かれたことは、何度でも読める。', motif: 'crown' },
   e_image: { id: 'e_image', set: 'echo', token: true, name: '残像', kind: 'unit', rarity: 'C', cost: 0, atk: 1, hp: 1, reload: 1, keywords: ['swift'], text: '速攻', flavor: 'まだ、そこにいる気がする。', motif: 'spiral' },
 };
 
@@ -137,6 +148,7 @@ export const KEYWORD_HELP: Record<string, string> = {
   転移: '1刻払って、隣の空いたレーンへ移れる。準備の状態はそのまま。',
   鐘鳴: '自分の時計が鐘（8・16・24・32刻）を越えるたびに効果が起きる。',
   充填: '今すぐ使うとき、最大N刻まで多く払って効果を強められる（X＝多く払った刻）。予約するときはX＝0。',
+  予約専用: '今すぐは使えず、予約でだけ使える。発動する時刻は自由に選べる。',
 };
 export function keywordsOf(c: CardDef): string[] {
   const k: string[] = (c.keywords ?? []).map((x) => ({ taunt: '挑発', pierce: '貫通', swift: '速攻', shift: '転移' })[x]);
@@ -145,6 +157,7 @@ export function keywordsOf(c: CardDef): string[] {
   if (c.hook?.startsWith('resonate')) k.push('共鳴');
   if (c.rush) k.push('急襲');
   if (c.charge) k.push('充填');
+  if (c.reserveOnly) k.push('予約専用');
   return k;
 }
 export const cardDef = (id: string): CardDef => {

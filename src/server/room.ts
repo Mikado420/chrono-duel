@@ -166,6 +166,10 @@ export class Room {
   }
 
   private hello(conn: Conn, m: Extract<ClientMsg, { t: 'hello' }>) {
+    // both sides must run the same rules: an app from before the last rules change cannot join
+    const proto = typeof m.p === 'number' ? m.p : 1;
+    if (proto < NET.PROTOCOL) return this.err(conn, 'version', 'アプリが古い版です。ページを再読み込みして最新版にしてください');
+    if (proto > NET.PROTOCOL) return this.err(conn, 'version', 'サーバーの更新を待っています。しばらくしてからもう一度お試しください');
     const name = cleanName(m.name);
     let slot = this.slotOf(conn);
     if (slot === null && typeof m.token === 'string' && m.token) {
@@ -339,7 +343,8 @@ export class Room {
       if (p) {
         p.strikes++;
         if (p.strikes >= NET.MAX_AFK) this.finish(other(a as PlayerIndex), 'timeout');
-        else this.applyAndSend({ t: 'wait' }, true);
+        // a choice left unanswered takes its first option; otherwise the player waits
+        else this.applyAndSend(this.game.pending ? { t: 'choose', i: 0 } : { t: 'wait' }, true);
       }
     }
     this.touch();

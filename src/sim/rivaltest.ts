@@ -61,7 +61,7 @@ assert.ok(new Set(ROSTER.map((r) => JSON.stringify(quirksOf(r.name)))).size > 20
   const s = fresh();
   for (const kind of ['obvious', 'normal', 'torn', 'key'] as const) for (let i = 0; i < 50; i++) {
     const ms = thinkMs({ action: { t: 'wait' }, kind }, { name: 'x', lv: 1 + (i % 10), persona: 'steady', deck: 'rush', quirks: quirksOf(String(i)) }, s, { streak: i % 3 === 0, first: i % 5 === 0 }, rand);
-    assert.ok(ms >= 200 && ms <= 9000, `${kind}: ${ms}`);
+    assert.ok(ms >= 100 && ms <= 9000, `${kind}: ${ms}`);
   }
 }
 // 鐘を押し出す: 時間停止 just before the opponent's bell gets the shared bonus

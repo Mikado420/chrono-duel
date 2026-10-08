@@ -31,7 +31,7 @@ class Client {
     if (m.t === 'over') this.result = m;
   }
   send(m: ClientMsg) { this.room().onMessage(this.conn, m); }
-  hello(token?: string) { this.send({ t: 'hello', name: this.name, deck: this.deck, token }); }
+  hello(token?: string) { this.send({ t: 'hello', name: this.name, deck: this.deck, token, p: NET.PROTOCOL }); }
   last<T extends ServerMsg['t']>(t: T): Extract<ServerMsg, { t: T }> | undefined { return [...this.inbox].reverse().find((m) => m.t === t) as never; }
   errors() { return this.inbox.filter((m) => m.t === 'error').map((m) => (m as { code: string }).code); }
 }
@@ -199,15 +199,15 @@ const truth = () => (room as unknown as { game: GameState }).game;
 {
   room = new Room('ZZZZZ', env);
   const lost = new Client(R, 'x');
-  lost.send({ t: 'hello', name: 'x', deck: lost.deck, mode: 'join' });
+  lost.send({ t: 'hello', name: 'x', deck: lost.deck, mode: 'join', p: NET.PROTOCOL });
   assert.deepEqual(lost.errors(), ['gone'], 'joining an empty room is refused');
   assert.ok(room.expired(), 'a refused join leaves nothing behind');
   const host = new Client(R, 'h'), clash = new Client(R, 'c'), guest = new Client(R, 'g');
-  host.send({ t: 'hello', name: 'h', deck: host.deck, mode: 'create' });
+  host.send({ t: 'hello', name: 'h', deck: host.deck, mode: 'create', p: NET.PROTOCOL });
   assert.equal(host.last('welcome')?.code, 'ZZZZZ');
-  clash.send({ t: 'hello', name: 'c', deck: clash.deck, mode: 'create' });
+  clash.send({ t: 'hello', name: 'c', deck: clash.deck, mode: 'create', p: NET.PROTOCOL });
   assert.deepEqual(clash.errors(), ['taken'], 'a code in use can not be created twice');
-  guest.send({ t: 'hello', name: 'g', deck: guest.deck, mode: 'join' });
+  guest.send({ t: 'hello', name: 'g', deck: guest.deck, mode: 'join', p: NET.PROTOCOL });
   assert.equal(guest.last('game')?.fresh, true, 'join with a host waiting starts the game');
   console.log('create/join ok');
 }
@@ -244,12 +244,12 @@ const truth = () => (room as unknown as { game: GameState }).game;
 {
   room = new Room('WATCH', env);
   const a = new Client(R, 'アリス'), b = new Client(R, 'ボブ'), w = new Client(R, '見る人');
-  w.send({ t: 'hello', name: 'w', deck: [], mode: 'watch' });
+  w.send({ t: 'hello', name: 'w', deck: [], mode: 'watch', p: NET.PROTOCOL });
   assert.deepEqual(w.errors(), ['gone'], 'nothing to watch in an empty room');
-  a.send({ t: 'hello', name: 'アリス', deck: a.deck, mode: 'create', profile: { title: 'first', fav: 'dragon' } });
+  a.send({ t: 'hello', name: 'アリス', deck: a.deck, mode: 'create', p: NET.PROTOCOL, profile: { title: 'first', fav: 'dragon' } });
   assert.ok(room.expired() === false);
   w.inbox = [];
-  w.send({ t: 'hello', name: 'w', deck: [], mode: 'watch' });
+  w.send({ t: 'hello', name: 'w', deck: [], mode: 'watch', p: NET.PROTOCOL });
   assert.equal(w.last('watching')?.phase, 'lobby', 'a spectator can wait in the lobby');
   assert.equal(w.last('watching')?.seats[0]?.name, 'アリス');
   assert.equal(w.last('watching')?.seats[0]?.title, 'first', 'a known title is passed on');
@@ -259,7 +259,7 @@ const truth = () => (room as unknown as { game: GameState }).game;
   a.send({ t: 'setup', name: 'アリス2', deck: PRESET_DECKS[1].cards, profile: { title: 'no-such-title', fav: 'dragon' } });
   assert.equal(w.last('watching')?.seats[0]?.name, 'アリス2');
   assert.equal(w.last('watching')?.seats[0]?.title, undefined, 'unknown titles are dropped');
-  b.send({ t: 'hello', name: 'ボブ', deck: b.deck, mode: 'join' });
+  b.send({ t: 'hello', name: 'ボブ', deck: b.deck, mode: 'join', p: NET.PROTOCOL });
   assert.equal(b.last('foe')?.foe?.name, 'アリス2');
   assert.equal(b.last('foe')?.foe?.fav, 'dragon');
   const g = w.last('game')!;
@@ -292,5 +292,15 @@ const truth = () => (room as unknown as { game: GameState }).game;
   assert.equal(w.closedWith, 1000);
   assert.equal(room.expired(), false);
   console.log('spectators ok');
+}
+// an app from before the rules change cannot join (and a newer one waits for the server)
+{
+  room = new Room('VERSN', env);
+  const old = new Client(R, '古い');
+  old.send({ t: 'hello', name: '古い', deck: old.deck, mode: 'create' });
+  assert.deepEqual(old.errors(), ['version'], 'an old app is told to update');
+  const fut = new Client(R, '新しい');
+  fut.send({ t: 'hello', name: '新しい', deck: fut.deck, mode: 'create', p: NET.PROTOCOL + 1 });
+  assert.deepEqual(fut.errors(), ['version']);
 }
 console.log('all net tests passed');

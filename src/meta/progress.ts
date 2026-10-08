@@ -29,6 +29,10 @@ export interface Meta {
   title: string;
   /** Titles the player has already looked at in the title list (the rest show NEW). */
   titlesSeen: string[];
+  /** Titles earned so far. A title once earned is kept (e.g. すべての刻 when new cards come out). */
+  titlesEarned?: string[];
+  /** One-off gifts already given (GIFTS). */
+  giftsGot?: string[];
   /** ひとこと on the profile. */
   comment: string;
   /** Recent matches, newest first (戦歴 and the deck rings on the profile). */
@@ -71,8 +75,24 @@ export function claimPresents(m: Meta, ids?: string[], today = ''): Prize {
 // ------------------------------------------------------------------ login bonus
 export const LOGIN_CALENDAR: Prize[] = [{ coins: 30 }, { coins: 40 }, { coins: 50 }, { coins: 40 }, { coins: 60 }, { coins: 40 }, { tickets: 1 }];
 /** Call when the home screen opens. Returns the calendar day (1..7) granted today, or null if already done. */
+/** One-off gifts to every player (an event, a release), each given once into the present box. */
+export const GIFTS: { id: string; from: string; text: string; prize: Prize; until?: string }[] = [
+  { id: 'set1x', from: '運営', text: '第1弾 追加カード配信記念', prize: { tickets: 3 }, until: '2026-11-30' },
+];
+export function grantGifts(m: Meta, today: string): number {
+  m.giftsGot ??= [];
+  let n = 0;
+  for (const g of GIFTS) {
+    if (m.giftsGot.includes(g.id) || (g.until && today > g.until)) continue;
+    m.giftsGot.push(g.id);
+    give(m, g.from, g.text, g.prize, today);
+    n++;
+  }
+  return n;
+}
 export function checkLogin(m: Meta, today: string): number | null {
   rollDay(m, today);
+  grantGifts(m, today);
   if (m.lastLogin === today) return null;
   m.lastLogin = today;
   const d = (m.loginDays % 7) + 1;
@@ -211,6 +231,7 @@ export function recentShares(meta: Meta, n = 20, keep = 3): DeckShare[] {
 // ------------------------------------------------------------------ news
 export interface News { id: string; date: string; tag: 'お知らせ' | '新カード' | '機能追加' | '不具合修正'; title: string; body: string }
 export const NEWS: News[] = [
+  { id: 'n29', date: '2026-10-09', tag: '新カード', title: '第1弾「残響の刻」に追加カード8種が登場', body: '「残響の刻」パックに8種のカードが加わりました（通常3・希少3・秘宝1・伝説1）。新しい「予約専用」の囮の書は、相手に破棄されると相手の時計が4進み、発動すればカードを1枚引きます。忘却の砂は2刻で、相手に1枚捨てさせて自分は1枚引きます。配信記念として、11月30日までにログインするとパックチケット3枚をプレゼントします。また、一度獲得した称号は条件から外れても残るようになりました。' },
   { id: 'n28', date: '2026-10-09', tag: '機能追加', title: 'レート戦の対戦相手が、デッキを少しずつ調整するようになりました', body: 'レート戦の対戦相手は、みんなの対戦の傾向を見て、デッキのカードを少しずつ入れ替えるようになります。デッキの持ち味（速攻なら速攻、耐えるデッキなら耐える戦い方）は変わりません。強い相手ほど勝つための調整を、そうでない相手は顔ぶれを変える調整をします。' },
   { id: 'n27', date: '2026-10-09', tag: 'お知らせ', title: '対戦記録の使い道を追加しました', body: 'レート戦の対戦相手のデッキを改良するため、対戦記録を「どのレート帯でどんなデッキが使われ、どれくらい勝っているか」の集計にも使うようになりました。集計に使うのは端末ごとの匿名のIDとデッキ・勝敗だけで、名前や個人を特定できる形では公開しません。' },
   { id: 'n26', date: '2026-10-09', tag: '機能追加', title: 'レート戦の上位の相手が、あなたのデッキを読むようになりました', body: 'レートの高い相手は、あなたが出したカードからデッキを見抜き、それに合わせた戦い方をしてきます。最上位の相手は、伏せた予約の時刻も気にかけて動きます（中身はのぞきません）。あわせて、AIが試し打ちの中で伏せた予約の中身を参照していた問題を直しました。フリー対戦の「超つよい」も、伏せた予約の中身は分からないまま考えます。' },

@@ -3,7 +3,7 @@ import { CARD_LIST, cardDef } from '../core/cards';
 import type { DeckDef } from '../core/decks';
 import { DEFAULT_LOOK, ownedCount, ownsLook, type LookKind } from '../meta/economy';
 import { rankOf } from '../meta/progress';
-import { earnedTitles, titleById, type TitleCtx, type TitleDef } from '../meta/titles';
+import { TITLES, earnedTitles, titleById, type TitleCtx, type TitleDef } from '../meta/titles';
 import { store } from './storage';
 
 export function titleCtx(): TitleCtx {
@@ -22,7 +22,16 @@ export function titleCtx(): TitleCtx {
     ratedPeak: r.peak,
   };
 }
-export const myTitles = () => earnedTitles(titleCtx());
+/** Titles earned: those the numbers give now, plus every title earned before (a title once earned is kept). */
+export function myTitles(): string[] {
+  const now = earnedTitles(titleCtx());
+  const m = store.meta;
+  const kept = m.titlesEarned ?? [];
+  const add = now.filter((t) => !kept.includes(t));
+  if (add.length) { m.titlesEarned = [...kept, ...add]; store.saveMeta(); }
+  const all = new Set([...kept, ...now]);
+  return TITLES.map((t) => t.id).filter((id) => all.has(id));
+}
 /** The title shown under the name: the chosen one if it is still earned, else the newest earned, else none. */
 export function shownTitle(): TitleDef | undefined {
   const got = myTitles();

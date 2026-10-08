@@ -26,7 +26,8 @@
     "sim:rivals": "tsx src/sim/rivals.ts",
     "test:rivals": "tsx src/sim/rivaltest.ts",
     "test:env": "tsx src/sim/envtest.ts",
-    "daily": "tsx src/sim/daily.ts"
+    "daily": "tsx src/sim/daily.ts",
+    "test:set1x": "tsx src/sim/x1test.ts"
   },
   "dependencies": {
     "pixi.js": "8.6.6"

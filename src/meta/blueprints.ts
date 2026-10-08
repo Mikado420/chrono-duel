@@ -46,11 +46,11 @@ export function originList(id: string): string[] | undefined {
 // ------------------------------------------------------------------ profiles
 /** Roles a card plays besides its size (units are also counted by size: 軽い・中型・大型・挑発). */
 export const ROLE_CARDS: Record<string, string[]> = {
-  '単体除去': ['arrow', 'cage', 'e_shot', 'e_slash', 'g_spanner', 'g_trap', 'g_hammer', 'g_jammer', 'g_ringer', 'g_archer', 'e_bellkeeper'],
+  '単体除去': ['x_gust', 'arrow', 'cage', 'e_shot', 'e_slash', 'g_spanner', 'g_trap', 'g_hammer', 'g_jammer', 'g_ringer', 'g_archer', 'e_bellkeeper'],
   '全体除去': ['collapse', 'e_storm', 'dragon', 'e_atra', 'g_quake', 'g_gearstorm', 'g_maze', 'g_turret', 'g_rewire'],
   '直接ダメージ': ['bolt', 'e_eternal', 'e_sprite', 'g_courier'],
-  '予約への対策': ['e_break', 'breaker', 'e_peek', 'oracle', 'g_hush', 'g_silence', 'g_erase'],
-  '引く': ['insight', 'e_draw', 'scribe', 'rewind', 'g_blueprint', 'g_resonance', 'g_clerk', 'g_engineer'],
+  '予約への対策': ['x_usurper', 'x_sentry', 'e_break', 'breaker', 'e_peek', 'oracle', 'g_hush', 'g_silence', 'g_erase'],
+  '引く': ['x_oblivion', 'x_seer', 'x_decoy', 'x_mirea', 'insight', 'e_draw', 'scribe', 'rewind', 'g_blueprint', 'g_resonance', 'g_clerk', 'g_engineer'],
   '回復': ['rewind', 'e_pray', 'g_warden', 'g_saint'],
   '時計操作': ['stop', 'e_reverse', 'delayer', 'g_seres', 'e_mage', 'e_verna', 'ghost'],
   '強化': ['haste', 'g_reroute', 'g_tune', 'g_overclock', 'g_shield', 'g_overdrive', 'e_march', 'g_lever', 'e_tuner', 'sentinel', 'g_belltoy', 'g_ringmaster', 'g_oiler'],

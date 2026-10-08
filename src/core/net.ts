@@ -21,6 +21,11 @@ export const NET = {
   /** No I, O, 0, 1: easy to read out loud. */
   CODE_CHARS: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
   NAME_MAX: 12,
+  /**
+   * Bumped whenever the two sides must run the same rules (new cards, changed effects). A client with another
+   * number cannot join a room (0.18.0: 第1弾 追加カード = 2; older clients send none = 1).
+   */
+  PROTOCOL: 2,
 } as const;
 
 export const HIDDEN = '?';
@@ -38,7 +43,7 @@ export type ClientMsg =
    * `mode`: 'create' needs an empty room, 'join' needs someone already waiting, 'watch' looks on without a seat.
    * A rejoin with `token` ignores it.
    */
-  | { t: 'hello'; name: string; deck: string[]; token?: string; mode?: 'create' | 'join' | 'watch'; profile?: Profile }
+  | { t: 'hello'; name: string; deck: string[]; token?: string; mode?: 'create' | 'join' | 'watch'; profile?: Profile; p?: number }
   /** In the lobby only: change the name or the deck brought (before the game starts). */
   | { t: 'setup'; name?: string; deck?: string[]; profile?: Profile }
   | { t: 'act'; n: number; a: Action }
@@ -46,7 +51,7 @@ export type ClientMsg =
   | { t: 'surrender' }
   | { t: 'leave' };
 
-export type ErrCode = 'bad' | 'deck' | 'full' | 'stale' | 'turn' | 'illegal' | 'phase' | 'gone' | 'taken';
+export type ErrCode = 'bad' | 'deck' | 'full' | 'stale' | 'turn' | 'illegal' | 'phase' | 'gone' | 'taken' | 'version';
 
 export type ServerMsg =
   | { t: 'welcome'; token: string; code: string; phase: Phase; foe: Presence | null }
@@ -97,6 +102,8 @@ function viewPlayer(p: PlayerState, own: boolean): PlayerState {
     hand: p.hand.map((h) => (own ? { ...h } : { uid: h.uid, card: HIDDEN })),
     field: p.field.map((u) => (u ? { ...u } : null)),
     resv: p.resv.map((r) => ({ ...r, card: own || r.revealed ? r.card : HIDDEN })),
+    // the spells a player used were all shown when used (記憶の司書ミレア chooses from them)
+    ...(p.used ? { used: p.used.slice() } : {}),
   };
 }
 
@@ -110,7 +117,17 @@ export function viewState(s: GameState, v: PlayerIndex): GameState {
     over: s.over ? { winner: s.over.winner === -1 ? -1 : f(s.over.winner), reason: s.over.reason } : null,
     nextUid: s.nextUid,
     actions: s.actions,
+    ...(s.pending ? { pending: viewPending(s.pending, v) } : {}),
   };
+}
+/**
+ * A pending choice as `v` may see it: the chooser sees the options; others see how many there are (星読みの占者's
+ * cards come from the chooser's deck, so they stay hidden; 忘却の砂's are hand ids and ミレア's used spells, both public).
+ */
+function viewPending(p: NonNullable<GameState['pending']>, v: PlayerIndex | null): NonNullable<GameState['pending']> {
+  const f = (x: PlayerIndex): PlayerIndex => (v === null ? x : x === v ? 0 : 1);
+  const hide = p.kind === 'seer' && p.pi !== v;
+  return { pi: f(p.pi), owner: f(p.owner), kind: p.kind, options: hide ? p.options.map(() => HIDDEN) : p.options.slice() };
 }
 
 /** One event as `v` may see it. */
@@ -122,6 +139,8 @@ export function viewEvent(e: GameEvent, v: PlayerIndex): GameEvent {
     case 'attack': return { ...e, pi: f(e.pi), target: e.target ? { pi: f(e.target.pi), lane: e.target.lane } : null };
     case 'draw': return { ...e, pi: f(e.pi), card: e.pi === v ? e.card : HIDDEN };
     case 'reserve': return { ...e, pi: f(e.pi), card: e.pi === v ? e.card : HIDDEN };
+    // 星読みの占者 / ミレア: a card taken into a hand without a draw is as secret as a drawn one
+    case 'fetch': return { ...e, pi: f(e.pi), card: e.pi === v ? e.card : HIDDEN };
     default: return { ...e, pi: f(e.pi) } as GameEvent;
   }
 }
@@ -129,7 +148,7 @@ export const viewEvents = (evs: GameEvent[], v: PlayerIndex): GameEvent[] => evs
 
 /** Spectators see the board from seat 0 with both hands and every unrevealed reservation hidden. */
 export function watchState(s: GameState): GameState {
-  return { ...viewState(s, 0), players: [viewPlayer(s.players[0], false), viewPlayer(s.players[1], false)] };
+  return { ...viewState(s, 0), players: [viewPlayer(s.players[0], false), viewPlayer(s.players[1], false)], ...(s.pending ? { pending: viewPending(s.pending, null) } : {}) };
 }
 export function watchEvent(e: GameEvent): GameEvent {
   if (e.e === 'draw' || e.e === 'reserve' || e.e === 'fetch') return { ...e, card: HIDDEN };
