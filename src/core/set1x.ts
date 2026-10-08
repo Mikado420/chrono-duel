@@ -13,7 +13,7 @@ const DEFS: Record<string, Def> = {
   x_gust: { name: '送り返しの風', kind: 'spell', rarity: 'C', cost: 3, effect: 'xGust', text: '攻撃力が最も高い敵ユニットを持ち主の手札に戻す（手札がいっぱいなら失われる）。', resvText: 'さらにカードを1枚引く。', flavor: '来た道を、もう一度。', motif: 'wave' },
   x_oblivion: { name: '忘却の砂', kind: 'spell', rarity: 'R', cost: 1, effect: 'xOblivion', text: '相手は手札を1枚選んで捨てる。', resvText: 'さらにカードを1枚引く。', flavor: '思い出せないなら、なかったのと同じ。', motif: 'hourglass' },
   x_seer: { name: '星読みの占者', kind: 'unit', rarity: 'R', cost: 2, atk: 1, hp: 3, reload: 2, hook: 'seer', text: '登場時：山札の上3枚を見て1枚を選んで手札に加え、残りを山札の下に置く。', flavor: '明日の星は、もう見えている。', motif: 'eye' },
-  x_twin: { name: '二重詠唱の書', kind: 'spell', rarity: 'R', cost: 2, effect: 'xTwin', text: '次に発動する自分の予約は、効果が2回発動する。', resvText: 'さらにカードを1枚引く。', flavor: '同じ言葉を、二つの声で。', motif: 'spiral' },
+  x_decoy: { name: '囮の書', kind: 'spell', rarity: 'R', cost: 2, effect: 'xDecoy', text: '4刻後に発動する偽の予約を1つ置く（相手からは本物と区別できず、発動しても何も起きない。予約枠を使わない）。カードを1枚引く。', resvText: 'さらにカードを1枚引く。', flavor: 'どれが本物か、当ててごらん。', motif: 'spiral' },
   x_usurper: { name: '時の簒奪者', kind: 'unit', rarity: 'E', cost: 5, atk: 3, hp: 4, reload: 3, hook: 'stealResv', text: '登場時：相手の最も早い予約か残響を1つ奪い、自分のものにする。奪った予約は1刻早く発動する。', flavor: 'その時間は、私が使う。', motif: 'pendulum' },
   x_mirea: { name: '記憶の司書ミレア', kind: 'unit', rarity: 'L', cost: 5, atk: 3, hp: 5, reload: 3, hook: 'recall', text: '登場時：このゲームで自分が使った呪文（伝説を除く）を1枚選び、コストを払わずに使う。', flavor: '書かれたことは、何度でも読める。', motif: 'crown' },
 };

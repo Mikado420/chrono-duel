@@ -35,7 +35,7 @@ export type SpellEffect =
   | 'gSpanner' | 'gReroute' | 'gTrap' | 'gBlueprint' | 'gFortify' | 'gHammer' | 'gHush' | 'gRally' | 'gRing' | 'gSilence'
   | 'gMaze' | 'gTune' | 'gGearstorm' | 'gMirror' | 'gLever' | 'gRewire' | 'gQuake' | 'gErase' | 'gOverdrive'
   // 第1弾 追加
-  | 'xForesee' | 'xGust' | 'xOblivion' | 'xTwin';
+  | 'xForesee' | 'xGust' | 'xOblivion' | 'xDecoy';
 
 export interface CardDef {
   id: string;

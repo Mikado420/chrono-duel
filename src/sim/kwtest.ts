@@ -32,8 +32,15 @@ const give = (s: GameState, card: string) => { const uid = s.nextUid++; s.player
   assert.equal(u.readyAt, ready, 'readiness unchanged');
   assert.throws(() => apply(s, { t: 'move', lane: 2, to: 0 }), 'only next to it');
   s.players[0].field[1] = { uid: 999, card: 'gear', atk: 3, hp: 3, maxHp: 3, reload: 2, readyAt: 0, taunt: false, pierce: false };
-  assert.equal(legalActions(s, 0).filter((a) => a.t === 'move').length, 0, 'blocked by a neighbour');
+  // a neighbour is swapped with (2 ticks); the neighbour itself needs no 転移
+  const sw = legalActions(s, 0).filter((a) => a.t === 'move');
+  assert.deepEqual(sw, [{ t: 'move', lane: 2, to: 1 }], 'swap with the neighbour');
   assert.ok(!legalActions(s, 0).some((a) => a.t === 'move' && a.lane === 1), 'a unit without 転移 never moves');
+  const mate = s.players[0].field[1]!, t1 = s.players[0].time;
+  const ev2 = apply(s, { t: 'move', lane: 2, to: 1 });
+  assert.ok(ev2.some((e) => e.e === 'swap'));
+  assert.equal(s.players[0].field[1], u); assert.equal(s.players[0].field[2], mate);
+  assert.equal(s.players[0].time, t1 + 2, 'a swap costs 2 ticks');
 }
 // online: a move is told apart by its destination
 assert.equal(sameAction({ t: 'move', lane: 1, to: 0 }, { t: 'move', lane: 1, to: 2 }), false);

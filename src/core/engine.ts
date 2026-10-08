@@ -24,9 +24,7 @@ export interface Unit {
  */
 export interface Reservation {
   uid: number; card: string; T: number; revealed: boolean; echo?: EchoEffect;
-  /** 封緘 (二重詠唱の書の案): the opponent's effects cannot reveal, move, break or take it. */
-  sealed?: boolean;
-  /** 囮 (二重詠唱の書の案): a fake pin that does nothing and uses no slot. */
+  /** 囮の書: a fake pin that does nothing when it comes due and uses no slot. */
   decoy?: boolean;
 }
 export interface PlayerState {
@@ -38,14 +36,6 @@ export interface PlayerState {
   resv: Reservation[];
   /** Spells this player has used (cast, or reserved and fired), oldest first (記憶の司書ミレア). */
   used?: string[];
-  /** 二重詠唱の書: how many of this player's next reservations fire twice. */
-  twin?: number;
-  /** 二重詠唱の書 (variant): extra reservation slots for the rest of the game. */
-  resvBonus?: number;
-  /** 二重詠唱の書 (variant): ticks off this player's next reservation. */
-  resvDiscount?: number;
-  /** 二重詠唱の書 (variant 封緘): this player's next reservation is sealed. */
-  sealNext?: boolean;
 }
 export type EndReason = 'ko' | 'time';
 export interface GameState {
@@ -121,10 +111,6 @@ export type GameEvent =
   | { e: 'stealResv'; pi: PlayerIndex; uid: number; card: string; T: number }
   | { e: 'end'; winner: PlayerIndex | -1; reason: EndReason };
 
-/** Variants of the new 第1弾 cards and of 転移, switched by the balance tools while designs are tried (not saved in games). */
-export const VARIANT = { gust: 'base', twin: 'base', shiftSwap: false, swapNoTrigger: false, swapCost2: false, oblDraw: false };
-/** How many reservations `p` may hold (二重詠唱の書 can raise it). */
-export const maxResv = (p: PlayerState) => RULES.MAX_RESV + (p.resvBonus ?? 0);
 
 export const other = (pi: PlayerIndex): PlayerIndex => (pi === 0 ? 1 : 0);
 
@@ -199,11 +185,6 @@ export function cardCost(s: GameState, pi: PlayerIndex, id: string): number {
   return d.rush && rushActive(s, pi) ? Math.max(1, d.cost - d.rush) : d.cost;
 }
 
-/** What reserving a card costs `pi` (二重詠唱の書 may make the next one cheaper). */
-export function resvCost(s: GameState, pi: PlayerIndex, id: string): number {
-  const d = s.players[pi].resvDiscount ?? 0;
-  return d ? Math.max(1, cardCost(s, pi, id) - d) : cardCost(s, pi, id);
-}
 export function resvRange(s: GameState, pi: PlayerIndex, cost: number): [number, number] | null {
   const p = s.players[pi];
   const lo = p.time + cost + RULES.RESV_MIN_GAP;
@@ -223,12 +204,12 @@ export function legalActions(s: GameState, pi: PlayerIndex): Action[] {
       p.field.forEach((u, l) => { if (!u) for (const x of xs) out.push(x === undefined ? { t: 'play', hand: h.uid, lane: l } : { t: 'play', hand: h.uid, lane: l, x }); });
     } else {
       for (const x of xs) out.push(x === undefined ? { t: 'cast', hand: h.uid } : { t: 'cast', hand: h.uid, x });
-      const r = resvCount(p) < maxResv(p) ? resvRange(s, pi, resvCost(s, pi, h.card)) : null;
+      const r = resvCount(p) < RULES.MAX_RESV ? resvRange(s, pi, cardCost(s, pi, h.card)) : null;
       if (r) for (let T = r[0]; T <= r[1]; T++) out.push({ t: 'reserve', hand: h.uid, T });
     }
   });
   p.field.forEach((u, l) => { if (u && isReady(s, pi, u)) out.push({ t: 'attack', lane: l }); });
-  p.field.forEach((u, l) => { if (u && canShift(s, pi, u)) for (const to of [l - 1, l + 1]) if (to >= 0 && to < RULES.LANES && (!p.field[to] || VARIANT.shiftSwap)) out.push({ t: 'move', lane: l, to }); });
+  p.field.forEach((u, l) => { if (u && canShift(s, pi, u)) for (const to of [l - 1, l + 1]) if (to >= 0 && to < RULES.LANES) out.push({ t: 'move', lane: l, to }); });
   if (p.deck.length) out.push({ t: 'draw' });
   out.push({ t: 'wait' });
   return out;
@@ -238,10 +219,10 @@ export function timeCost(s: GameState, pi: PlayerIndex, a: Action): number {
   switch (a.t) {
     case 'play': case 'cast': case 'reserve': {
       const h = s.players[pi].hand.find((x) => x.uid === a.hand);
-      return h ? (a.t === 'reserve' ? resvCost(s, pi, h.card) : cardCost(s, pi, h.card) + (a.x ?? 0)) : 0;
+      return h ? cardCost(s, pi, h.card) + (a.t !== 'reserve' ? a.x ?? 0 : 0) : 0;
     }
     case 'attack': return RULES.COST_ATTACK;
-    case 'move': return RULES.COST_MOVE + (VARIANT.swapCost2 && s.players[pi].field[a.to] ? 1 : 0);
+    case 'move': return RULES.COST_MOVE + (s.players[pi].field[a.to] ? RULES.COST_SWAP_EXTRA : 0);
     case 'draw': return RULES.COST_DRAW;
     case 'wait': return RULES.COST_WAIT;
     case 'choose': return 0;
@@ -361,7 +342,7 @@ function delayUnit(s: GameState, qi: PlayerIndex, lane: number, n: number, ev: G
 }
 /** Pushes reservations of `qi` later (echoes only, or every one). */
 function delayResv(s: GameState, qi: PlayerIndex, n: number, echoesOnly: boolean, ev: GameEvent[]) {
-  for (const r of s.players[qi].resv) if ((!echoesOnly || r.echo) && !r.sealed) { r.T += n; ev.push({ e: 'moveResv', pi: qi, uid: r.uid, T: r.T }); }
+  for (const r of s.players[qi].resv) if (!echoesOnly || r.echo) { r.T += n; ev.push({ e: 'moveResv', pi: qi, uid: r.uid, T: r.T }); }
 }
 function damageUnit(s: GameState, pi: PlayerIndex, lane: number, amount: number, ev: GameEvent[]) {
   const p = s.players[pi];
@@ -442,7 +423,7 @@ function storm(s: GameState, pi: PlayerIndex, qi: PlayerIndex, n: number, card: 
 }
 function breakNearest(s: GameState, qi: PlayerIndex, ev: GameEvent[]): boolean {
   const r = s.players[qi].resv;
-  const x = r.filter((y) => !y.sealed).sort((a, b) => a.T - b.T)[0];
+  const x = r.slice().sort((a, b) => a.T - b.T)[0];
   if (!x) return false;
   r.splice(r.indexOf(x), 1);
   ev.push({ e: 'breakResv', pi: qi, uid: x.uid, card: x.card });
@@ -450,14 +431,14 @@ function breakNearest(s: GameState, qi: PlayerIndex, ev: GameEvent[]): boolean {
 }
 function breakLatest(s: GameState, qi: PlayerIndex, ev: GameEvent[]): boolean {
   const r = s.players[qi].resv;
-  const x = r.filter((y) => !y.sealed).sort((a, b) => b.T - a.T)[0];
+  const x = r.slice().sort((a, b) => b.T - a.T)[0];
   if (!x) return false;
   r.splice(r.indexOf(x), 1);
   ev.push({ e: 'breakResv', pi: qi, uid: x.uid, card: x.card });
   return true;
 }
 function revealAll(s: GameState, qi: PlayerIndex, ev: GameEvent[]) {
-  const r = s.players[qi].resv.filter((x) => !x.sealed);
+  const r = s.players[qi].resv;
   r.forEach((x) => (x.revealed = true));
   ev.push({ e: 'reveal', pi: qi, uids: r.map((x) => x.uid) });
 }
@@ -571,7 +552,7 @@ function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, e
     case 'xForesee': {
       const q = s.players[qi];
       if (q.resv.length) revealAll(s, qi, ev);
-      const r = q.resv.filter((x) => !x.echo && !x.sealed).sort((a, b) => a.T - b.T)[0];
+      const r = q.resv.filter((x) => !x.echo).sort((a, b) => a.T - b.T)[0];
       if (!r) drawCard(s, pi, ev); // nothing to send back: a card instead
       else {
         q.resv = q.resv.filter((x) => x !== r);
@@ -582,9 +563,7 @@ function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, e
       break;
     }
     case 'xGust': {
-      const cap = VARIANT.gust === 'le4' ? 4 : VARIANT.gust === 'le3' ? 3 : 99;
-      let l = -1;
-      s.players[qi].field.forEach((u, i) => { if (u && cardDef(u.card).cost <= cap) { const b = l >= 0 ? s.players[qi].field[l]! : null; if (!b || u.atk > b.atk || (u.atk === b.atk && u.hp > b.hp)) l = i; } });
+      const l = topEnemy(s, qi);
       if (l < 0) { ev.push({ e: 'fizzle', pi, card: d.id }); }
       else {
         const q = s.players[qi], u = q.field[l]!;
@@ -593,7 +572,7 @@ function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, e
         const uid = cardDef(u.card).token ? -1 : toHand(s, qi, u.card, ev);
         ev.push({ e: 'unsummon', pi: qi, lane: l, unit: u, uid });
       }
-      if (boosted && VARIANT.gust !== 'noboost') drawCard(s, pi, ev);
+      if (boosted) drawCard(s, pi, ev);
       break;
     }
     case 'xOblivion': {
@@ -602,23 +581,18 @@ function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, e
       if (!q.hand.length) ev.push({ e: 'fizzle', pi, card: d.id });
       else if (q.hand.length === 1) { const [h] = q.hand.splice(0, 1); ev.push({ e: 'discard', pi: qi, uid: h.uid, card: h.card }); }
       else s.pending = { pi: qi, kind: 'discard', options: q.hand.map((h) => h.uid), owner: pi };
-      if (VARIANT.oblDraw) drawCard(s, pi, ev);
       if (boosted) drawCard(s, pi, ev);
       break;
     }
-    case 'xTwin':
-      if (VARIANT.twin === 'slot') { p.resvBonus = Math.min(1, (p.resvBonus ?? 0) + 1); drawCard(s, pi, ev); }
-      else if (VARIANT.twin === 'cheap') { p.resvDiscount = 2; drawCard(s, pi, ev); }
-      else if (VARIANT.twin === 'seal') { p.sealNext = true; drawCard(s, pi, ev); }
-      else if (VARIANT.twin === 'decoy') {
-        const uid = s.nextUid++, T = Math.min(RULES.END, p.time + 4);
-        p.resv.push({ uid, card: d.id, T, revealed: false, decoy: true });
-        ev.push({ e: 'reserve', pi, uid, card: d.id, T, fromHand: -1 });
-        drawCard(s, pi, ev);
-      }
-      else p.twin = (p.twin ?? 0) + 1;
+    case 'xDecoy': {
+      // 囮の書: a pin the opponent cannot tell from a real reservation; nothing happens when it comes due
+      const uid = s.nextUid++, T = Math.min(RULES.END, p.time + 4);
+      p.resv.push({ uid, card: d.id, T, revealed: false, decoy: true });
+      ev.push({ e: 'reserve', pi, uid, card: d.id, T, fromHand: -1 });
+      drawCard(s, pi, ev);
       if (boosted) drawCard(s, pi, ev);
       break;
+    }
     // ---- 第2弾
     case 'gSpanner': {
       const l = pickUnit(s, qi, 'atkLo');
@@ -712,8 +686,8 @@ function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, e
     }
     case 'gQuake': storm(s, pi, qi, 2 + b, d.id, ev); p.field.forEach((u, l) => { if (u && cardDef(u.card).bell) { u.hp++; u.maxHp++; ev.push({ e: 'buff', pi, lane: l, atk: u.atk, hp: u.hp }); } }); break;
     case 'gErase': {
-      const gone = s.players[qi].resv.filter((r) => !r.sealed);
-      s.players[qi].resv = s.players[qi].resv.filter((r) => r.sealed);
+      const gone = s.players[qi].resv;
+      s.players[qi].resv = [];
       for (const x of gone) ev.push({ e: 'breakResv', pi: qi, uid: x.uid, card: x.card });
       for (let i = 0; i < Math.max(1, Math.min(gone.length, 2 + b)); i++) drawCard(s, pi, ev);
       break;
@@ -745,7 +719,7 @@ function runUnitHook(s: GameState, pi: PlayerIndex, lane: number, ev: GameEvent[
     }
     case 'stealResv': {
       const q = s.players[qi];
-      const r = q.resv.filter((x) => !x.sealed).sort((a, b) => a.T - b.T)[0];
+      const r = q.resv.slice().sort((a, b) => a.T - b.T)[0];
       if (!r) { ev.push({ e: 'fizzle', pi, card: u.card }); break; }
       q.resv = q.resv.filter((x) => x !== r);
       r.revealed = true;
@@ -884,20 +858,18 @@ export function apply(s: GameState, a: Action): GameEvent[] {
       break;
     }
     case 'reserve': {
-      if (resvCount(p) >= maxResv(p)) throw new Error('too many reservations');
+      if (resvCount(p) >= RULES.MAX_RESV) throw new Error('too many reservations');
       const h = p.hand.find((x) => x.uid === a.hand);
       if (!h) throw new Error('card not in hand');
       const d = cardDef(h.card);
       if (d.kind !== 'spell') throw new Error('not a spell');
-      const cost = resvCost(s, pi, h.card);
+      const cost = cardCost(s, pi, h.card);
       const r = resvRange(s, pi, cost);
       if (!r || a.T < r[0] || a.T > r[1]) throw new Error('bad reservation time');
-      p.resvDiscount = 0;
       const { idx, card } = takeHand(p, a.hand);
       advance(s, pi, cost, ev);
       const uid = s.nextUid++;
-      p.resv.push({ uid, card, T: a.T, revealed: false, ...(p.sealNext ? { sealed: true } : {}) });
-      p.sealNext = false;
+      p.resv.push({ uid, card, T: a.T, revealed: false });
       ev.push({ e: 'reserve', pi, uid, card, T: a.T, fromHand: idx });
       break;
     }
@@ -934,14 +906,14 @@ export function apply(s: GameState, a: Action): GameEvent[] {
     case 'move': {
       const u = p.field[a.lane];
       if (!u || !canShift(s, pi, u)) throw new Error('unit cannot move');
-      if (Math.abs(a.to - a.lane) !== 1 || a.to < 0 || a.to >= RULES.LANES || (p.field[a.to] && !VARIANT.shiftSwap)) throw new Error('lane not free');
+      if (Math.abs(a.to - a.lane) !== 1 || a.to < 0 || a.to >= RULES.LANES || false) throw new Error('lane not free');
       const mate = p.field[a.to];
-      advance(s, pi, RULES.COST_MOVE + (mate && VARIANT.swapCost2 ? 1 : 0), ev);
+      advance(s, pi, RULES.COST_MOVE + (mate ? RULES.COST_SWAP_EXTRA : 0), ev);
       // the clock may have rung a bell that changed the board; the move still needs its unit (and the same lane-mate)
       if (p.field[a.lane] === u && p.field[a.to] === mate) {
         p.field[a.to] = u; p.field[a.lane] = mate;
         ev.push(mate ? { e: 'swap', pi, a: a.lane, b: a.to } : { e: 'move', pi, from: a.lane, to: a.to });
-        if (!mate || !VARIANT.swapNoTrigger) onShifted(s, pi, a.to, ev);
+        onShifted(s, pi, a.to, ev);
       }
       break;
     }
@@ -990,11 +962,7 @@ function settle(s: GameState, ev: GameEvent[]) {
         const d = cardDef(r.card);
         const p = s.players[pi];
         noteUsed(p, r.card);
-        // 二重詠唱の書: the next reservation fires twice (not another 二重詠唱)
-        const twice = !!p.twin && d.effect !== 'xTwin';
-        if (twice) p.twin!--;
         runSpell(s, pi, d, true, ev);
-        if (twice && !s.over && !checkKo(s, ev)) runSpell(s, pi, d, true, ev);
         scheduleEchoes(s, pi, d, r.T, ev);
       }
       if (checkKo(s, ev)) return;

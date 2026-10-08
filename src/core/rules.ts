@@ -26,5 +26,7 @@ export const RULES = {
   COST_WAIT: 1,
   /** 転移: moving a unit to the next empty lane. */
   COST_MOVE: 1,
+  /** 転移で隣の味方と入れ替わるときは、さらに1刻かかる（合計2刻）。 */
+  COST_SWAP_EXTRA: 1,
   LANES: 3,
 } as const;
