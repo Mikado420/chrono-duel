@@ -2,6 +2,8 @@
 import assert from 'node:assert/strict';
 import { LV, chooseRival, findLethal, incoming, newMind, quirksOf, thinkMs, type RivalCfg } from '../core/rival';
 import { planBonus } from '../core/plans';
+import { determinize } from '../core/ai';
+import { guessDecks, guessWorld, likelyDeck, observe, type Seen } from '../core/infer';
 import { actor, apply, createGame, legalActions, mulberry32, type Action, type GameState } from '../core/engine';
 import { ROSTER, rivalCfg, rivalDeckCards } from '../meta/roster';
 
@@ -71,5 +73,38 @@ assert.ok(new Set(ROSTER.map((r) => JSON.stringify(quirksOf(r.name)))).size > 20
   assert.ok(planBonus('oracle', 'all', s, s, 1, a) >= 2.5, 'pushes the opponent past bell 8');
   s.players[0].time = 3;
   assert.ok(planBonus('oracle', 'all', s, s, 1, a) < 1, 'no bell to push past');
+}
+// Lv9: six cards of ヴェルナループ are enough to name the deck (four are not: other decks share them)
+{
+  assert.equal(likelyDeck(guessDecks({ e_verna: 1, e_peek: 2, rewind: 1 })), null);
+  const seen: Seen = { e_verna: 1, e_peek: 2, rewind: 2, e_pray: 1 };
+  const g = guessDecks(seen);
+  assert.equal(likelyDeck(g), 'verna', JSON.stringify(g.slice(0, 3)));
+  assert.ok(Math.abs(g.reduce((a, x) => a + x.p, 0) - 1) < 1e-9);
+  assert.equal(likelyDeck(guessDecks({ scout: 1 })), null, 'one common card is not enough');
+  // what is seen: the board, used spells and revealed reservations (never the hand)
+  const s = fresh();
+  s.players[0].field[1] = unit('e_verna', 4, 5);
+  s.players[0].used = ['e_peek', 'e_peek'];
+  s.players[0].resv = [{ uid: 1, card: 'stop', T: 20, revealed: false }, { uid: 2, card: 'rewind', T: 18, revealed: true }];
+  const sn: Seen = {};
+  observe(sn, s, 1);
+  assert.deepEqual(sn, { e_verna: 1, e_peek: 2, rewind: 1 }, 'the hidden 時間停止 is not seen');
+}
+// nobody peeks at a hidden reservation: the guessed worlds keep its time but never its real card (Lv10), or drop it
+{
+  const s = fresh();
+  s.players[0].resv = [{ uid: 5, card: 'e_eternal', T: 12, revealed: false }];
+  const d = determinize(s, 1, s.players[1].deck.slice(), rand);
+  assert.equal(d.players[0].resv.length, 0, 'the plain search leaves hidden pins out');
+  const g = guessDecks({ scout: 2, archer: 2, haste: 1 });
+  let same = 0;
+  for (let i = 0; i < 200; i++) {
+    const w = guessWorld(s, 1, g, { scout: 2, archer: 2, haste: 1 }, true, rand);
+    assert.equal(w.players[0].resv.length, 1);
+    assert.equal(w.players[0].resv[0].T, 12, 'the pin stays where it is');
+    if (w.players[0].resv[0].card === 'e_eternal') same++;
+  }
+  assert.ok(same < 30, `the guess does not follow the real card (${same}/200)`);
 }
 console.log('all rival tests passed');

@@ -241,6 +241,9 @@ export async function chooseActionSpecAsync(s: GameState, pi: PlayerIndex, spec:
 export function determinize(s: GameState, pi: PlayerIndex, ownDeck: string[], rand: () => number): GameState {
   const c = clone(s);
   const op = c.players[other(pi)];
+  // what the opponent's unrevealed reservations hold is hidden too: only their pins (times) are public, so they are
+  // left out here, as in `fogged` (the rated Lv10 rivals guess them instead, see infer.ts)
+  op.resv = op.resv.filter((r) => r.revealed || !!r.echo);
   const pool = CARD_LIST;
   op.hand = op.hand.map((h) => ({ uid: h.uid, card: pool[Math.floor(rand() * pool.length)].id }));
   op.deck = op.deck.map(() => pool[Math.floor(rand() * pool.length)].id);

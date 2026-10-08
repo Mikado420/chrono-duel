@@ -6,6 +6,7 @@
 import { cardDef, type CardDef } from './cards';
 import { RULES } from './rules';
 import { attackTarget, other, rushActive, timeCost, worldTime, type Action, type GameState, type PlayerIndex, type PlayerState } from './engine';
+import { knownDecks } from './infer';
 
 /** half: only the 基本 rule at half strength; basic: only the 基本 rule; all: every rule and the shared ones. */
 export type PlanScale = 'half' | 'basic' | 'all';
@@ -220,8 +221,35 @@ export function planCtx(s: GameState, real: GameState, pi: PlayerIndex, a: Actio
   };
 }
 
-/** The deck's plan bonus for move `a` (0 for decks without a plan). */
-export function planBonus(deck: string, scale: PlanScale, s: GameState, real: GameState, pi: PlayerIndex, a: Action): number {
+// ------------------------------------------------------------------ 相手別 (Lv9+, once the opponent's deck is guessed)
+const listOf = (id: string) => knownDecks().find((d) => d.id === id)?.cards ?? [];
+const BEAT = new Set(['p_rush', 'antiv', 'rush', 'shadow', 'g_maze']);
+const RESV_HEAVY = new Set(['verna', 'reso', 'lock', 'burn', 'oracle', 'g_quiet']);
+const hasAny = (id: string, cards: string[]) => listOf(id).some((c) => cards.includes(c));
+const breaks = (id: string) => hasAny(id, ['e_break', 'breaker', 'g_erase', 'g_silence', 'g_hush']);
+const sweeps = (id: string) => hasAny(id, ['collapse', 'e_storm', 'dragon', 'e_atra', 'g_quake', 'g_gearstorm']);
+const stacking = (x: PlanCtx) => x.reserve && x.me.resv.filter((r) => !r.echo && !r.decoy).length >= 1;
+type Matchup = (x: PlanCtx, opp: string) => number;
+const SPREAD: Matchup = (x, o) => (breaks(o) && stacking(x) ? -1.5 : 0);
+export const MATCHUPS: Record<string, Matchup[]> = {
+  control: [
+    (x, o) => (BEAT.has(o) && x.cardId && x.cardId in SWEEP && enemies(x).length < 2 ? -1.5 : 0),
+    (x, o) => (RESV_HEAVY.has(o) && isCard(x, 'e_break', 'breaker') ? 1.5 : 0),
+  ],
+  reso: [SPREAD],
+  verna: [SPREAD],
+  p_echo: [SPREAD],
+  lock: [(x, o) => { const n = clockPush(x); return (BEAT.has(o) || o === 'p_rush') && n && x.op.time + n - (x.me.time + x.cost) >= 4 ? -1.5 : 0; }],
+  shadow: [(x, o) => (sweeps(o) && x.a.t === 'play' && units(x.me).length >= 3 && !handCards(x).includes('haste') ? -1 : 0)],
+  antiv: [(x, o) => (!RESV_HEAVY.has(o) && isCard(x, 'e_break') ? -2 : 0)],
+  burn: [(x, o) => (BEAT.has(o) && heal(x) && x.me.hp <= 11 ? 1 : 0)],
+  titan: [(x, o) => (BEAT.has(o) && x.a.t === 'play' && x.card?.keywords?.includes('taunt') ? 1 : 0)],
+  p_titan: [(x, o) => (BEAT.has(o) && x.a.t === 'play' && x.card?.keywords?.includes('taunt') ? 1 : 0)],
+  charge: [(x, o) => (BEAT.has(o) && x.a.t === 'play' && x.card?.keywords?.includes('taunt') ? 1 : 0)],
+};
+
+/** The deck's plan bonus for move `a` (0 for decks without a plan). `opp`: the opponent's guessed deck (Lv9+). */
+export function planBonus(deck: string, scale: PlanScale, s: GameState, real: GameState, pi: PlayerIndex, a: Action, opp: string | null = null): number {
   const rules = PLANS[deck];
   if (!rules && scale !== 'all') return 0;
   const x = planCtx(s, real, pi, a);
@@ -229,5 +257,6 @@ export function planBonus(deck: string, scale: PlanScale, s: GameState, real: Ga
   let v = 0;
   for (const r of rules ?? []) v += r(x);
   for (const r of SHARED) v += r(x);
+  if (opp) for (const m of MATCHUPS[deck] ?? []) v += m(x, opp);
   return v;
 }

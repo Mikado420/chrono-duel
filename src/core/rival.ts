@@ -17,6 +17,7 @@ import {
   actor, apply, attackTarget, clone, legalActions, other, resvRange, timeCost, worldTime,
   type Action, type GameState, type PlayerIndex, type PlayerState,
 } from './engine';
+import { guessDecks, guessWorld, likelyDeck, moreReserveTimes, observe, type Seen } from './infer';
 import { planBonus, type PlanScale } from './plans';
 import { RULES } from './rules';
 
@@ -38,6 +39,10 @@ export interface LvParams {
   plan: PlanScale;
   /** Per-move probability of each mistake, in %. */
   miss: Record<MissKind, number>;
+  /** Lv9+: guesses the opponent's deck from the cards seen (rollouts use it, and the plan's 相手別 rules). */
+  infer?: boolean;
+  /** Lv10: keeps the opponent's hidden reservations (their pins) with a guessed spell, tries more reservation times and reserves in its rollouts. */
+  pins?: boolean;
 }
 const M = (attackMiss: number, threatMiss: number, resvShift: number, holdBack: number, misplace: number, missLethal: number, forgetDefend: number): Record<MissKind, number> =>
   ({ attackMiss, threatMiss, resvShift, holdBack, misplace, missLethal, forgetDefend });
@@ -55,8 +60,8 @@ export const LV: Record<number, LvParams> = {
   6: { read: 2, deeper: 0, search: S(5, 8, 24), noise: 0, eps: 1.2, plan: 'all', miss: M(2, 4, 4, 2, 1, 0, 0) },
   7: { read: 2, deeper: 0, search: S(6, 12, 30), noise: 0, eps: 1.0, plan: 'all', miss: M(1, 2, 2, 1, 0, 0, 0) },
   8: { read: 2, deeper: 0, search: S(8, 24, 30), noise: 0, eps: 0.8, plan: 'all', miss: M(0, 1, 1, 0, 0, 0, 0) },
-  9: { read: 2, deeper: 0, search: S(10, 32, 30), noise: 0, eps: 0.6, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0) },
-  10: { read: 2, deeper: 0, search: S(12, 40, 30), noise: 0, eps: 0.5, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0) },
+  9: { read: 2, deeper: 0, search: S(10, 32, 30), noise: 0, eps: 0.6, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true },
+  10: { read: 2, deeper: 0, search: S(12, 40, 30), noise: 0, eps: 0.5, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true },
 };
 /** For balance tools: change a Lv's parameters. */
 export function tuneLv(lv: number, p: Partial<LvParams>) { Object.assign(LV[lv], p); }
@@ -156,8 +161,10 @@ export interface RivalMind {
   lastMiss: MissKind | null;
   missRun: number;
   surrenderChecked: boolean;
+  /** The opponent's cards seen so far (for the deck guess). */
+  seen: Seen;
 }
-export const newMind = (rand: () => number = Math.random): RivalMind => ({ form: 0.7 + rand() * 0.6, lastMiss: null, missRun: 0, surrenderChecked: false });
+export const newMind = (rand: () => number = Math.random): RivalMind => ({ form: 0.7 + rand() * 0.6, lastMiss: null, missRun: 0, surrenderChecked: false, seen: {} });
 
 /** How the move was found (the battle scene turns this into a thinking time). */
 export type MoveKind = 'obvious' | 'normal' | 'torn' | 'key';
@@ -221,6 +228,35 @@ export function incoming(s: GameState, pi: PlayerIndex): number {
   return dmg;
 }
 
+/** The guessed world as the shortlist sees it: our hand is real, every draw is unknown (like `fogged`), the pins stay. */
+function fogPins(w: GameState): GameState {
+  for (const p of w.players) p.deck = p.deck.map(() => 'scout');
+  return w;
+}
+/** Like ai.rollout, but either side may also reserve (at its earliest time or two ticks later): Lv10's 予約の先読み. */
+export function rolloutWithReserves(s: GameState, pi: PlayerIndex, depth: number, rand: () => number): number {
+  for (let i = 0; i < depth && !s.over; i++) {
+    const q = actor(s);
+    if (q === -1) break;
+    if (s.pending) { apply(s, chooseChoice(s, q)); continue; }
+    let best: Action = { t: 'wait' }, bv = -Infinity;
+    for (const a of legalActions(s, q)) {
+      let extra = 0;
+      if (a.t === 'reserve') {
+        const r = resvRange(s, q, timeCost(s, q, a));
+        if (!r || (a.T !== r[0] && a.T !== r[0] + 2)) continue;
+        extra = intentBonus(s, q, a);
+      }
+      const c = clone(s);
+      apply(c, a);
+      const v = evaluate(c, q, EXPERT_WEIGHTS) + extra + (rand() - 0.5) * 1.5;
+      if (v > bv) { bv = v; best = a; }
+    }
+    apply(s, best);
+  }
+  return evaluate(s, pi, EXPERT_WEIGHTS);
+}
+
 interface Scored { a: Action; v: number; ahead?: number }
 
 /** A generator so the battle scene can keep animating between rollouts. */
@@ -229,7 +265,11 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
   const P = LV[Math.max(1, Math.min(10, cfg.lv))];
   const base = fogged(real, pi);
   const me = base.players[pi];
+  observe((mind.seen ??= {}), real, pi);
+  const guess = P.infer ? guessDecks(mind.seen) : null;
+  const oppDeck = guess ? likelyDeck(guess) : null;
   let acts = pruneReserves(base, pi, legalActions(base, pi));
+  if (P.pins) acts = moreReserveTimes(base, pi, legalActions(base, pi), acts);
   const miss = rollMiss(P, mind, rand);
   noteMiss(mind, miss);
 
@@ -254,7 +294,7 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
   // ---- 2. score at the Lv's depth
   const read = (P.read + (rand() < P.deeper ? 1 : 0)) as 0 | 1 | 2;
   const threatLane = miss === 'threatMiss' ? Math.floor(rand() * RULES.LANES) : -1;
-  const bonus = (a: Action) => intentBonus(base, pi, a) + breakBonus(real, pi, a) + planBonus(cfg.deck, P.plan, base, real, pi, a);
+  const bonus = (a: Action) => intentBonus(base, pi, a) + breakBonus(real, pi, a) + planBonus(cfg.deck, P.plan, base, real, pi, a, oppDeck);
   const noise = () => (P.noise ? (rand() * 2 - 1) * P.noise * mind.form : 0);
   let scored: Scored[];
   if (read < 2) {
@@ -266,9 +306,11 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
     });
   } else {
     const search = P.search.candidates ? P.search : LV[7].search;
-    const pre = acts.map((a) => { const c = clone(base); apply(c, a); return { a, v: deepValue(c, pi, 2, 2) + bonus(a) }; }).sort((x, y) => y.v - x.v);
+    // Lv10 reads its shortlist with the opponent's pins in place (their spells guessed)
+    const pinBase = P.pins && guess ? fogPins(guessWorld(real, pi, guess, mind.seen, true, rand)) : base;
+    const pre = acts.map((a) => { const c = clone(pinBase); try { apply(c, a); } catch { return { a, v: -1e9 }; } return { a, v: deepValue(c, pi, 2, 2) + bonus(a) }; }).sort((x, y) => y.v - x.v);
     const short = pre.slice(0, search.candidates);
-    const worlds = Array.from({ length: search.rollouts }, () => determinize(real, pi, real.players[pi].deck.slice(), rand));
+    const worlds = Array.from({ length: search.rollouts }, () => (guess ? guessWorld(real, pi, guess, mind.seen, !!P.pins, rand) : determinize(real, pi, real.players[pi].deck.slice(), rand)));
     scored = [];
     for (const cand of short) {
       yield;
@@ -276,7 +318,7 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
       for (const w of worlds) {
         const c = clone(w);
         try { apply(c, cand.a); } catch { sum -= 1000; continue; }
-        const r = rollout(c, pi, search.depth, rand);
+        const r = P.pins ? rolloutWithReserves(c, pi, search.depth, rand) : rollout(c, pi, search.depth, rand);
         sum += r;
         if (r > 0) ahead++;
       }
