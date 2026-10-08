@@ -18,7 +18,7 @@ import { CARD_LIST } from './core/cards';
 import { finishRated, foeById, foeLevel, makeOpponent, startRated, type RatedGame } from './meta/rating';
 import { rivalById, rivalCfg, rivalDeckCards, rivalDeckName } from './meta/roster';
 import { deckBook, refreshDeckBook, reportMatch, saveLiveGame, syncRated, takeLiveGame } from './net/api';
-import { listFor } from './meta/deckbook';
+import { bookKey, listFor } from './meta/deckbook';
 import { VERSION } from './version';
 import { codeFromHash } from './net/config';
 import { OnlineFlow } from './net/flow';
@@ -224,7 +224,7 @@ async function boot() {
     const level = foeLevel(o.ai);
     const aiDeckId = o.deck ?? 'balance';
     // the rival's list: the deck book's (checked against its 設計図), or the built-in one
-    const list = listFor(deckBook(), aiDeckId, newId(), rivalDeckCards(aiDeckId));
+    const list = listFor(deckBook(), bookKey(aiDeckId, r?.lv ?? 1), newId(), rivalDeckCards(aiDeckId));
     endBattle();
     screens.matching(o, deck, (first) => {
       // the game only counts (and a disconnect only loses) once it has actually started

@@ -6,6 +6,8 @@ import { EnvStats, jstDay } from '../server/env';
 import { PlayStats } from '../server/stats';
 import type { KV } from '../server/leaderboard';
 import { ROSTER, rivalId } from '../meta/roster';
+import { candidates, findNewDecks, findVariants, flexCards, oneSwaps, paired, type ListRow } from './evolve';
+import { archeOf, bookKey } from '../meta/deckbook';
 
 const base = Object.keys(BLUEPRINTS).filter((id) => !id.startsWith('g_'));
 // every built-in list passes its own 設計図 and belongs to its own archetype
@@ -109,4 +111,43 @@ assert.equal((r1.body as { env: boolean }).env, true);
 const r2 = await ps.record({ ...rep, gid: 'g-rated-2' });
 assert.equal((r2.body as { ok: boolean; env: boolean }).ok, true);
 assert.equal((r2.body as { env: boolean }).env, false);
+// 毎日の改良: every candidate keeps the core, passes the 設計図 and changes 1–2 cards
+{
+  const rush = originList('rush')!;
+  assert.ok(!flexCards('rush', rush).includes('bolt') || rush.filter((c) => c === 'bolt').length > 2, 'core cards are not flex');
+  const ones = oneSwaps('rush', rush);
+  assert.ok(ones.length > 10, `${ones.length} one-card swaps`);
+  const cs = candidates('rush', rush, 20, 7);
+  assert.ok(cs.length > 0 && cs.length <= 20);
+  for (const c of cs) {
+    assert.deepEqual(checkList('rush', c), []);
+    const d = 20 - shared(rush, c);
+    assert.ok(d >= 1 && d <= 2, `changes ${d} cards`);
+  }
+  assert.deepEqual(candidates('rush', rush, 20, 7), cs, 'the same day gives the same candidates');
+  // a paired run of a list against itself shows no difference
+  const p = paired(rush, rush, [{ id: 'titan', cards: originList('titan')!, w: 1 }], 6, 3, 'normal');
+  assert.equal(p.diff, 0);
+  assert.equal(bookKey('rush', 9), 'rush');
+  assert.equal(archeOf(bookKey('rush', 3)), 'rush');
+}
+// 発見: a new deck needs 15 players, 100 games and 3 days; a 型 8 players and 50 games
+{
+  const nd = ['e_tuner', 'e_tuner', 'e_bellkeeper', 'e_bellkeeper', 'e_guard', 'e_guard', 'warden', 'warden', 'e_shot', 'e_shot', 'e_pray', 'e_pray', 'e_draw', 'e_draw', 'e_storm', 'heavy', 'heavy', 'e_colossus', 'e_colossus', 'insight'];
+  assert.equal(classify(nd), null);
+  const row = (players: number, g: number, first = '20261001', last = '20261005'): ListRow => ({ cards: nd, g, s: g / 2, e: g / 2, first, last, arche: null, players });
+  assert.equal(findNewDecks([row(20, 150)]).length, 1);
+  assert.equal(findNewDecks([row(10, 150)]).length, 0, 'too few players');
+  assert.equal(findNewDecks([row(20, 50)]).length, 0, 'too few games');
+  assert.equal(findNewDecks([row(20, 150, '20261005', '20261006')]).length, 0, 'too new');
+  const d = findNewDecks([row(20, 150)])[0];
+  assert.equal(d.core.e_tuner, 2);
+  const rush = originList('rush')!;
+  const v = rush.slice(); v[v.indexOf('pendulum')] = 'e_page'; v[v.indexOf('pendulum')] = 'e_page'; v[v.indexOf('delayer')] = 'e_raider';
+  const vr: ListRow = { cards: v, g: 60, s: 30, e: 30, first: '20261001', last: '20261003', arche: 'rush', players: 9 };
+  assert.equal(findVariants([vr]).length, 1);
+  assert.equal(findVariants([{ ...vr, players: 5 }]).length, 0);
+  const close = rush.slice(); close[close.indexOf('pendulum')] = 'e_page';
+  assert.equal(findVariants([{ ...vr, cards: close }]).length, 0, 'one card away is the same list, not a 型');
+}
 console.log('all env tests passed');

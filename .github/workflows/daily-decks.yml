@@ -1,0 +1,67 @@
+# 毎日の改良と発見（src/sim/daily.ts）: every day at 4:30 JST
+#   reads the online server's tables, settles the lists on trial, improves a few rival lists by simulation,
+#   publishes the deck book, and opens an issue when something needs a person (new decks, 型, balance).
+# Needs: Variables > ONLINE_URL (the wss:// address, as for the Pages build) and Secrets > ADMIN_TOKEN (the same
+# value as the server's ADMIN_TOKEN). Without ADMIN_TOKEN it only writes the report.
+name: Daily rival decks
+
+on:
+  schedule:
+    - cron: '30 19 * * *'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'デッキ帳を公開する'
+        type: boolean
+        default: true
+      entries:
+        description: '改良するリストの数'
+        default: '4'
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: daily-decks
+  cancel-in-progress: false
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Improve and report
+        env:
+          SERVER: ${{ vars.ONLINE_URL }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          ORIGIN: ${{ vars.API_ORIGIN || 'https://mikado420.github.io' }}
+          PUBLISH: ${{ github.event_name == 'schedule' && '1' || (inputs.publish && '1' || '0') }}
+          ENTRIES: ${{ inputs.entries || '4' }}
+          BUDGET_MIN: '45'
+          OUT: out
+        run: npx tsx src/sim/daily.ts
+      - name: Summary
+        if: always()
+        run: test -f out/daily-report.md && cat out/daily-report.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: daily-report
+          path: out/
+          retention-days: 30
+      - name: Issue for what needs a person
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -s out/daily-issues.md ]; then
+            n=$(gh issue list --state open --search '確認が必要なこと in:title' --json number -q '.[0].number')
+            if [ -n "$n" ]; then gh issue comment "$n" --body-file out/daily-issues.md
+            else gh issue create --title '確認が必要なこと（AIのデッキ）' --body-file out/daily-issues.md; fi
+          fi

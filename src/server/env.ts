@@ -7,7 +7,7 @@
  * so a raw win rate mostly says which Lv a deck happened to meet.
  */
 import { BLUEPRINTS, classify } from '../meta/blueprints';
-import { cleanBook, EMPTY_BOOK, type DeckBook } from '../meta/deckbook';
+import { archeOf, cleanBook, EMPTY_BOOK, type DeckBook } from '../meta/deckbook';
 import { expected, tierOf } from '../meta/rating';
 import { rivalById } from '../meta/roster';
 import type { GameLog } from '../core/gamelog';
@@ -172,7 +172,7 @@ export class EnvStats {
     const clean = cleanBook(raw);
     const sent = raw && typeof raw === 'object' && raw.decks && typeof raw.decks === 'object' ? Object.keys(raw.decks) : [];
     const kept = Object.keys(clean.decks);
-    if (!raw || !sent.length || kept.length !== sent.length || sent.some((id) => !BLUEPRINTS[id])) return bad(400, `refused: ${sent.filter((id) => !kept.includes(id)).join(', ') || 'no lists'}`);
+    if (!raw || !sent.length || kept.length !== sent.length || sent.some((id) => !BLUEPRINTS[archeOf(id)])) return bad(400, `refused: ${sent.filter((id) => !kept.includes(id)).join(', ') || 'no lists'}`);
     if (sent.some((id) => raw.decks[id].trial && !clean.decks[id].trial)) return bad(400, 'refused: a trial list fails its checks');
     const cur = (await this.kv.get<DeckBook>('book')) ?? EMPTY_BOOK;
     if (clean.version <= cur.version) return bad(409, `version must be above ${cur.version}`);
