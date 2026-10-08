@@ -40,7 +40,7 @@ export function evaluate(s: GameState, pi: PlayerIndex, W: Weights = BASE_WEIGHT
     });
     const hc = p.hand.length;
     v += sign * (Math.min(hc, 3) * W.hand + Math.max(0, hc - 3) * W.handExtra);
-    v += sign * p.resv.length * W.resv;
+    v += sign * p.resv.filter((r) => !r.decoy).length * W.resv;
   };
   side(me, 1, pi);
   side(op, -1, other(pi));
@@ -92,10 +92,9 @@ function breakBonus(s: GameState, pi: PlayerIndex, a: Action): number {
   const hidden = resv.some((r) => !r.revealed && !r.echo) ? 1.5 : 0;
   return 2 + hidden + Math.min(n, a.t === 'cast' ? 1 : 2) * 1.2;
 }
-function intentBonus(s: GameState, pi: PlayerIndex, a: Action): number {
+function intentBonus(s: GameState, pi: PlayerIndex, a: Action, card?: string): number {
   if (a.t !== 'reserve') return 0;
-  const h = s.players[pi].hand.find((x) => x.uid === a.hand)!;
-  const d = cardDef(h.card);
+  const d = cardDef(card ?? s.players[pi].hand.find((x) => x.uid === a.hand)!.card);
   const op = s.players[other(pi)];
   const enemies = op.field.filter(Boolean).length;
   const wait = a.T - s.players[pi].time;
@@ -132,6 +131,7 @@ function intentBonus(s: GameState, pi: PlayerIndex, a: Action): number {
 }
 
 function bestReply(s: GameState, pi: PlayerIndex, depth = 0): number {
+  if (s.pending) { const c = clone(s); apply(c, chooseChoice(c, c.pending!.pi)); return bestReply(c, pi, depth); }
   const q = actor(s);
   if (q === -1) return evaluate(s, pi);
   if (q === pi) {
@@ -164,6 +164,7 @@ function bestReply(s: GameState, pi: PlayerIndex, depth = 0): number {
  */
 function deepValue(s: GameState, pi: PlayerIndex, mine: number, theirs: number): number {
   const W = EXPERT_WEIGHTS;
+  if (s.pending && !s.over) { const c = clone(s); apply(c, chooseChoice(c, c.pending!.pi)); return deepValue(c, pi, mine, theirs); }
   const q = actor(s);
   if (q === -1 || s.over) return evaluate(s, pi, W);
   if (q === pi) {
@@ -186,6 +187,24 @@ function deepValue(s: GameState, pi: PlayerIndex, mine: number, theirs: number):
     worst = Math.min(worst, deepValue(c, pi, Math.min(mine, 1), theirs - 1));
   }
   return worst === Infinity ? evaluate(s, pi, W) : worst;
+}
+
+/**
+ * Answers a pending choice (星読みの占者, 忘却の砂, 記憶の司書ミレア) with a simple rule every level shares: keep the
+ * dearest card, throw away the cheapest, and recast the spell that leaves the best position.
+ */
+export function chooseChoice(s: GameState, pi: PlayerIndex): Action {
+  const c = s.pending!;
+  const cost = (o: string | number) => cardDef(typeof o === 'number' ? s.players[c.pi].hand.find((h) => h.uid === o)?.card ?? 'scout' : o).cost;
+  let best = 0, bestV = -Infinity;
+  c.options.forEach((o, i) => {
+    let v: number;
+    if (c.kind === 'seer') v = cost(o);
+    else if (c.kind === 'discard') v = -cost(o);
+    else { const x = clone(s); apply(x, { t: 'choose', i }); v = evaluate(x, pi, EXPERT_WEIGHTS) + intentBonus(s, pi, { t: 'reserve', hand: -1, T: s.players[pi].time } as Action, o as string); }
+    if (v > bestV) { bestV = v; best = i; }
+  });
+  return { t: 'choose', i: best };
 }
 
 /** Tunables of the 超つよい rollout search (the balance tools may change them). */
@@ -233,6 +252,7 @@ function rollout(s: GameState, pi: PlayerIndex, depth: number, rand: () => numbe
   for (let i = 0; i < depth && !s.over; i++) {
     const q = actor(s);
     if (q === -1) break;
+    if (s.pending) { apply(s, chooseChoice(s, q)); continue; }
     let best: Action = { t: 'wait' }, bv = -Infinity;
     for (const a of legalActions(s, q)) {
       if (a.t === 'reserve') continue;
@@ -248,6 +268,7 @@ function rollout(s: GameState, pi: PlayerIndex, depth: number, rand: () => numbe
 
 /** A generator so the UI can pause between candidates and keep animating while 超つよい thinks. */
 function* expertSteps(s: GameState, pi: PlayerIndex, rand: () => number, search: SearchCfg = EXPERT_SEARCH): Generator<void, Action> {
+  if (s.pending) return chooseChoice(s, pi);
   const base = fogged(s, pi);
   const acts = pruneReserves(base, pi, legalActions(base, pi));
   // 1) shortlist with the deterministic search
@@ -295,6 +316,7 @@ export async function chooseActionAsync(s: GameState, pi: PlayerIndex, level: Ai
 }
 
 export function chooseAction(s: GameState, pi: PlayerIndex, level: AiLevel, rand: () => number = Math.random): Action {
+  if (s.pending) return chooseChoice(s, pi);
   if (level === 'expert') return chooseExpert(s, pi, rand);
   const base = fogged(s, pi);
   const acts = pruneReserves(base, pi, legalActions(base, pi));
