@@ -81,7 +81,7 @@ export type GameEvent =
   | { e: 'trigger'; pi: PlayerIndex; uid: number; card: string; T: number; echo?: boolean }
   | { e: 'echo'; pi: PlayerIndex; uid: number; card: string; T: number }
   | { e: 'moveResv'; pi: PlayerIndex; uid: number; T: number }
-  | { e: 'attack'; pi: PlayerIndex; lane: number; target: Target }
+  | { e: 'attack'; pi: PlayerIndex; lane: number; target: Target; card?: string }
   | { e: 'move'; pi: PlayerIndex; from: number; to: number }
   /** Two of a player's units trade lanes (第2弾 切り替えレバー). */
   | { e: 'swap'; pi: PlayerIndex; a: number; b: number }
@@ -882,7 +882,7 @@ export function apply(s: GameState, a: Action): GameEvent[] {
       if (!u || !isReady(s, pi, u)) throw new Error('unit not ready');
       advance(s, pi, RULES.COST_ATTACK, ev);
       const t = attackTarget(s, pi, a.lane);
-      ev.push({ e: 'attack', pi, lane: a.lane, target: t });
+      ev.push({ e: 'attack', pi, lane: a.lane, target: t, card: u.card });
       const hk = cardDef(u.card).hook;
       let atk = u.atk + (hk === 'formation' ? p.field.filter((x) => x && x !== u).length : 0);
       if (!t) {

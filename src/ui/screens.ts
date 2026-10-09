@@ -13,10 +13,10 @@ import {
   THEMES, THEME_SET_PRICE, buyLook, buyTheme, canOpen, craft, craftBlock, craftable, localDate, lookBlock, lookById, ownedCount, ownsLook, setProgress, themeOffer, type LookKind, type PackDef, type Reward,
 } from '../meta/economy';
 import {
-  DAILY_ALL_BONUS, LOGIN_CALENDAR, NEWS, beginnerView, track, checkLogin, claimMission, claimPresents, claimable, dailyView, prizeText, rankOf, recentShares, deckShares, unreadNews,
+  DAILY_ALL_BONUS, LOGIN_CALENDAR, NEWS, beginnerView, bump, track, checkLogin, claimMission, claimPresents, claimable, dailyView, prizeText, rankOf, recentShares, deckShares, unreadNews,
   type MissionView, type News, type Prize, type Stat,
 } from '../meta/progress';
-import { TITLES } from '../meta/titles';
+import { TITLES, TONE_NAMES } from '../meta/titles';
 import { VERSION } from '../version';
 import { pwa } from '../pwa';
 import { store } from './storage';
@@ -740,10 +740,11 @@ export class Screens {
       h('p', { class: 'shop-note' }, `${got.length}/${TITLES.length} 獲得 ・ 選んだ称号は名前の下と対戦相手の画面に表示されます`),
       h('div', { class: 'title-list' },
         h('button', { class: 'title-item', 'aria-pressed': String(!cur), onclick: () => { m.title = '-'; store.saveMeta(); ref.close(); done(); } }, h('span', { class: 'ribbon', style: 'background:#16303d;color:#8fa9ad' }, 'つけない'), h('small', {}, '称号を表示しない')),
-        ...TITLES.map((t) => {
+        ...TITLES.flatMap((t, i) => {
           const has = got.includes(t.id);
-          return h('button', { class: `title-item${has ? '' : ' locked'}`, 'aria-pressed': String(cur === t.id), 'aria-disabled': has ? undefined : 'true', onclick: () => { if (!has) return; m.title = t.id; store.saveMeta(); audio.play('select'); ref.close(); done(); void syncRated(); } },
-            ribbon(t.id), h('small', {}, has ? t.how : `未獲得：${t.how}`), fresh.has(t.id) ? newTag() : null);
+          const head = i === 0 || TITLES[i - 1].group !== t.group ? [h('div', { class: 'title-group' }, `${t.group}（${TITLES.filter((x) => x.group === t.group && got.includes(x.id)).length}/${TITLES.filter((x) => x.group === t.group).length}）`)] : [];
+          return [...head, h('button', { class: `title-item${has ? '' : ' locked'}`, 'aria-pressed': String(cur === t.id), 'aria-disabled': has ? undefined : 'true', onclick: () => { if (!has) return; m.title = t.id; store.saveMeta(); audio.play('select'); ref.close(); done(); void syncRated(); } },
+            ribbon(t.id), h('small', {}, has ? t.how : `未獲得：${t.how}`), h('span', { class: 'grade' }, TONE_NAMES[t.tone]), fresh.has(t.id) ? newTag() : null)];
         })),
     ], [], done);
   }
@@ -821,7 +822,7 @@ export class Screens {
           h('div', { class: 'own-box' }, '所持 ', h('b', {}, setOf(d) === 'base' ? '―' : String(own)), h('br', {}), '欠片 ', h('span', { class: 'num', style: 'color:#cff6ff' }, fmt(w.shards)))) : null,
         dk && setOf(d) !== 'base' && own < maxCopies(cid) ? h('div', { class: 'note' }, own === 0 ? 'このカードは持っていません。パックか欠片で手に入ります' : `もう${maxCopies(cid) - own}枚作ると、デッキに${maxCopies(cid)}枚まで入れられます`) : null,
         craftable(cid) ? h('button', { class: `hexbtn ${block ? '' : 'gold'} big`, disabled: !!block, onclick: () => {
-          if (craft(store.wallet, cid)) { store.saveWallet(); audio.play('rareR'); this.toast(`「${d.name}」を欠片で作りました`); render(); }
+          if (craft(store.wallet, cid)) { bump(store.meta, 'craft'); store.saveMeta(); store.saveWallet(); audio.play('rareR'); this.toast(`「${d.name}」を欠片で作りました`); render(); }
         } }, '欠片で作る', h('small', {}, block ?? `欠片 ${fmt(w.shards)} → ${fmt(w.shards - cost)}`)) : null,
       ));
     };
@@ -910,13 +911,21 @@ export class Screens {
     const back = deckLook(pick.id, 'back'), dial = deckLook(pick.id, 'dial'), mat = deckLook(pick.id, 'mat');
     const dk = DIAL_SKINS[dial] ?? DIAL_SKINS['dial:brass'];
     const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;
-    const custom = store.customDecks.some((d) => d.id === pick.id);
     const copyOf = (d: AnyDeck): DeckDef => ({ id: `c${Date.now()}`, name: `${d.name}（改）`, cards: d.cards.slice() });
+    // starter decks are only a start: they can be removed too, and brought back from the list
+    const validLeft = list.filter((d) => d.valid && d.id !== pick.id).length;
+    const canDelete = list.length > 1 && (!pick.valid || validLeft > 0);
     const del = () => {
-      const k = this.sheet('デッキを削除', null, [h('p', { style: 'margin:0;text-align:center;line-height:1.8' }, `「${pick.name}」を削除しますか？`, h('br', {}), h('small', { class: 'muted' }, '削除したデッキは元に戻せません'))],
+      const k = this.sheet('デッキを削除', null, [h('p', { style: 'margin:0;text-align:center;line-height:1.8' }, `「${pick.name}」を削除しますか？`, h('br', {}), h('small', { class: 'muted' }, pick.preset ? '基本デッキは、デッキ一覧の「基本デッキを戻す」からいつでも戻せます' : '削除したデッキは元に戻せません'))],
         [h('div', { class: 'btn-row', style: 'width:100%' },
           h('button', { class: 'hexbtn silver', onclick: () => k.close() }, 'やめる'),
-          h('button', { class: 'hexbtn red', onclick: () => { k.close(); store.customDecks = store.customDecks.filter((d) => d.id !== pick.id); store.saveDecks(); delete store.deckLooks[pick.id]; store.saveDeckLooks(); this.selDeck = ''; this.decks(); } }, '削除する'))]);
+          h('button', { class: 'hexbtn red', onclick: () => {
+            k.close();
+            if (pick.preset) { store.hiddenPresets = [...new Set([...store.hiddenPresets, pick.id])]; store.saveHiddenPresets(); }
+            else { store.customDecks = store.customDecks.filter((d) => d.id !== pick.id); store.saveDecks(); delete store.deckLooks[pick.id]; store.saveDeckLooks(); }
+            if (store.settings.lastDeck === pick.id) { const next = store.allDecks().find((d) => d.valid) ?? store.allDecks()[0]; if (next) { store.settings.lastDeck = next.id; store.saveSettings(); } }
+            this.selDeck = ''; this.decks();
+          } }, '削除する'))]);
     };
     this.hub('deck', h('div', { class: 'tab-page' },
       h('div', { class: 'pn gold deck-detail' },
@@ -935,7 +944,7 @@ export class Screens {
           h('button', { class: 'slot', onclick: () => this.lookPicker(pick.id, 'dial', () => this.decks()) }, h('i', { class: 'dialmini', style: `--c:${hex(dk.rim)};--f:${hex(dk.face)}` }), h('span', {}, '文字盤', h('br', {}), h('small', {}, lookById(dial)?.name ?? ''))),
           h('button', { class: 'slot', onclick: () => this.lookPicker(pick.id, 'mat', () => this.decks()) }, h('span', { class: 'matmini' }, matPreview(mat, false)), h('span', {}, 'マット', h('br', {}), h('small', {}, lookById(mat)?.name ?? ''))))),
       h('div', { class: 'btn-row' },
-        h('button', { class: 'hexbtn red', style: 'flex:.8', disabled: !custom, onclick: del }, '削除'),
+        h('button', { class: 'hexbtn red', style: 'flex:.8', disabled: !canDelete, onclick: del }, '削除'),
         h('button', { class: 'hexbtn silver', onclick: () => this.deckCheck(pick.cards, pick.name) }, '確認'),
         h('button', { class: 'hexbtn gold', style: 'flex:1.3', onclick: () => this.editor(pick.preset ? copyOf(pick) : { id: pick.id, name: pick.name, cards: pick.cards.slice() }) }, pick.preset ? '複製して編集' : '編集する')),
       !v.ok || pick.missing.length ? h('p', { class: 'shop-note', style: 'color:#ff9a80' }, pick.missing.length ? '持っていないカードが入っているため、このままでは対戦に使えません' : v.problems[0]) : null,
@@ -946,7 +955,8 @@ export class Screens {
           if (d.valid) { store.settings.lastDeck = d.id; store.saveSettings(); }
           audio.play('select'); this.decks();
         } }, h('div', { class: 't' }, h('b', {}, d.name), h('small', { class: d.valid ? '' : 'bad' }, d.valid ? `${d.cards.length}/${RULES.DECK_SIZE}${d.id === store.settings.lastDeck ? ' ・ 使用中' : ''}` : d.missing.length ? '未所持あり' : `${d.cards.length}/${RULES.DECK_SIZE} ・ 未完成`)))),
-        h('button', { class: 'dtile add', onclick: () => this.editor({ id: `c${Date.now()}`, name: '新しいデッキ', cards: [] }) }, h('span', { html: ICON.plus }), '新規作成')),
+        h('button', { class: 'dtile add', onclick: () => this.editor({ id: `c${Date.now()}`, name: '新しいデッキ', cards: [] }) }, h('span', { html: ICON.plus }), '新規作成'),
+        store.hiddenPresets.length ? h('button', { class: 'dtile add', onclick: () => { store.hiddenPresets = []; store.saveHiddenPresets(); audio.play('select'); this.toast('基本デッキを戻しました'); this.decks(); } }, h('span', { html: ICON.deck }), '基本デッキを戻す') : null),
     ));
   }
   /** Every card of a deck at a glance, with its curve and anything that stops it from being played. */

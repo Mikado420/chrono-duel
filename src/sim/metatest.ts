@@ -72,11 +72,28 @@ for (let i = 0; i < 40; i++) recordMatch(hm, { at: i, mode: 'free', result: 'win
 assert.equal(hm.history.length, 30, 'history is capped');
 
 // titles
-const zero = { wins: 0, battles: 0, counters: {}, loginDays: 0, rank: 1, packs: 0, collected: 0, ownsLegend: false, ratedGames: 0, ratedPeak: 1000 };
+const zero = { wins: 0, battles: 0, counters: {}, loginDays: 0, packs: 0, ownsLegend: false, set1Complete: false, themesComplete: 0, ratedGames: 0, ratedPeak: 1000, ratedStreak: 0 };
 assert.deepEqual(earnedTitles(zero), []);
 assert.ok(earnedTitles({ ...zero, wins: 1 }).includes('first'));
-assert.ok(!earnedTitles({ ...zero, ratedPeak: 1200 }).includes('smith'), 'rated titles need a rated game');
-assert.ok(earnedTitles({ ...zero, ratedGames: 3, ratedPeak: 1200 }).includes('smith'));
+assert.ok(!earnedTitles({ ...zero, ratedPeak: 1200 }).includes('r1200'), 'rated titles need a rated game');
+assert.ok(earnedTitles({ ...zero, ratedGames: 3, ratedPeak: 1200 }).includes('r1200'));
+assert.ok(!earnedTitles({ ...zero, ratedGames: 3, ratedPeak: 1200 }).includes('r1400'));
+// the agreed list: 53 titles, wins and games in six steps, every action at 100 / 500 / 1000
+assert.equal(TITLES.length, 53);
+const steps = (ids: string[]) => ids.map((id) => titleById(id)!.tone);
+assert.deepEqual(steps(['first', 'ten', 'win50', 'win100', 'win300', 'win500']), ['yellow', 'green', 'blue', 'bronze', 'silver', 'gold']);
+assert.deepEqual(steps(['war10', 'war50', 'war100', 'war300', 'war500', 'war1000']), ['yellow', 'green', 'blue', 'bronze', 'silver', 'gold']);
+for (const k of ['reserve', 'summon', 'spell', 'attack']) {
+  assert.deepEqual(earnedTitles({ ...zero, counters: { [k]: 499 } }).filter((t) => t.startsWith(k)), [`${k}100`]);
+  assert.deepEqual(earnedTitles({ ...zero, counters: { [k]: 1000 } }).filter((t) => t.startsWith(k)), [`${k}100`, `${k}500`, `${k}1000`]);
+}
+assert.deepEqual(steps(['swift', 'empty', 'perfect', 'r2000']), ['silver', 'silver', 'gold', 'red']);
+assert.ok(earnedTitles({ ...zero, counters: { winPerfect: 1 } }).includes('perfect'));
+assert.ok(earnedTitles({ ...zero, ratedStreak: 10 }).includes('streak10'));
+// titles of the first list: renamed ones still resolve, retired ones do not
+assert.equal(titleById('master')?.id, 'r1200');
+assert.equal(titleById('all')?.id, 'set1');
+assert.equal(titleById('hard'), undefined);
 assert.equal(new Set(TITLES.map((t) => t.id)).size, TITLES.length, 'title ids are unique');
 assert.ok(TITLES.every((t) => t.name.length <= 12), 'titles fit the name plates');
 assert.equal(titleById('nope'), undefined);

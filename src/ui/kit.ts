@@ -88,11 +88,11 @@ export function topBar(title: string, back: (() => void) | null, ...right: Child
     ...right);
 }
 
-/** Slanted label of a 称号, in its colour. */
+/** The plate of a 称号: the grander its grade (黄→赤), the grander the plate. */
 export function ribbon(titleId: string | undefined, cls = '') {
   const t = titleById(titleId);
   if (!t) return null;
-  return h('span', { class: `ribbon tone-${t.tone} ${cls}` }, t.name);
+  return h('span', { class: `ttl t-${t.tone} ${cls}`, title: t.how }, h('b', {}, t.name));
 }
 /** Hexagonal badge in a tier's colour, with or without its name. */
 export function tierBadge(t: Tier, size: 'sm' | 'lg' = 'sm') {

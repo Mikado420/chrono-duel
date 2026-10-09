@@ -1,31 +1,37 @@
 /** The player's public face (title, featured card) and deck keys, built from what is stored on the device. */
 import { CARD_LIST, cardDef } from '../core/cards';
 import type { DeckDef } from '../core/decks';
-import { DEFAULT_LOOK, lookById, ownedCount, ownsLook, type LookKind } from '../meta/economy';
-import { rankOf } from '../meta/progress';
-import { TITLES, earnedTitles, titleById, type TitleCtx, type TitleDef } from '../meta/titles';
+import { DEFAULT_LOOK, LOOKS, THEMES, lookById, ownsLook, setProgress, type LookKind } from '../meta/economy';
+import { RENAMED_TITLES, TITLES, earnedTitles, titleById, type TitleCtx, type TitleDef } from '../meta/titles';
 import { store } from './storage';
 
 export function titleCtx(): TitleCtx {
   const w = store.wallet, m = store.meta, r = store.rated;
-  const kinds = CARD_LIST.filter((c) => ownedCount(w, c.id) > 0).length;
+  const set1 = setProgress(w, 'echo');
   return {
     wins: store.record.win + store.onlineRecord.win,
     battles: m.battles,
     counters: m.counters,
     loginDays: m.loginDays,
-    rank: rankOf(m.exp).rank,
     packs: w.opened,
-    collected: CARD_LIST.length ? Math.floor((kinds / CARD_LIST.length) * 100) : 0,
     ownsLegend: CARD_LIST.some((c) => c.rarity === 'L' && (c.set ?? 'base') !== 'base' && (w.owned[c.id] ?? 0) > 0),
+    set1Complete: set1.kindsTotal > 0 && set1.kinds >= set1.kindsTotal,
+    themesComplete: THEMES.filter((t) => LOOKS.filter((l) => l.theme === t.id).every((l) => ownsLook(w, l.id))).length,
     ratedGames: r.games,
     ratedPeak: r.peak,
+    ratedStreak: r.bestStreak ?? 0,
   };
 }
 /** Titles earned: those the numbers give now, plus every title earned before (a title once earned is kept). */
 export function myTitles(): string[] {
   const now = earnedTitles(titleCtx());
   const m = store.meta;
+  // titles of the first list: renamed ones move to their new id, retired ones are dropped
+  const valid = new Set(TITLES.map((t) => t.id));
+  const before = m.titlesEarned ?? [];
+  const moved = [...new Set(before.map((id) => RENAMED_TITLES[id] ?? id).filter((id) => valid.has(id)))];
+  if (moved.length !== before.length || moved.some((id, i) => id !== before[i])) { m.titlesEarned = moved; store.saveMeta(); }
+  if (m.title && m.title !== '-' && !valid.has(m.title)) { m.title = RENAMED_TITLES[m.title] && valid.has(RENAMED_TITLES[m.title]) ? RENAMED_TITLES[m.title] : ''; store.saveMeta(); }
   const kept = m.titlesEarned ?? [];
   const add = now.filter((t) => !kept.includes(t));
   if (add.length) { m.titlesEarned = [...kept, ...add]; store.saveMeta(); }

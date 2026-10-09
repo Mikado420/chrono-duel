@@ -9,6 +9,7 @@ import {
 import type { GameLog } from '../core/gamelog';
 import { HIDDEN, NET, type NetLink, type NetResult, type ServerMsg } from '../core/net';
 import { RULES } from '../core/rules';
+import { FeatTracker, type Feat } from '../core/feats';
 import { audio } from './audio';
 import { haptics } from './haptics';
 import { Dial } from './dial';
@@ -55,6 +56,8 @@ export interface BattleConfig {
 export interface BattleResult { winner: PlayerIndex | -1; reason: 'ko' | 'time' | 'surrender' | 'timeout' | 'disconnect'; myHp: number; foeHp: number; actions: number; myActions: number; stats: { spells: number; summons: number; reserves: number; attacks: number };
   /** Every card the player used (summoned, cast or reserved) this game, for the play statistics. */
   played: string[];
+  /** 勝ち方 of a won game (see core/feats.ts). */
+  feats?: Feat[];
   /** The full game record (games against the AI; online games are recorded by the server). */
   log?: GameLog }
 
@@ -133,6 +136,8 @@ export class BattleScene extends Container {
   private stats = { spells: 0, summons: 0, reserves: 0, attacks: 0 };
   private played = new Set<string>();
   private log: GameLog | null = null;
+  /** How the game is being won (勝ち方の称号). */
+  private feats = new FeatTracker();
 
   private get foe(): string { return this.cfg.net?.watch?.names[1] ?? this.cfg.net?.foeName ?? this.cfg.foeName ?? 'AI'; }
   /** Looking on at someone else's game: nothing can be played and seat 0 goes by its own name. */
@@ -453,7 +458,7 @@ export class BattleScene extends Container {
     const o = this.netResult ?? this.s.over!;
     await this.tw.wait(500);
     if (this.destroyed_) return;
-    this.onEnd({ winner: o.winner, reason: o.reason, myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats }, played: [...this.played], ...(this.log ? { log: this.log } : {}) });
+    this.onEnd({ winner: o.winner, reason: o.reason, myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats }, played: [...this.played], feats: this.feats.result(this.s), ...(this.log ? { log: this.log } : {}) });
   }
   // ------------------------------------------------------------------ online play
   private async startOnline(net: NetLink) {
@@ -606,7 +611,7 @@ export class BattleScene extends Container {
     this.busy = true;
     this.timerEnd = null;
     this.toast(`${this.foe}が降参しました`);
-    this.onEnd({ winner: 0, reason: 'surrender', myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats }, played: [...this.played], ...(this.log ? { log: this.log } : {}) });
+    this.onEnd({ winner: 0, reason: 'surrender', myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats }, played: [...this.played], feats: this.feats.result(this.s), ...(this.log ? { log: this.log } : {}) });
   }
   debug() { return { s: this.s, busy: this.busy, mode: this.mode.k, use: (uid: number, lane: number | null) => this.use(uid, lane), act: (a: Action) => this.tryAction(a), auto: () => (this.cfg.net ? legalActions(this.s, 0).filter((x) => x.t !== 'wait' && x.t !== 'draw')[0] ?? { t: 'wait' } : chooseAction(this.s, 0, 'normal')), finished: this.finished, hand: () => [...this.handViews].map(([uid, v]) => ({ uid, card: v.card, x: v.x, y: v.y })), lanes: { x: [...LANE_X], y: ROW_Y[0] }, redraw: () => this.syncAll(false), giveUp: () => this.surrender('surrender') }; }
   surrender(reason: 'surrender' | 'timeout' = 'surrender') {
@@ -615,7 +620,7 @@ export class BattleScene extends Container {
     this.finished = true;
     this.busy = true;
     this.timerEnd = null;
-    this.onEnd({ winner: 1, reason, myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats }, played: [...this.played], ...(this.log ? { log: this.log } : {}) });
+    this.onEnd({ winner: 1, reason, myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats }, played: [...this.played], feats: this.feats.result(this.s), ...(this.log ? { log: this.log } : {}) });
   }
 
   // ------------------------------------------------------------------ sync
@@ -1296,6 +1301,7 @@ export class BattleScene extends Container {
   private async play(events: GameEvent[]) {
     for (const e of events) {
       if (this.destroyed_) return;
+      this.feats.see(e);
       try { await this.animate(e); } catch (err) { console.error('animation failed', e.e, err); }
     }
     this.flyFrom = null;

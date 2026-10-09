@@ -6,9 +6,14 @@ import { Leaderboard, MIN_GAME_MS, rankDay, type KV } from '../server/leaderboar
 import { mulberry32 } from '../core/engine';
 
 // tiers and matchmaking
-assert.equal(tierOf(START_RATING).tier.name, '刻守');
+assert.equal(tierOf(START_RATING).tier.name, '見習い');
 assert.equal(tierOf(0).tier.id, 'novice');
-assert.equal(tierOf(99999).tier.id, 'eternal');
+assert.equal(tierOf(99999).tier.id, 'shin');
+assert.equal(tierOf(1000).tier.name, '見習い');
+assert.equal(tierOf(1199).tier.name, '見習い');
+assert.equal(tierOf(1200).tier.name, '刻士');
+assert.equal(tierOf(1999).tier.name, '刻聖');
+assert.equal(tierOf(2000).tier.name, '刻神');
 const top = RATED_FOES[RATED_FOES.length - 1].rating, bottom = RATED_FOES[0].rating;
 for (let r = 0; r < 2200; r += 25) {
   const pool = opponentPool(r);

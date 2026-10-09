@@ -80,7 +80,7 @@ now += 86_400_000;
 await env.rated({ id: 'device-0000000001', deck: myRush, score: 0.5, rival: rivalId(rv), rivalLv: rv.lv, rivalDeck: rv.deck, rivalDeckV: 2, rating: 1000 });
 const week = (await env.env({})).body as { days: [string, string]; bands: Record<string, Record<string, { games: number; players: number; score: number; expected: number }>>; rivals: Record<string, { games: number }> };
 assert.deepEqual(week.days, [jstDay(now - 6 * 86_400_000), jstDay(now)]);
-const cell = week.bands.keeper.rush;
+const cell = week.bands.novice.rush;
 assert.equal(cell.games, 3);
 assert.equal(cell.players, 2, 'players are counted once');
 assert.equal(cell.score, 1.5);
@@ -88,7 +88,7 @@ assert.ok(cell.expected > 0.5 * 3 && cell.expected < 3, 'a 1000 player against a
 assert.equal(week.rivals[`${rv.deck}@1`].games, 2);
 assert.equal(week.rivals[`${rv.deck}@2`].games, 1, 'each version of a rival list is kept apart');
 const today = (await env.env({ days: 1 })).body as typeof week;
-assert.equal(today.bands.keeper.rush.games, 1);
+assert.equal(today.bands.novice.rush.games, 1);
 assert.equal((await env.lists({ token: 'nope' })).status, 403);
 const lists = (await env.lists({ token: 'secret', min: 1 })).body as { lists: { g: number; arche: string; players: number }[] };
 assert.equal(lists.lists[0].g, 3);

@@ -82,7 +82,7 @@
 .me-lv .bar { width: 66px; height: 5px; border-radius: 3px; background: #16303d; overflow: hidden; }
 .me-lv .bar i { display: block; height: 100%; background: var(--you); }
 .me-name { height: 24px; max-width: 180px; padding-left: 8px; border-left: 3px solid var(--gold); background: linear-gradient(90deg, #16303d, rgba(22, 48, 61, 0)); display: flex; align-items: center; font: 700 15px var(--f-display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.me-main .ribbon { justify-self: start; max-width: 160px; overflow: hidden; }
+.me-main .ribbon, .me-main .ttl { justify-self: start; max-width: 190px; }
 .hub-top .purse { flex-direction: column; align-items: flex-end; gap: 4px; }
 .hub-top .purse .coin { min-width: 96px; justify-content: space-between; }
 .hub-top .purse > span:not(.coin) { display: inline-flex; }
@@ -199,7 +199,7 @@
 .vs-plate { position: absolute; width: min(62vw, 240px); padding: 10px 14px; clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%); z-index: 2; }
 .vs-plate b { display: block; font: 800 18px var(--f-display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vs-plate .tr { display: flex; align-items: center; gap: 6px; margin-top: 5px; font: 700 12px var(--f-body); }
-.vs-plate .ribbon { margin-top: 6px; }
+.vs-plate .ribbon, .vs-plate .ttl { margin-top: 6px; }
 .vs-plate small { display: block; font-size: 11px; margin-top: 6px; opacity: .85; }
 .vs-plate.foe { left: 4%; top: 30%; background: linear-gradient(90deg, rgba(90, 34, 24, .95), rgba(42, 15, 11, .9)); border-left: 3px solid var(--foe); animation: slideVs .5s .15s both; }
 .vs-plate.you { right: 4%; top: 53%; text-align: right; background: linear-gradient(90deg, rgba(10, 42, 40, .9), rgba(22, 90, 80, .95)); border-right: 3px solid var(--you); animation: slideVsR .5s .15s both; }
@@ -229,6 +229,7 @@
 .rkrow .nm b { display: block; font: 700 15px var(--f-display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rkrow .nm .sub { display: flex; align-items: center; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
 .rkrow .nm .ribbon { height: 17px; font-size: 10px; padding: 0 10px; }
+.rkrow .nm .ttl > b { height: 18px; font-size: 10px; }
 .rkrow .rt { text-align: right; flex: none; }
 .rkrow .rt small { display: block; font-size: 9.5px; color: #c2d2d4; }
 .rkrow .rt span { font: 700 22px var(--f-num); }
@@ -250,7 +251,7 @@
 .pname input { width: 100%; height: 28px; border: 0; background: transparent; color: var(--ivory); font: 700 17px var(--f-display); padding: 0; outline: none; }
 .comment { min-height: 42px; border-radius: 8px; background: rgba(8, 20, 28, .8); border: 1px solid #2d4f5c; padding: 6px 8px; font-size: 12px; line-height: 1.45; word-break: break-all; }
 .comment textarea { width: 100%; min-height: 40px; resize: none; border: 0; background: transparent; color: var(--ivory); font: 12px var(--f-body); outline: none; padding: 0; }
-.prof-line .ribbon { flex: 1; }
+.prof-line .ribbon, .prof-line .ttl { flex: 1; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .lvbox { padding-top: 4px; }
 .lvbox .big { display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; }
@@ -281,7 +282,39 @@
 .title-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--ink2); text-align: left; color: var(--ivory); }
 .title-item[aria-pressed="true"] { border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
 .title-item.locked { opacity: .5; cursor: default; }
-.title-item .ribbon { flex: none; min-width: 120px; }
+.title-item .ribbon, .title-item .ttl { flex: none; min-width: 128px; }
+.title-group { margin: 10px 2px 2px; font: 700 12px var(--f-display); color: var(--gold); letter-spacing: .12em; }
+.title-item .grade { flex: none; font: 700 10px var(--f-body); color: var(--mute); }
+
+/* 称号の札: 黄→緑→青→銅→銀→金→赤, plainer to grander. The outer span carries the glow, the inner b the shape. */
+.ttl { display: inline-flex; flex: none; vertical-align: middle; position: relative; }
+.ttl > b { display: inline-flex; align-items: center; justify-content: center; width: 100%; height: 22px; padding: 0 14px; font: 700 11px var(--f-body); letter-spacing: .06em; white-space: nowrap; position: relative; overflow: hidden; }
+/* 黄: a paper slip */
+.ttl.t-yellow > b { color: #3a2a10; background: linear-gradient(180deg, #f6e9bf, #dcc68a); border-radius: 3px; box-shadow: inset 0 0 0 1px #b39a5a; }
+/* 緑: a ribbon with a border */
+.ttl.t-green > b { color: #eafff2; background: linear-gradient(180deg, #45a96e, #1f5e3a); clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 8px 100%, 0 50%); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), inset 0 -1px 0 rgba(0, 0, 0, .3); }
+/* 青: an enamel plate with brass pins */
+.ttl.t-blue > b { color: #fff; background: radial-gradient(circle at 7px 50%, #f2cf7a 0 2px, #6d4d1c 2.6px, transparent 3px), radial-gradient(circle at calc(100% - 7px) 50%, #f2cf7a 0 2px, #6d4d1c 2.6px, transparent 3px), linear-gradient(180deg, #6a9be6, #24467e); border-radius: 4px; box-shadow: inset 0 0 0 1px #a9c6ff, inset 0 0 0 2px #1a3460; padding: 0 18px; }
+/* 銅: a cast bronze plate, letters in relief, bolts */
+.ttl.t-bronze > b { color: #fff1e0; text-shadow: 0 1px 0 #3a1d0e, 0 -1px 0 rgba(255, 220, 180, .35); background: radial-gradient(circle at 8px 50%, #ffd2a8 0 1.6px, #3a1d0e 2.4px, transparent 2.8px), radial-gradient(circle at calc(100% - 8px) 50%, #ffd2a8 0 1.6px, #3a1d0e 2.4px, transparent 2.8px), linear-gradient(160deg, #f3b47e, #a6612c 42%, #5e3214 80%, #8a4a20); clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px), 0 6px); box-shadow: inset 0 0 0 1px #3a1d0e, inset 0 0 0 2px rgba(255, 210, 160, .35); padding: 0 18px; }
+/* 銀: engraved silver, a slow gleam */
+.ttl.t-silver { filter: drop-shadow(0 0 4px rgba(220, 235, 255, .35)); }
+.ttl.t-silver > b { color: #1d242b; text-shadow: 0 1px 0 rgba(255, 255, 255, .7); background: linear-gradient(180deg, #fbfdff, #c3ccd5 38%, #7d8894 55%, #e3e9ee); clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 10px 100%, 0 50%); box-shadow: inset 0 0 0 1px #5b6672, inset 0 0 0 3px rgba(255, 255, 255, .45); padding: 0 18px; }
+.ttl.t-silver > b::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .85) 50%, transparent 65%); transform: translateX(-120%); animation: ttlGleam 4.5s ease-in-out infinite; }
+/* 金: gold leaf, cogs at the ends, a glow and a gleam */
+.ttl.t-gold { filter: drop-shadow(0 0 6px rgba(255, 196, 80, .55)); }
+.ttl.t-gold > b { color: #2a1a00; text-shadow: 0 1px 0 rgba(255, 245, 200, .8); background: radial-gradient(circle at 9px 50%, transparent 2px, #6d4a08 2.4px 3.6px, transparent 4px), radial-gradient(circle at calc(100% - 9px) 50%, transparent 2px, #6d4a08 2.4px 3.6px, transparent 4px), linear-gradient(180deg, #fff4c2, #f0c24e 30%, #a8730f 62%, #f6d77e); clip-path: polygon(12px 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 12px 100%, 0 50%); box-shadow: inset 0 0 0 1px #6d4a08, inset 0 0 0 3px rgba(255, 240, 190, .6); padding: 0 22px; font-weight: 800; }
+.ttl.t-gold > b::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 38%, rgba(255, 255, 255, .95) 50%, transparent 62%); transform: translateX(-120%); animation: ttlGleam 3.2s ease-in-out infinite; }
+/* 赤: crimson and gold, a living fire at the edges */
+.ttl.t-red { filter: drop-shadow(0 0 7px rgba(255, 70, 50, .7)); animation: ttlFire 1.8s ease-in-out infinite alternate; }
+.ttl.t-red > b { color: #ffe39a; text-shadow: 0 0 6px rgba(255, 200, 80, .8), 0 1px 0 #3a0006; background: linear-gradient(90deg, rgba(255, 210, 90, .9) 0 2px, transparent 2px calc(100% - 2px), rgba(255, 210, 90, .9) calc(100% - 2px)), linear-gradient(180deg, #ff6a4a, #b3121f 38%, #4a0610 75%, #8a0e18); clip-path: polygon(14px 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 14px 100%, 0 50%); box-shadow: inset 0 0 0 1px #ffcf6a, inset 0 0 0 3px rgba(80, 0, 10, .8), inset 0 0 0 4px rgba(255, 200, 90, .5); padding: 0 26px; font-weight: 800; letter-spacing: .14em; }
+.ttl.t-red > b::before { content: ''; position: absolute; inset: 0; background: radial-gradient(60% 120% at 50% 130%, rgba(255, 170, 60, .55), transparent 60%); animation: ttlFlame 1.4s ease-in-out infinite alternate; }
+.ttl.t-red > b::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 40%, rgba(255, 240, 200, .8) 50%, transparent 60%); transform: translateX(-120%); animation: ttlGleam 2.6s ease-in-out infinite; }
+@keyframes ttlGleam { 0%, 55% { transform: translateX(-120%); } 85%, 100% { transform: translateX(120%); } }
+@keyframes ttlFire { from { filter: drop-shadow(0 0 5px rgba(255, 70, 50, .55)); } to { filter: drop-shadow(0 0 10px rgba(255, 120, 40, .9)); } }
+@keyframes ttlFlame { from { opacity: .55; transform: scaleY(.9); } to { opacity: 1; transform: scaleY(1.15); } }
+@media (prefers-reduced-motion: reduce) { .ttl, .ttl > b::before, .ttl > b::after { animation: none !important; } }
+body.reduced .ttl, body.reduced .ttl > b::before, body.reduced .ttl > b::after { animation: none !important; }
 .title-item small { flex: 1; min-width: 0; font-size: 11px; color: var(--mute); }
 .hist { display: grid; gap: 4px; }
 .hist-row { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 7px 10px; border-radius: 8px; background: var(--ink2); font-size: 13px; }
@@ -625,7 +658,7 @@
 .seat-card .info .who { display: inline-block; justify-self: start; font: 700 9.5px var(--f-body); color: #08141c; background: var(--you); padding: 1px 7px; border-radius: 4px; }
 .seat.foe .seat-card .info .who { background: var(--foe); color: #fff; }
 .seat-card .info b { font: 700 20px var(--f-display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.seat-card .info .ribbon { justify-self: start; }
+.seat-card .info .ribbon, .seat-card .info .ttl { justify-self: start; }
 .deckban { position: relative; height: 52px; border-radius: 8px; overflow: hidden; background-color: #0b1a22; background-size: 150% auto; background-position: 70% 22%; box-shadow: inset 0 0 0 1px #3a5a63; border: 0; padding: 0 10px; color: var(--ivory); text-align: left; display: flex; flex-direction: column; justify-content: center; }
 .deckban::before { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, #0b1a22 35%, rgba(11, 26, 34, .2)); }
 .deckban > * { position: relative; }

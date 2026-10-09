@@ -11,7 +11,7 @@ import { COLORS, DESIGN } from './render/theme';
 import { Tweener } from './render/tween';
 import { PackOpenScene } from './render/packOpen';
 import { MIN_ACTIONS, applyReward, canOpen, localDate, openPack, packById, reward, type Reward } from './meta/economy';
-import { dailyView, recordBattle, recordMatch, track } from './meta/progress';
+import { bump, dailyView, recordBattle, recordMatch, track } from './meta/progress';
 import { haptics } from './render/haptics';
 import { LOOKS, PITY, refundRetired } from './meta/economy';
 import { deckKey, deckLook, favCard, shownTitle } from './ui/profile';
@@ -111,6 +111,7 @@ async function boot() {
     audio.setMuted(s.muted);
     tw.speed = s.speed;
     tw.reduced = s.reduced || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    document.body.classList.toggle('reduced', !!s.reduced);
     haptics.set({ big: s.vibeBig !== false, tap: s.vibeTap !== false });
   };
   applySettings();
@@ -179,6 +180,11 @@ async function boot() {
       return v.now > b ? [{ text: v.m.text, before: b, after: v.now, goal: v.m.goal }] : [];
     });
     const deck = myDeckOf(lastCfg);
+    // 勝ち方 and wins with a deck of your own (titles)
+    if (r.winner === 0 && r.myActions >= MIN_ACTIONS) {
+      for (const f of r.feats ?? []) bump(store.meta, f);
+      if (deck && store.customDecks.some((d) => d.id === deck.id)) bump(store.meta, 'customWin');
+    }
     if (r.myActions >= MIN_ACTIONS) recordMatch(store.meta, {
       at: Date.now(), mode: online ? 'online' : lastCfg?.rated ? 'rated' : 'free', result: r.winner === 0 ? 'win' : r.winner === 1 ? 'lose' : 'draw',
       foe: online ? flow.foe?.name ?? lastCfg?.aiDeckName ?? '' : lastCfg?.rated ? lastCfg.foeName ?? '' : lastCfg?.aiDeckName ?? '',

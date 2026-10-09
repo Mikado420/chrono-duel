@@ -82,10 +82,13 @@ export const store = {
   meta: { ...NEW_META(), ...read<Partial<Meta>>('cd.meta', {}) } as Meta,
   saveMeta() { write('cd.meta', this.meta); },
 
+  /** Starter decks the player removed from their list (they can be brought back at any time). */
+  hiddenPresets: read<string[]>('cd.hiddenPresets', []),
+  saveHiddenPresets() { write('cd.hiddenPresets', this.hiddenPresets); },
   /** `valid`: legal and every card is in the collection. `missing`: cards the player does not own enough of. */
   allDecks(): (DeckDef & { preset: boolean; valid: boolean; missing: string[] })[] {
     return [
-      ...PRESET_DECKS.map((d) => ({ ...d, preset: true, valid: true, missing: [] })),
+      ...PRESET_DECKS.filter((d) => !this.hiddenPresets.includes(d.id)).map((d) => ({ ...d, preset: true, valid: true, missing: [] })),
       ...this.customDecks.map((d) => {
         const missing = missingCards(this.wallet, d.cards.filter((c) => CARDS[c] && !CARDS[c].token));
         return { ...d, preset: false, valid: validateDeck(d.cards).ok && missing.length === 0, missing };

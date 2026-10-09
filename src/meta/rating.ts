@@ -17,13 +17,14 @@ export const K_PLACEMENT = 40;
 export const K_NORMAL = 24;
 
 export interface Tier { id: string; name: string; min: number; color: string }
+/** Ranks of rated play, every 200 from 1000 (everything below 1200, the start included, is 見習い). Colours follow the 称号 grades. */
 export const TIERS: Tier[] = [
-  { id: 'novice', name: '見習い', min: 0, color: '#9fb3b8' },
-  { id: 'keeper', name: '刻守', min: 900, color: '#8fd9c8' },
-  { id: 'smith', name: '時計師', min: 1100, color: '#7fc4ff' },
-  { id: 'master', name: '刻匠', min: 1300, color: '#d9b8ff' },
-  { id: 'sage', name: '時の賢者', min: 1500, color: '#ffd66e' },
-  { id: 'eternal', name: '永劫', min: 1700, color: '#ff9f7a' },
+  { id: 'novice', name: '見習い', min: 0, color: '#8fd96a' },
+  { id: 'shi', name: '刻士', min: 1200, color: '#6aa8ff' },
+  { id: 'sho', name: '刻匠', min: 1400, color: '#d08a4e' },
+  { id: 'go', name: '刻豪', min: 1600, color: '#d6dde4' },
+  { id: 'sei', name: '刻聖', min: 1800, color: '#ffcf4a' },
+  { id: 'shin', name: '刻神', min: 2000, color: '#ff4a4a' },
 ];
 
 /**
@@ -134,6 +135,9 @@ export interface Rated {
   wins: number;
   peak: number;
   history: RatedGame[];
+  /** Rated wins in a row now, and the longest run so far. */
+  streak?: number;
+  bestStreak?: number;
   /** A rated game that was started and not finished yet. If the app is closed mid-game, it counts as a loss. */
   pending: { at: number; ai: string; deck: string; foe: string; foeRating: number } | null;
   /** Results not yet accepted by the ranking server. */
@@ -158,6 +162,8 @@ export function finishRated(r: Rated, score: 0 | 0.5 | 1, actions: number, now: 
   r.rating = after;
   r.games++;
   if (score === 1) r.wins++;
+  r.streak = score === 1 ? (r.streak ?? 0) + 1 : 0;
+  r.bestStreak = Math.max(r.bestStreak ?? 0, r.streak);
   r.peak = Math.max(r.peak, after);
   const g: RatedGame = { at: now, ai: p.ai, score, before, after, deck: p.deck, foe: p.foe ?? '', foeRating: opp };
   r.history.unshift(g);

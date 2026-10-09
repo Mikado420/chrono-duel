@@ -8,7 +8,7 @@
  */
 import { BLUEPRINTS, classify } from '../meta/blueprints';
 import { archeOf, cleanBook, EMPTY_BOOK, type DeckBook } from '../meta/deckbook';
-import { expected, tierOf } from '../meta/rating';
+import { expected, tierOf, TIERS } from '../meta/rating';
 import { rivalById } from '../meta/roster';
 import type { GameLog } from '../core/gamelog';
 import type { PlayerIndex } from '../core/engine';
@@ -132,7 +132,8 @@ export class EnvStats {
     };
     const ids = new Map<string, Set<string>>();
     for (const d of days) {
-      for (const t of ['novice', 'keeper', 'smith', 'master', 'sage', 'eternal']) {
+      // today's ranks, plus the ranks of 0.19 and before (their days still fall in the window for a week)
+      for (const t of [...TIERS.map((x) => x.id), 'keeper', 'smith', 'master', 'sage', 'eternal']) {
         const tab = await this.kv.get<Record<string, EnvCell>>(`env:${d}:${t}`);
         if (tab) merge((bands[t] ??= {}), tab, ids, t + ':');
       }
