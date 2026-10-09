@@ -7,9 +7,10 @@ import type { OnlineFlow } from '../net/flow';
 import { audio } from '../render/audio';
 import type { BattleResult } from '../render/battle';
 import { DIAL_SKINS } from '../render/dial';
+import { DIAL_ART, MAT_ART, dialPreviewSvg, matFlatSvg } from '../render/lookArt';
 import {
   CRAFT_COST, DAILY_BONUS, DAILY_MATCH_CAP, DUPE_SHARDS, LAST_SLOT, LOOKS, MATCH_REWARD, MIN_ACTIONS, PACKS, PITY,
-  buyLook, canOpen, craft, craftBlock, craftable, localDate, lookBlock, lookById, ownedCount, ownsLook, setProgress, type LookKind, type PackDef, type Reward,
+  THEMES, buyLook, buyTheme, canOpen, craft, craftBlock, craftable, localDate, lookBlock, lookById, ownedCount, ownsLook, setProgress, themeOffer, type LookKind, type PackDef, type Reward,
 } from '../meta/economy';
 import {
   DAILY_ALL_BONUS, LOGIN_CALENDAR, NEWS, beginnerView, track, checkLogin, claimMission, claimPresents, claimable, dailyView, prizeText, rankOf, recentShares, deckShares, unreadNews,
@@ -22,7 +23,7 @@ import { store } from './storage';
 import { AI_LEVEL_NAMES, type AiLevel } from '../core/ai';
 import { PLACEMENT_GAMES, tierOf, type Opponent, type RatedGame } from '../meta/rating';
 import { fetchRanking, rankingAvailable, syncRated } from '../net/api';
-import { ICON, artStyle, backImg, cardImg, cardName, countBadge, countUp, h, newTag, packImg, pressable, purse, ribbon, svg, tierBadge, topBar } from './kit';
+import { ICON, artStyle, backImg, svgImg, cardImg, cardName, countBadge, countUp, h, newTag, packImg, pressable, purse, ribbon, svg, tierBadge, topBar } from './kit';
 import { deckKey, deckLook, favCard, myTitles, newTitles, shownTitle } from './profile';
 
 export { h } from './kit';
@@ -47,8 +48,18 @@ const RARE_COLOR: Record<Rarity, string> = { C: '#9fb3b8', R: '#5fd0b5', E: '#c9
 const fmt = (n: number) => n.toLocaleString('ja-JP');
 const hasTokens = (d: { cards: string[] }) => d.cards.filter((c) => CARDS[c] && !CARDS[c].token);
 
+/** A playmat as a picture (shop, deck slot); 'mat:none' is the plain board. */
+function matPreview(id: string, lanes = true): HTMLElement {
+  if (!MAT_ART[id]) return h('div', { class: 'matpv none' }, h('span', {}, 'いつもの盤面'));
+  return h('img', { class: 'matpv', src: svgImg(matFlatSvg(id, 390, 414, lanes)), alt: '' });
+}
+/** What a look looks like, whatever its kind. */
+const lookPreview = (kind: LookKind, id: string) => (kind === 'back' ? h('img', { src: backImg(id), alt: '' }) : kind === 'dial' ? dialPreview(id) : matPreview(id));
+const LOOK_TITLE: Record<LookKind, string> = { back: 'カードの裏面', dial: '盤面の文字盤', mat: 'プレイマット' };
+
 /** Clock-face colours as a small canvas (shop preview and deck slot). */
-function dialPreview(id: string, w = 160, h2 = 90): HTMLCanvasElement {
+function dialPreview(id: string, w = 160, h2 = 90): HTMLElement {
+  if (DIAL_ART[id]) return h('img', { class: 'dialpv', src: svgImg(dialPreviewSvg(id, w * 2)), alt: '', style: 'object-fit:contain' });
   const k = DIAL_SKINS[id] ?? DIAL_SKINS['dial:brass'];
   const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;
   const cv = document.createElement('canvas'); cv.width = w * 2; cv.height = h2 * 2;
@@ -896,7 +907,7 @@ export class Screens {
     const key = deckKey(pick);
     const v = validateDeck(pick.cards);
     const units = unitCount(hasTokens(pick));
-    const back = deckLook(pick.id, 'back'), dial = deckLook(pick.id, 'dial');
+    const back = deckLook(pick.id, 'back'), dial = deckLook(pick.id, 'dial'), mat = deckLook(pick.id, 'mat');
     const dk = DIAL_SKINS[dial] ?? DIAL_SKINS['dial:brass'];
     const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;
     const custom = store.customDecks.some((d) => d.id === pick.id);
@@ -921,7 +932,8 @@ export class Screens {
             h('div', { class: `tot${pick.valid ? '' : ' bad'}` }, h('b', {}, String(pick.cards.length)), h('span', { class: 'num muted' }, `/${RULES.DECK_SIZE}`)))),
         h('div', { class: 'slots' },
           h('button', { class: 'slot', onclick: () => this.lookPicker(pick.id, 'back', () => this.decks()) }, h('img', { src: backImg(back), alt: '' }), h('span', {}, '裏面', h('br', {}), h('small', {}, lookById(back)?.name ?? ''))),
-          h('button', { class: 'slot', onclick: () => this.lookPicker(pick.id, 'dial', () => this.decks()) }, h('i', { class: 'dialmini', style: `--c:${hex(dk.rim)};--f:${hex(dk.face)}` }), h('span', {}, '文字盤', h('br', {}), h('small', {}, lookById(dial)?.name ?? ''))))),
+          h('button', { class: 'slot', onclick: () => this.lookPicker(pick.id, 'dial', () => this.decks()) }, h('i', { class: 'dialmini', style: `--c:${hex(dk.rim)};--f:${hex(dk.face)}` }), h('span', {}, '文字盤', h('br', {}), h('small', {}, lookById(dial)?.name ?? ''))),
+          h('button', { class: 'slot', onclick: () => this.lookPicker(pick.id, 'mat', () => this.decks()) }, h('span', { class: 'matmini' }, matPreview(mat, false)), h('span', {}, 'マット', h('br', {}), h('small', {}, lookById(mat)?.name ?? ''))))),
       h('div', { class: 'btn-row' },
         h('button', { class: 'hexbtn red', style: 'flex:.8', disabled: !custom, onclick: del }, '削除'),
         h('button', { class: 'hexbtn silver', onclick: () => this.deckCheck(pick.cards, pick.name) }, '確認'),
@@ -970,10 +982,10 @@ export class Screens {
   private lookPicker(deckId: string, kind: LookKind, done: () => void) {
     const cur = deckLook(deckId, kind);
     const owned = LOOKS.filter((l) => l.kind === kind && ownsLook(store.wallet, l.id));
-    const ref = this.sheet(kind === 'back' ? 'カードの裏面' : '盤面の文字盤', null, [
+    const ref = this.sheet(LOOK_TITLE[kind], null, [
       h('div', { class: 'looks' }, ...owned.map((l) => h('button', { class: `look${l.id === cur ? ' on' : ''}`, onclick: () => {
         store.deckLooks[deckId] = { ...store.lookOf(deckId), [kind]: l.id }; store.saveDeckLooks(); audio.play('select'); ref.close(); done();
-      } }, h('div', { class: 'pv' }, kind === 'back' ? h('img', { src: backImg(l.id), alt: '' }) : dialPreview(l.id)), h('b', {}, l.name), h('small', {}, l.id === cur ? 'このデッキで使用中' : l.blurb)))),
+      } }, h('div', { class: 'pv' }, lookPreview(kind, l.id)), h('b', {}, l.name), h('small', {}, l.id === cur ? 'このデッキで使用中' : l.blurb)))),
     ], [h('button', { class: 'hexbtn', onclick: () => { ref.close(); this.looksShop(kind); } }, 'ショップで探す')]);
   }
 
@@ -1183,7 +1195,7 @@ export class Screens {
       slider('効果音', 'SOUND', () => s.volume, (v) => { s.volume = v; }, () => audio.play('hit')),
       h('div', { class: 'set-sec' }, '演出'),
       h('div', { class: 'set-row wrap' }, h('div', { class: 'tx' }, h('b', {}, '演出の速さ')), h('div', { class: 'seg2' }, speedBtn(1, '標準'), speedBtn(1.5, '速い'), speedBtn(2.2, 'とても速い'))),
-      toggle('reduced', '動きを減らす', '揺れ・光の粒を抑えます'),
+      toggle('reduced', '動きを減らす', '揺れ・光の粒、文字盤やマットの動きを抑えます'),
       toggle('vibeBig', '盛り上がる場面で振動', vib ? '伝説の登場、決着の一撃、拠点への大きなダメージ' : 'この端末やブラウザは振動に対応していません'),
       toggle('vibeTap', '操作の手応えで振動', vib ? 'カードを出した、攻撃した、などを短く' : 'この端末やブラウザは振動に対応していません'),
       h('div', { class: 'set-sec' }, '遊びやすさ'),
@@ -1528,6 +1540,7 @@ export class Screens {
       tag ?? null, h('span', {}, h('span', { class: 'vis' }, vis), h('span', { class: 'lb' }, h('b', {}, title), h('small', {}, sub))));
     const backs = LOOKS.filter((l) => l.kind === 'back' && !ownsLook(w, l.id)).length;
     const dials = LOOKS.filter((l) => l.kind === 'dial' && !ownsLook(w, l.id)).length;
+    const mats = LOOKS.filter((l) => l.kind === 'mat' && !ownsLook(w, l.id)).length;
     this.hub('shop', h('div', { class: 'tab-page' },
       h('button', { class: 'feat-strip', onclick: () => this.packShop(pack) },
         h('img', { src: cardImg(setCards[0]?.id ?? 'dragon'), alt: '' }),
@@ -1536,6 +1549,8 @@ export class Screens {
         tile('パックを引く', 'コイン・チケット', h('span', {}, h('img', { class: 'l', src: cardImg(setCards[1]?.id ?? 'gear'), alt: '' }), h('img', { class: 'r', src: cardImg(setCards[0]?.id ?? 'gear'), alt: '' })), () => this.packShop(pack), canOpen(w, pack) ? h('span', { class: 'new-tag' }, '引ける') : null),
         tile('カードの裏面', backs ? `コインで交換 ・ ${backs}種` : 'すべて持っています', h('span', { html: `<svg viewBox="0 0 120 130" fill="none"><rect x="14" y="14" width="64" height="92" rx="6" fill="#13323b" stroke="#8fa9ad" stroke-width="2" transform="rotate(-10 46 60)"/><rect x="40" y="20" width="64" height="92" rx="6" fill="#3a1a14" stroke="#e0b25c" stroke-width="2.5" transform="rotate(8 72 66)"/><g transform="rotate(8 72 66)"><path d="M72 42l14 24-14 24-14-24z" stroke="#e0b25c" stroke-width="2"/><circle cx="72" cy="66" r="7" fill="#e0b25c"/></g></svg>` }), () => this.looksShop('back')),
         tile('盤面の文字盤', dials ? `対戦中の時計 ・ ${dials}種` : 'すべて持っています', h('span', { html: '<svg viewBox="0 0 132 132" fill="none"><circle cx="66" cy="66" r="58" fill="#0f2f33" stroke="#c99640" stroke-width="5"/><circle cx="66" cy="66" r="48" stroke="#e0b25c" stroke-width="1" stroke-dasharray="2 5"/><g stroke="#f1e7d0" stroke-width="2.4"><path d="M66 12v10M66 110v10M12 66h10M110 66h10"/></g><path d="M66 66V30" stroke="#fff3d4" stroke-width="4" stroke-linecap="round"/><path d="M66 66l26 16" stroke="#5fd0b5" stroke-width="4" stroke-linecap="round"/><circle cx="66" cy="66" r="6" fill="#e0b25c"/></svg>' }), () => this.looksShop('dial')),
+        tile('プレイマット', mats ? `自分の側の盤面 ・ ${mats}種` : 'すべて持っています', h('span', { html: '<svg viewBox="0 0 132 120" fill="none"><path d="M10 40 L122 40 L114 108 L18 108 Z" fill="#1d170e" stroke="#c99640" stroke-width="3"/><g transform="translate(40 92)"><circle r="26" stroke="#8a6a32" stroke-width="7" stroke-dasharray="5 5"/><circle r="17" fill="#2a2214" stroke="#a7843f" stroke-width="2"/></g><g fill="#0a1418" stroke="#e8dcc0" stroke-opacity=".5" stroke-width="1.5"><rect x="26" y="50" width="22" height="28" rx="3"/><rect x="55" y="50" width="22" height="28" rx="3"/><rect x="84" y="50" width="22" height="28" rx="3"/></g><path d="M10 40 H122" stroke="#e0b25c" stroke-width="2"/></svg>' }), () => this.looksShop('mat')),
+        tile('テーマ一式', '文字盤・裏面・マット ・ 2割引', h('span', { html: '<svg viewBox="0 0 132 120" fill="none"><rect x="64" y="22" width="44" height="62" rx="5" fill="#2a1f10" stroke="#e0b25c" stroke-width="2.5" transform="rotate(10 86 53)"/><path d="M10 96 A50 50 0 0 1 110 96 Z" fill="#13285e" stroke="#e0b85a" stroke-width="3"/><circle cx="60" cy="96" r="30" fill="none" stroke="#e0b85a" stroke-width="7" stroke-opacity=".5" stroke-dasharray="14 2"/><path d="M60 96 L30 80" stroke="#5fd0b5" stroke-width="4" stroke-linecap="round"/></svg>' }), () => this.themeShop(), h('span', { class: 'new-tag' }, 'NEW')),
         tile('欠片で作る', `時の欠片 ${fmt(w.shards)}`, h('span', { html: '<svg viewBox="0 0 130 120" fill="none"><path d="M34 30l14 14-14 26-14-26z" fill="#9fe8ff" stroke="#e0f9ff" stroke-width="1.4"/><path d="M96 24l12 12-12 22-12-22z" fill="#9fe8ff" stroke="#e0f9ff" stroke-width="1.4"/><rect x="44" y="40" width="44" height="62" rx="5" fill="#13323b" stroke="#e0b25c" stroke-width="2.5"/><path d="M66 56v22M55 67h22" stroke="#e0b25c" stroke-width="3" stroke-linecap="round"/></svg>' }), () => this.collection('craft'))),
       h('div', { class: 'sec-title' }, 'コインの集め方'),
       h('ul', { class: 'earn' },
@@ -1633,18 +1648,54 @@ export class Screens {
       const w = store.wallet;
       const list = LOOKS.filter((l) => l.kind === kind);
       const cur = deckLook(store.settings.lastDeck, kind);
-      this.page(kind === 'back' ? 'カードの裏面' : '盤面の文字盤', () => this.shop(), [
-        h('p', { class: 'shop-note', style: 'text-align:left' }, kind === 'back' ? '山札の束と、伏せて出したカードの裏に出ます。デッキごとに選べます（デッキ一覧の「裏面」）。' : '対戦中の時計の見た目です。デッキごとに選べます（デッキ一覧の「文字盤」）。'),
+      const note: Record<LookKind, string> = {
+        back: '山札の束と、伏せて出したカードの裏に出ます。対戦相手にも見えます。デッキごとに選べます（デッキ一覧の「裏面」）。',
+        dial: '対戦中の時計の見た目です。デッキごとに選べます（デッキ一覧の「文字盤」）。',
+        mat: '対戦中、自分の側の盤面に敷くマットです。相手の画面にも、相手側に薄く映ります。デッキごとに選べます（デッキ一覧の「マット」）。',
+      };
+      this.page(LOOK_TITLE[kind], () => this.shop(), [
+        h('p', { class: 'shop-note', style: 'text-align:left' }, note[kind]),
+        h('button', { class: 'chip-btn', style: 'justify-self:start', onclick: () => this.themeShop() }, 'テーマ一式でまとめて交換（2割引）'),
         h('div', { class: 'looks' }, ...list.map((l) => {
           const owned = ownsLook(w, l.id);
           const block = lookBlock(w, l.id);
           return h('div', { class: `look${l.id === cur ? ' on' : ''}` },
-            h('div', { class: 'pv' }, kind === 'back' ? h('img', { src: backImg(l.id), alt: '' }) : dialPreview(l.id)),
-            h('b', {}, l.name), h('small', {}, l.blurb),
+            h('div', { class: 'pv' }, lookPreview(kind, l.id)),
+            h('b', {}, l.name), h('small', {}, l.theme ? `${THEMES.find((t) => t.id === l.theme)?.name}・${l.blurb}` : l.blurb),
             owned
               ? h('button', { class: `hexbtn ${l.id === cur ? 'silver' : ''}`, disabled: l.id === cur, onclick: () => { const id = store.settings.lastDeck; store.deckLooks[id] = { ...store.lookOf(id), [kind]: l.id }; store.saveDeckLooks(); audio.play('select'); this.toast(`いまのデッキで「${l.name}」を使います`); render(); } }, l.id === cur ? '使用中' : 'いまのデッキで使う')
               : h('button', { class: `hexbtn ${block ? '' : 'gold'}`, disabled: !!block, onclick: () => { if (buyLook(store.wallet, l.id)) { store.saveWallet(); audio.play('rareR'); this.toast(`「${l.name}」を手に入れました`); render(); } } }, h('span', {}, h('span', { class: 'ic-coin', style: 'width:14px;height:14px;vertical-align:-2px;margin-right:4px' }), fmt(l.price)), block && block !== '持っています' ? h('small', {}, block) : null));
         })),
+      ], [purse({ shards: false })]);
+    };
+    render();
+  }
+
+  /** Themes: the three looks that belong together, with a set price for what is still missing. */
+  themeShop() {
+    const render = () => {
+      const w = store.wallet;
+      const deck = store.settings.lastDeck;
+      this.page('テーマ一式', () => this.shop(), [
+        h('p', { class: 'shop-note', style: 'text-align:left' }, '文字盤・裏面・マットの3点がそろったテーマです。まだ持っていないものを2点以上まとめて交換すると2割引になります。'),
+        ...THEMES.map((t) => {
+          const parts = LOOKS.filter((l) => l.theme === t.id);
+          const offer = themeOffer(w, t.id);
+          const all = !offer.ids.length;
+          const using = parts.every((l) => deckLook(deck, l.kind) === l.id);
+          return h('div', { class: 'theme-row pn' },
+            h('div', { class: 'theme-hd' }, h('b', {}, t.name), h('small', {}, t.blurb)),
+            h('div', { class: 'theme-pv' },
+              h('div', { class: 'tp dial' }, dialPreview(`dial:${t.id}`)),
+              h('div', { class: 'tp back' }, h('img', { src: backImg(`back:${t.id}`), alt: '' })),
+              h('div', { class: 'tp mat' }, matPreview(`mat:${t.id}`))),
+            h('div', { class: 'theme-own' }, ...parts.map((l) => h('span', { class: ownsLook(w, l.id) ? 'ok' : '' }, `${LOOK_TITLE[l.kind].replace('盤面の', '').replace('カードの', '')}「${l.name}」${ownsLook(w, l.id) ? ' ✓' : ` ${fmt(l.price)}`}`))),
+            all
+              ? h('button', { class: `hexbtn ${using ? 'silver' : 'gold'}`, disabled: using, onclick: () => { store.deckLooks[deck] = { ...store.lookOf(deck), back: `back:${t.id}`, dial: `dial:${t.id}`, mat: `mat:${t.id}` }; store.saveDeckLooks(); audio.play('select'); this.toast(`いまのデッキを「${t.name}」にしました`); render(); } }, using ? 'いまのデッキで使用中' : 'いまのデッキを3点ともこのテーマに')
+              : h('button', { class: 'hexbtn gold', disabled: w.coins < offer.price, onclick: () => { if (buyTheme(store.wallet, t.id)) { store.saveWallet(); audio.play('rareR'); this.toast(`「${t.name}」をそろえました`); render(); } } },
+                h('span', {}, h('span', { class: 'ic-coin', style: 'width:14px;height:14px;vertical-align:-2px;margin-right:4px' }), fmt(offer.price), offer.price < offer.full ? h('s', { style: 'opacity:.6;margin-left:6px;font-size:.85em' }, fmt(offer.full)) : null),
+                w.coins < offer.price ? h('small', {}, `コインが${fmt(offer.price - w.coins)}足りません`) : h('small', {}, `${offer.ids.length}点をまとめて交換`)));
+        }),
       ], [purse({ shards: false })]);
     };
     render();

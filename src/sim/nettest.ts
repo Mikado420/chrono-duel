@@ -256,12 +256,14 @@ const truth = () => (room as unknown as { game: GameState }).game;
   // lobby setup: a new deck and name before the game starts; bad decks and fake titles are refused
   a.send({ t: 'setup', deck: ['scout'] });
   assert.ok(a.errors().includes('deck'));
-  a.send({ t: 'setup', name: 'アリス2', deck: PRESET_DECKS[1].cards, profile: { title: 'no-such-title', fav: 'dragon' } });
+  a.send({ t: 'setup', name: 'アリス2', deck: PRESET_DECKS[1].cards, profile: { title: 'no-such-title', fav: 'dragon', back: 'back:forge', mat: 'dial:forge' } });
   assert.equal(w.last('watching')?.seats[0]?.name, 'アリス2');
   assert.equal(w.last('watching')?.seats[0]?.title, undefined, 'unknown titles are dropped');
   b.send({ t: 'hello', name: 'ボブ', deck: b.deck, mode: 'join', p: NET.PROTOCOL });
   assert.equal(b.last('foe')?.foe?.name, 'アリス2');
   assert.equal(b.last('foe')?.foe?.fav, 'dragon');
+  assert.equal(b.last('foe')?.foe?.back, 'back:forge', 'the card back is shown to the opponent');
+  assert.equal(b.last('foe')?.foe?.mat, undefined, 'a look of the wrong kind is dropped');
   const g = w.last('game')!;
   assert.equal(g.fresh, true, 'the spectator gets the start of the game');
   const hidden = (v: GameState) => {

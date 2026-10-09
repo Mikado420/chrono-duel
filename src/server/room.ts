@@ -8,6 +8,7 @@
 import { CARDS } from '../core/cards';
 import { validateDeck } from '../core/decks';
 import { titleById } from '../meta/titles';
+import { lookById } from '../meta/economy';
 import { actor, apply, createGame, legalActions, other, type Action, type GameState, type PlayerIndex } from '../core/engine';
 import { VERSION } from '../version';
 import type { RoomLog } from './stats';
@@ -23,7 +24,7 @@ export interface RoomEnv {
   onLog?(r: RoomLog): void;
 }
 
-interface PlayerRec { token: string; name: string; deck: string[]; cid: string | null; offlineSince: number | null; strikes: number; rematch: boolean; title?: string; fav?: string }
+interface PlayerRec { token: string; name: string; deck: string[]; cid: string | null; offlineSince: number | null; strikes: number; rematch: boolean; title?: string; fav?: string; back?: string; mat?: string }
 interface Outcome { winner: PlayerIndex | -1; reason: EndKind }
 export interface RoomSnapshot {
   v: 1; code: string; phase: Phase; players: [PlayerRec | null, PlayerRec | null]; game: GameState | null;
@@ -38,11 +39,13 @@ const IDLE_MS = 10 * 60_000;
 /** People looking on at once. */
 export const MAX_WATCHERS = 8;
 
-/** Only known titles and real, collectible cards are passed on to the other side. */
-function cleanProfile(p: Profile | undefined): { title?: string; fav?: string } {
-  const out: { title?: string; fav?: string } = {};
+/** Only known titles, real collectible cards and existing looks of the right kind are passed on to the other side. */
+function cleanProfile(p: Profile | undefined): { title?: string; fav?: string; back?: string; mat?: string } {
+  const out: { title?: string; fav?: string; back?: string; mat?: string } = {};
   if (p && typeof p.title === 'string' && titleById(p.title)) out.title = p.title;
   if (p && typeof p.fav === 'string' && CARDS[p.fav] && !CARDS[p.fav].token) out.fav = p.fav;
+  if (p && typeof p.back === 'string' && lookById(p.back)?.kind === 'back') out.back = p.back;
+  if (p && typeof p.mat === 'string' && lookById(p.mat)?.kind === 'mat') out.mat = p.mat;
   return out;
 }
 
@@ -79,7 +82,7 @@ export class Room {
   private presence(of: PlayerIndex): Presence | null {
     const p = this.players[of];
     if (!p) return null;
-    return { name: p.name, online: p.cid !== null, left: p.offlineSince === null ? null : Math.max(0, p.offlineSince + NET.RECONNECT_MS - this.env.now()), ...(p.title ? { title: p.title } : {}), ...(p.fav ? { fav: p.fav } : {}) };
+    return { name: p.name, online: p.cid !== null, left: p.offlineSince === null ? null : Math.max(0, p.offlineSince + NET.RECONNECT_MS - this.env.now()), ...(p.title ? { title: p.title } : {}), ...(p.fav ? { fav: p.fav } : {}), ...(p.back ? { back: p.back } : {}), ...(p.mat ? { mat: p.mat } : {}) };
   }
   private rematchState(slot: PlayerIndex): RematchState { return { me: !!this.players[slot]?.rematch, foe: !!this.players[other(slot)]?.rematch }; }
   private left(): number | null { return this.deadline === null ? null : Math.max(0, this.deadline - this.env.now()); }
@@ -223,7 +226,7 @@ export class Room {
       p.deck = deck.slice();
     }
     if (m.name !== undefined) p.name = cleanName(m.name);
-    if (m.profile !== undefined) { delete p.title; delete p.fav; Object.assign(p, cleanProfile(m.profile)); }
+    if (m.profile !== undefined) { delete p.title; delete p.fav; delete p.back; delete p.mat; Object.assign(p, cleanProfile(m.profile)); }
     this.sendFoe();
   }
 

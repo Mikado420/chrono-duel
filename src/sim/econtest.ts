@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { CARD_LIST, setOf } from '../core/cards';
 import { mulberry32 } from '../core/engine';
-import { CRAFT_COST, DAILY_BONUS, DAILY_MATCH_CAP, DEFAULT_LOOK, DUPE_SHARDS, LOOKS, MATCH_REWARD, NEW_WALLET, PACKS, PITY, applyReward, buyLook, canOpen, craft, craftBlock, lookBlock, lookById, missingCards, openPack, ownedCount, ownsLook, reward, setProgress } from '../meta/economy';
+import { CRAFT_COST, DAILY_BONUS, DAILY_MATCH_CAP, DEFAULT_LOOK, DUPE_SHARDS, LOOKS, MATCH_REWARD, NEW_WALLET, PACKS, PITY, applyReward, buyLook, canOpen, craft, craftBlock, lookBlock, lookById, missingCards, openPack, ownedCount, ownsLook, reward, setProgress , THEMES, buyTheme, themeOffer} from '../meta/economy';
 
 const rand = mulberry32(99);
 const pack = PACKS[0];
@@ -98,6 +98,32 @@ assert.ok(Object.values(DUPE_SHARDS).every((v, i) => v * 4 <= Object.values(CRAF
   assert.equal(w.coins, 1000 - lookById('back:gear')!.price);
   assert.ok(ownsLook(w, 'back:gear'));
   assert.equal(buyLook(w, 'back:gear'), false, 'only once');
-  assert.ok(LOOKS.every((l) => l.price >= 0 && (l.kind === 'back' || l.kind === 'dial')));
+  assert.ok(LOOKS.every((l) => l.price >= 0 && (l.kind === 'back' || l.kind === 'dial' || l.kind === 'mat')));
+  // every kind has a free default, and every theme has one of each kind
+  for (const k of ['back', 'dial', 'mat'] as const) assert.equal(lookById(DEFAULT_LOOK[k])?.price, 0);
+  assert.equal(THEMES.length, 8);
+  for (const t of THEMES) assert.deepEqual(LOOKS.filter((l) => l.theme === t.id).map((l) => l.kind).sort(), ['back', 'dial', 'mat']);
+  assert.equal(new Set(LOOKS.map((l) => l.id)).size, LOOKS.length, 'ids are unique');
+  // theme sets: cheaper together, only what is missing, only with enough coins
+  const t = NEW_WALLET();
+  const all = themeOffer(t, 'forge');
+  assert.equal(all.ids.length, 3);
+  assert.ok(all.price < all.full);
+  t.coins = all.price - 1;
+  assert.equal(buyTheme(t, 'forge'), false);
+  t.coins = 5000;
+  assert.ok(buyLook(t, 'back:forge'));
+  const rest = themeOffer(t, 'forge');
+  assert.deepEqual(rest.ids.sort(), ['dial:forge', 'mat:forge']);
+  const before = t.coins;
+  assert.ok(buyTheme(t, 'forge'));
+  assert.equal(t.coins, before - rest.price);
+  assert.ok(ownsLook(t, 'dial:forge') && ownsLook(t, 'mat:forge'));
+  assert.equal(themeOffer(t, 'forge').ids.length, 0);
+  assert.equal(buyTheme(t, 'forge'), false, 'nothing left to buy');
+  assert.equal(themeOffer(t, 'astro').ids.length, 3);
+  t.looks.push('back:astro', 'dial:astro');
+  const one = themeOffer(t, 'astro');
+  assert.equal(one.price, one.full, 'no discount for a single part');
 }
 console.log('all economy tests passed');

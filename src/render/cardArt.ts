@@ -1,3 +1,4 @@
+import { artBack, isArtBack } from './looks';
 import { RARITY_NAMES, cardDef, setOf, type CardDef } from '../core/cards';
 import { CSS, FONTS } from './theme';
 
@@ -297,6 +298,8 @@ const backCache = new Map<string, HTMLCanvasElement>();
 export function cardBack(style = 'back:brass'): HTMLCanvasElement {
   const hit = backCache.get(style);
   if (hit) return hit;
+  // themed backs are pictures (lookArt.ts); until one has loaded, show the brass back without remembering it
+  if (isArtBack(style)) return artBack(style) ?? cardBack('back:brass');
   const W = CARD_W, H = CARD_H, cx = W / 2, cy = H / 2;
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const c = cv.getContext('2d')!;

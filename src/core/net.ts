@@ -36,7 +36,8 @@ export type EndKind = 'ko' | 'time' | 'surrender' | 'timeout' | 'disconnect';
 export interface NetResult { winner: PlayerIndex | -1; reason: EndKind }
 
 /** What a player shows of themselves in a room (title id and featured card id; both optional and checked by the room). */
-export interface Profile { title?: string; fav?: string }
+/** What a player shows the other: title, favourite card, card back and playmat (looks are cosmetic only). */
+export interface Profile { title?: string; fav?: string; back?: string; mat?: string }
 
 export type ClientMsg =
   /**
@@ -68,7 +69,7 @@ export type ServerMsg =
   | { t: 'error'; code: ErrCode; msg: string };
 
 /** `left`: ms until an absent player forfeits. */
-export interface Presence { name: string; online: boolean; left: number | null; title?: string; fav?: string }
+export interface Presence { name: string; online: boolean; left: number | null; title?: string; fav?: string; back?: string; mat?: string }
 export interface RematchState { me: boolean; foe: boolean }
 
 // ------------------------------------------------------------------ helpers

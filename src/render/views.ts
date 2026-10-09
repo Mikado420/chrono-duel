@@ -3,13 +3,14 @@ import { cardDef } from '../core/cards';
 import type { PlayerIndex, Unit } from '../core/engine';
 import { RULES } from '../core/rules';
 import { cardArt, cardBack, cardFace } from './cardArt';
+import { artBack, isArtBack } from './looks';
 import { COLORS, FONTS } from './theme';
 import { ease, type Tweener } from './tween';
 import { label } from './ui';
 
 const tex = new Map<string, Texture>();
 export function faceTex(id: string) { let t = tex.get('f:' + id); if (!t) { t = Texture.from(cardFace(id)); tex.set('f:' + id, t); } return t; }
-export function backTex(style = 'back:brass') { let t = tex.get('b:' + style); if (!t) { t = Texture.from(cardBack(style)); tex.set('b:' + style, t); } return t; }
+export function backTex(style = 'back:brass'): Texture { if (isArtBack(style) && !artBack(style)) return backTex('back:brass'); let t = tex.get('b:' + style); if (!t) { t = Texture.from(cardBack(style)); tex.set('b:' + style, t); } return t; }
 function artTex(id: string) { let t = tex.get('a:' + id); if (!t) { t = Texture.from(cardArt(id, 300, 220)); tex.set('a:' + id, t); } return t; }
 
 export const UNIT_W = 176, UNIT_H = 214;

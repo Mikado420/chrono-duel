@@ -46,8 +46,27 @@ export interface Wallet {
 export const NEW_WALLET = (): Wallet => ({ coins: 0, tickets: 3, owned: {}, pity: 0, opened: 0, dailyWin: '', fresh: [], shards: 0, matchDay: '', matchCoins: 0, looks: [] });
 
 // ------------------------------------------------------------------ looks (cosmetic only, bought with coins)
-export type LookKind = 'back' | 'dial';
-export interface LookDef { id: string; kind: LookKind; name: string; price: number; blurb: string }
+export type LookKind = 'back' | 'dial' | 'mat';
+export interface LookDef { id: string; kind: LookKind; name: string; price: number; blurb: string; theme?: string }
+/** Themes: a clock face, a card back and a playmat that belong together (sold one by one or as a set). */
+export interface ThemeDef { id: string; name: string; blurb: string }
+export const THEMES: ThemeDef[] = [
+  { id: 'skeleton', name: '透かし機械', blurb: '盤の奥で歯車が噛み合い、時計が進むと回る' },
+  { id: 'astro', name: '天文時計', blurb: '青い天空に金の黄道。星と天球儀' },
+  { id: 'cathedral', name: '大聖堂', blurb: '石の薔薇窓と、光の落ちる迷宮の床' },
+  { id: 'steam', name: '蒸気機関', blurb: '白い圧力計と、蒸気の漏れるボイラー室' },
+  { id: 'wadokei', name: '和時計', blurb: '黒漆に金蒔絵、漢数字と梵鐘' },
+  { id: 'compass', name: '深海の羅針盤', blurb: '方位盤と浮標、波紋の広がる夜の水面' },
+  { id: 'forge', name: '鍛冶場', blurb: '赤熱する鋳鉄と、炉の照り返し' },
+  { id: 'archive', name: '記憶の書庫', blurb: '羊皮紙と羽根ペン、開いた古書' },
+];
+/** A whole theme bought at once costs this share of its parts. */
+export const THEME_SET_RATE = 0.8;
+const themed = (t: string, dial: [string, string], back: [string, string], mat: [string, string]): LookDef[] => [
+  { id: `dial:${t}`, kind: 'dial', name: dial[0], price: 800, blurb: dial[1], theme: t },
+  { id: `back:${t}`, kind: 'back', name: back[0], price: 600, blurb: back[1], theme: t },
+  { id: `mat:${t}`, kind: 'mat', name: mat[0], price: 1000, blurb: mat[1], theme: t },
+];
 /** Card backs (your deck pile, cards you show face down) and clock faces (the dial during your games). */
 export const LOOKS: LookDef[] = [
   { id: 'back:brass', kind: 'back', name: '真鍮の時計', price: 0, blurb: 'はじめから持っている裏面' },
@@ -60,8 +79,18 @@ export const LOOKS: LookDef[] = [
   { id: 'dial:ember', kind: 'dial', name: '熾火', price: 500, blurb: '炉の火を映した文字盤' },
   { id: 'dial:ivory', kind: 'dial', name: '象牙', price: 500, blurb: '白く磨いた文字盤' },
   { id: 'dial:night', kind: 'dial', name: '星夜', price: 600, blurb: '夜空を閉じ込めた文字盤' },
+  { id: 'mat:none', kind: 'mat', name: 'なし', price: 0, blurb: 'いつもの盤面' },
+  { id: 'mat:felt', kind: 'mat', name: '緑の卓', price: 300, blurb: '真鍮の金具を付けた緑のフェルト' },
+  ...themed('skeleton', ['透かし機械', '奥で歯車が回る文字盤'], ['重なる歯車', '大歯車を中央に据えた裏面'], ['機械室', '端で大歯車がゆっくり回る']),
+  ...themed('astro', ['天文時計', '黄道の輪がめぐる青い天空'], ['天球儀', '星空に金の天球儀'], ['天文台の床', '大理石に真鍮の子午線']),
+  ...themed('cathedral', ['薔薇窓', '石の狭間に光る16の尖頭窓'], ['双子窓', '尖頭アーチの薔薇窓と細窓'], ['迷宮の床', '石床の迷宮に色ガラスの光']),
+  ...themed('steam', ['刻圧計', '銅の縁に鋲を打った白い圧力計'], ['汽缶の銘板', '鋲打ちの鉄に真鍮の銘板'], ['ボイラー室', '鋲打ちの鉄板と銅管、漏れる蒸気']),
+  ...themed('wadokei', ['和時計', '黒漆に漢数字と梵鐘'], ['青海波', '藍地の青海波に和時計'], ['金蒔絵', '漆の地に青海波と金の霞']),
+  ...themed('compass', ['羅針盤', '方位の星と縄の縁、鐘は浮標'], ['錨と羅針', '太い錨を方位環で囲む'], ['夜の水面', '列の下から波紋が広がる']),
+  ...themed('forge', ['鋳鉄', '終焉に近づくと縁が赤熱する'], ['灼ける刃', '鉄床の上で白熱した刃'], ['炉の照り返し', '口を開けた炉と舞う火の粉']),
+  ...themed('archive', ['書庫の時計', '羊皮紙に羽根ペンの針'], ['革装丁', '金の留め金と砂時計の本'], ['開いた古書', '机に開いた古書と蝋燭の光']),
 ];
-export const DEFAULT_LOOK: Record<LookKind, string> = { back: 'back:brass', dial: 'dial:brass' };
+export const DEFAULT_LOOK: Record<LookKind, string> = { back: 'back:brass', dial: 'dial:brass', mat: 'mat:none' };
 export const lookById = (id: string | undefined): LookDef | undefined => LOOKS.find((l) => l.id === id);
 export const ownsLook = (w: Wallet, id: string) => lookById(id)?.price === 0 || (w.looks ?? []).includes(id);
 /** Why a look cannot be bought, or null. */
@@ -71,6 +100,20 @@ export function lookBlock(w: Wallet, id: string): string | null {
   if (ownsLook(w, id)) return '持っています';
   if (w.coins < l.price) return `コインが${l.price - w.coins}足りません`;
   return null;
+}
+/** The looks of a theme the wallet does not have yet, and what they cost together. */
+export function themeOffer(w: Wallet, theme: string): { ids: string[]; full: number; price: number } {
+  const ids = LOOKS.filter((l) => l.theme === theme && !ownsLook(w, l.id)).map((l) => l.id);
+  const full = ids.reduce((a, id) => a + lookById(id)!.price, 0);
+  // the set price only applies when at least two parts are bought together
+  return { ids, full, price: ids.length >= 2 ? Math.round((full * THEME_SET_RATE) / 10) * 10 : full };
+}
+export function buyTheme(w: Wallet, theme: string): boolean {
+  const o = themeOffer(w, theme);
+  if (!o.ids.length || w.coins < o.price) return false;
+  w.coins -= o.price;
+  w.looks = [...(w.looks ?? []), ...o.ids];
+  return true;
 }
 export function buyLook(w: Wallet, id: string): boolean {
   if (lookBlock(w, id)) return false;

@@ -1,4 +1,4 @@
-import { Container, FederatedPointerEvent, Graphics, type Sprite, type Ticker } from 'pixi.js';
+import { Container, FederatedPointerEvent, Graphics, Sprite, Texture, type Ticker } from 'pixi.js';
 import { AI_LEVEL_NAMES, chooseAction, chooseActionAsync, chooseActionSpecAsync, type AiLevel, type AiSpec } from '../core/ai';
 import { chooseRivalAsync, newMind, thinkMs, type RivalCfg, type RivalMind } from '../core/rival';
 import { KEYWORD_HELP, cardDef, keywordsOf } from '../core/cards';
@@ -12,6 +12,9 @@ import { RULES } from '../core/rules';
 import { audio } from './audio';
 import { haptics } from './haptics';
 import { Dial } from './dial';
+import { MAT_ART, MAT_VIEW } from './lookArt';
+import { Embers, Ripple, Steam } from './lookFx';
+import { isArtMat, loadFlatMat, loadMat } from './looks';
 import type { Fx } from './fx';
 import { COLORS, FONTS } from './theme';
 import { ease, type Tweener } from './tween';
@@ -42,7 +45,8 @@ export interface BattleConfig {
   /** Games against the AI: called after every action with the record so far (kept in case the app is closed mid-game). */
   onProgress?: (log: GameLog, myActions: number) => void;
   /** Looks: your card back and clock face, and the back of the opponent's cards. */
-  looks?: { back: string; dial: string; foeBack?: string };
+  /** Card backs, clock face and playmats (yours and the opponent's); `still` turns the ambient motion off. */
+  looks?: { back: string; dial: string; foeBack?: string; mat?: string; foeMat?: string; still?: boolean };
   /** While a unit is held, show what the attack will do (設定「攻撃の前に結果を見せる」). */
   attackPreview?: boolean;
   /** Who moves first, when it was decided before the battle (the VS screen shows it). */
@@ -102,6 +106,14 @@ export class BattleScene extends Container {
   private actionBar = new Container();
   private destroyed_ = false;
   private vignette = new Graphics();
+  // ---- playmats: yours under your half, the opponent's (still, dimmed, turned round) under theirs
+  private matLayer = new Container();
+  private myMat = new Container();
+  private myMatMask = new Graphics();
+  private foeMat = new Container();
+  private foeMatMask = new Graphics();
+  private matTicks: ((ms: number) => void)[] = [];
+  private matT = 0;
   // ---- online play
   private inbox: ServerMsg[] = [];
   private pumping = false;
@@ -140,7 +152,11 @@ export class BattleScene extends Container {
 
   constructor(private tw: Tweener, private fx: Fx, private ticker: Ticker, private cfg: BattleConfig, private onEnd: (r: BattleResult) => void, private onMenu: () => void, private onLog: (text: string, side: PlayerIndex | -1) => void = () => {}, private onLogToggle: () => void = () => {}) {
     super();
-    this.dial = new Dial(tw, cfg.looks?.dial);
+    this.dial = new Dial(tw, cfg.looks?.dial, !cfg.looks?.still);
+    this.matLayer.addChild(this.foeMat, this.foeMatMask, this.myMat, this.myMatMask);
+    this.foeMat.mask = this.foeMatMask; this.myMat.mask = this.myMatMask;
+    if (isArtMat(cfg.looks?.mat)) void this.loadMyMat(cfg.looks.mat);
+    if (isArtMat(cfg.looks?.foeMat)) void this.loadFoeMat(cfg.looks.foeMat);
     this.huds = [new Hud(0, cfg.net?.watch?.names[0] ?? 'あなた'), new Hud(1, cfg.net?.watch ? cfg.net.watch.names[1] : cfg.net ? cfg.net.foeName : cfg.foeName ?? `AI（${AI_LEVEL_NAMES[cfg.level]}）・ ${cfg.aiDeckName}`)];
     this.huds[1].x = 16; this.huds[1].y = 44;
     this.huds[0].x = 16;
@@ -164,7 +180,7 @@ export class BattleScene extends Container {
       this.watchChip.x = 360; this.watchChip.y = 76;
       this.drawBtn.visible = false; this.waitBtn.visible = false;
     }
-    this.addChild(this.vignette, this.board, this.dial, this.units, this.aimRing, this.huds[0], this.huds[1], this.foeHandLayer, this.deckPile, this.drawBtn, this.waitBtn, this.menuBtn, this.logBtn, this.handLayer, this.arrowG, this.aimPanel, this.actionBar, this.overlay, this.watchChip, this.toastC);
+    this.addChild(this.matLayer, this.vignette, this.board, this.dial, this.units, this.aimRing, this.huds[0], this.huds[1], this.foeHandLayer, this.deckPile, this.drawBtn, this.waitBtn, this.menuBtn, this.logBtn, this.handLayer, this.arrowG, this.aimPanel, this.actionBar, this.overlay, this.watchChip, this.toastC);
     this.eventMode = 'static';
     this.hitArea = { contains: () => true };
     this.on('globalpointermove', (e) => this.onMove(e));
@@ -190,6 +206,7 @@ export class BattleScene extends Container {
 
   private tickFn = (t: Ticker) => {
     this.dial.tick(t.deltaMS);
+    if (this.matTicks.length) { this.matT += t.deltaMS / 1000; for (const f of this.matTicks) f(t.deltaMS); }
     if (this.aim) { this.aimT += t.deltaMS / 1000; this.paintAim(); }
     for (const v of this.unitViews.values()) v.tick(t.deltaMS);
     this.huds[0].tick(t.deltaMS); this.huds[1].tick(t.deltaMS);
@@ -243,8 +260,64 @@ export class BattleScene extends Container {
     this.huds[0].y = L.youHud; this.drawBtn.y = L.youHud; this.waitBtn.y = L.youHud;
     this.actionBar.y = L.bar;
     this.toastC.y = L.front;
+    this.layoutMats(e);
     this.buildBoard();
     if (this.s) this.syncAll(false);
+  }
+
+  /** Your mat starts at the front line and covers the rest of the board (scaled up to fill tall screens). */
+  private layoutMats(extra: number) {
+    const top = L.front - 4, bottom = 1280 + extra;
+    const h = bottom - top;
+    const s = Math.max(720 / MAT_VIEW.w, h / MAT_VIEW.h);
+    this.myMat.scale.set(s);
+    this.myMat.x = (720 - MAT_VIEW.w * s) / 2; this.myMat.y = top - MAT_VIEW.y * s;
+    this.myMatMask.clear().rect(-200, top, 1120, bottom - top + 40).fill(0xffffff);
+    // the opponent's, upside down, from their front line up to the clock
+    const fs = 720 / MAT_VIEW.w;
+    this.foeMat.scale.set(fs); this.foeMat.rotation = Math.PI;
+    this.foeMat.x = 720; this.foeMat.y = L.front + 4 + MAT_VIEW.y * fs;
+    this.foeMatMask.clear().rect(-200, 392, 1120, L.front - 392).fill(0xffffff);
+  }
+  private async loadMyMat(id: string) {
+    const cv = await loadMat(id).catch(() => null);
+    if (!cv || this.destroyed_) return;
+    const m = MAT_ART[id];
+    const still = !!this.cfg.looks?.still;
+    const full = (c: HTMLCanvasElement) => { const sp = new Sprite(Texture.from(c)); sp.x = MAT_VIEW.x; sp.y = MAT_VIEW.y; sp.width = MAT_VIEW.w; sp.height = MAT_VIEW.h; return sp; };
+    const C = this.myMat;
+    C.addChild(full(cv.under));
+    cv.spins.forEach((c, i) => {
+      const l = m.spins![i];
+      const sp = new Sprite(Texture.from(c)); sp.anchor.set(0.5); sp.x = l.cx; sp.y = l.cy; sp.width = sp.height = l.r * 2;
+      C.addChild(sp);
+      if (!still) this.matTicks.push((ms) => { sp.rotation += l.speed * ms / 1000; });
+    });
+    if (cv.drift) {
+      const sp = full(cv.drift); C.addChild(sp);
+      if (!still) this.matTicks.push(() => { sp.x = MAT_VIEW.x + Math.sin(this.matT / 9) * 10; sp.y = MAT_VIEW.y + Math.cos(this.matT / 11) * 6; });
+    }
+    if (cv.glow && m.glow) {
+      const g = m.glow, sp = full(cv.glow); C.addChild(sp); sp.alpha = g.max;
+      if (!still) this.matTicks.push(() => { const k = 0.5 + 0.5 * Math.sin((this.matT / g.period) * Math.PI * 2) * (0.7 + 0.3 * Math.sin(this.matT * 7.3)); sp.alpha = g.min + (g.max - g.min) * k; });
+    }
+    if (!still && m.fx) {
+      const add = (o: Container & { tick(ms: number): void }) => { C.addChild(o); this.matTicks.push((ms) => o.tick(ms)); };
+      if (m.fx.embers) add(new Embers(() => ({ x: Math.random() * 390, y: 700 + Math.random() * 80 }), 4, 1.3, undefined, 30));
+      if (m.fx.ripple) add(new Ripple(m.fx.ripple.x, m.fx.ripple.y));
+      if (m.fx.steam) add(new Steam(m.fx.steam, 24));
+    }
+    C.addChild(full(cv.over));
+    C.alpha = 0;
+    void this.tw.run(400, (k) => { C.alpha = k; });
+  }
+  private async loadFoeMat(id: string) {
+    const cv = await loadFlatMat(id).catch(() => null);
+    if (!cv || this.destroyed_) return;
+    const sp = new Sprite(Texture.from(cv)); sp.x = MAT_VIEW.x; sp.y = MAT_VIEW.y; sp.width = MAT_VIEW.w; sp.height = MAT_VIEW.h;
+    this.foeMat.addChild(sp);
+    this.foeMat.alpha = 0;
+    void this.tw.run(400, (k) => { this.foeMat.alpha = k * 0.55; });
   }
 
   private buildBoard() {

@@ -1,4 +1,7 @@
 import { Container, Graphics, Sprite, Texture, type Text } from 'pixi.js';
+import { DIAL_ART, DIAL_S, DIAL_VIEW, type DialLook } from './lookArt';
+import { Embers } from './lookFx';
+import { isArtDial, loadDial } from './looks';
 import { cardDef } from '../core/cards';
 import { RULES } from '../core/rules';
 import type { PlayerIndex } from '../core/engine';
@@ -8,18 +11,26 @@ import { ease, type Tweener } from './tween';
 import { label } from './ui';
 
 const TAU = Math.PI * 2;
+/** Blend two colours (k = 0 gives a, 1 gives b). */
+const mix = (a: number, b: number, k: number) => {
+  const ch = (s: number) => Math.round(((a >> s) & 255) * (1 - k) + ((b >> s) & 255) * k);
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+};
 
 interface Pin { c: Container; pi: PlayerIndex; T: number; card: string | null; face: Container; echo: boolean; stem: Graphics }
 
-/** Clock faces (looks bought in the shop). Only colours change: the layout and the hands stay the same. */
-export interface DialSkin { face: number; faceAlpha: number; rim: number; inner: number; tick: number; minor: number; num: number; star?: boolean }
+/** Clock faces (looks bought in the shop). The plain ones change colour only; themed ones (lookArt.ts) bring a picture. */
+export interface DialSkin { face: number; faceAlpha: number; rim: number; inner: number; tick: number; minor: number; num: number; star?: boolean; art?: DialLook }
 export const DIAL_SKINS: Record<string, DialSkin> = {
   'dial:brass': { face: COLORS.ink2, faceAlpha: 0.9, rim: COLORS.brassDeep, inner: COLORS.line, tick: COLORS.brass, minor: COLORS.mute, num: COLORS.brass },
   'dial:verdigris': { face: 0x0c2a26, faceAlpha: 0.92, rim: 0x3fa58f, inner: 0x1f6b5c, tick: 0x8fe3c8, minor: 0x5f9f8f, num: 0x9ff0dc },
   'dial:ember': { face: 0x1d0f0b, faceAlpha: 0.92, rim: 0xc8642f, inner: 0x6e2a12, tick: 0xffb07a, minor: 0xb06a48, num: 0xffc08a },
   'dial:ivory': { face: 0x26231d, faceAlpha: 0.94, rim: 0xe9dfc8, inner: 0x6b6352, tick: 0xf6efdc, minor: 0xb5ab95, num: 0xf6efdc },
   'dial:night': { face: 0x0b1030, faceAlpha: 0.94, rim: 0xb9c6e6, inner: 0x2f3a6a, tick: 0xe6e2ff, minor: 0x8a93c4, num: 0xd6dcff, star: true },
+  ...Object.fromEntries(Object.entries(DIAL_ART).map(([id, a]) => [id, { face: a.face, faceAlpha: 1, rim: a.rim, inner: a.rim, tick: a.tick, minor: a.minor, num: a.num, art: a }])),
 };
+/** A design-space point of a themed face, on the board. */
+const D = (x: number, y: number) => ({ x: 360 + (x - 195) * DIAL_S, y: 388 + (y - 210) * DIAL_S });
 
 /**
  * The shared clock. Two hands (yours and the opponent's) point at each side's time.
@@ -48,10 +59,17 @@ export class Dial extends Container {
   private glowT = 0;
 
   private skin: DialSkin;
-  constructor(private tw: Tweener, skin = 'dial:brass') {
+  // themed faces
+  private artC = new Container();
+  private spins: { s: Sprite; speed: number }[] = [];
+  private pulse: { s: Sprite; min: number; max: number; period: number } | null = null;
+  private embers: Embers | null = null;
+  private kick = 0;
+  constructor(private tw: Tweener, skin = 'dial:brass', private motion = true) {
     super();
     this.skin = DIAL_SKINS[skin] ?? DIAL_SKINS['dial:brass'];
-    this.addChild(this.band, this.doomBand, this.ticks);
+    this.addChild(this.artC, this.band, this.doomBand, this.ticks);
+    if (isArtDial(skin)) void this.loadArt(skin);
     this.drawStatic();
     const mk = (pi: PlayerIndex) => {
       const c = new Container();
@@ -126,18 +144,21 @@ export class Dial extends Container {
     const { cx, cy, R } = this;
     const k = this.skin;
     const b = this.band.clear();
-    // face
-    b.moveTo(cx - R - 26, cy).arc(cx, cy, R + 26, Math.PI, TAU).lineTo(cx - R - 26, cy).fill({ color: k.face, alpha: k.faceAlpha });
+    const art = k.art;
+    // face (themed faces bring their own)
+    if (!art) b.moveTo(cx - R - 26, cy).arc(cx, cy, R + 26, Math.PI, TAU).lineTo(cx - R - 26, cy).fill({ color: k.face, alpha: k.faceAlpha });
     if (k.star) {
       let seed = 11;
       const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
       for (let i = 0; i < 70; i++) { const a = Math.PI + rnd() * Math.PI, r = 40 + rnd() * (R - 20); b.circle(cx + Math.cos(a) * r, cy + Math.sin(a) * r, 0.8 + rnd() * 1.6).fill({ color: 0xffffff, alpha: 0.25 + rnd() * 0.5 }); }
     }
-    b.arc(cx, cy, R + 26, Math.PI, TAU).stroke({ color: k.rim, width: 3 });
-    b.arc(cx, cy, R - 60, Math.PI, TAU).stroke({ color: k.inner, width: 1.5 });
-    b.moveTo(cx - R - 26, cy).lineTo(cx + R + 26, cy).stroke({ color: k.rim, width: 3 });
+    if (!art) {
+      b.arc(cx, cy, R + 26, Math.PI, TAU).stroke({ color: k.rim, width: 3 });
+      b.arc(cx, cy, R - 60, Math.PI, TAU).stroke({ color: k.inner, width: 1.5 });
+      b.moveTo(cx - R - 26, cy).lineTo(cx + R + 26, cy).stroke({ color: k.rim, width: 3 });
+    }
     // inner guilloché
-    for (let i = 0; i < 36; i++) {
+    for (let i = 0; i < (art ? 0 : 36); i++) {
       const a = Math.PI + (i / 36) * Math.PI;
       b.moveTo(cx + Math.cos(a) * 40, cy + Math.sin(a) * 40).lineTo(cx + Math.cos(a) * (R - 64), cy + Math.sin(a) * (R - 64)).stroke({ color: k.inner, width: 1, alpha: 0.35 });
     }
@@ -148,12 +169,17 @@ export class Dial extends Container {
       t.moveTo(p1.x, p1.y).lineTo(p2.x, p2.y).stroke({ color: major ? k.tick : k.minor, width: major ? 3 : 1.5, alpha: major ? 1 : 0.6 });
       if (major) {
         const lp = this.point(i, R - 16);
-        const tx = label(String(i), 17, k.num, { font: FONTS.num, weight: '700' });
+        const text = art?.labels?.[i / 5] ?? String(i);
+        const hot = art?.hot ? Math.max(0, (i - 10) / 30) : 0;
+        const color = hot ? mix(k.num, 0xffb04a, Math.min(1, hot * 1.3)) : k.num;
+        const tx = label(text, art?.labels ? 15 : 17, color, { font: art?.numFont === 'display' ? FONTS.display : FONTS.num, weight: '700' });
+        if (art?.italic) tx.style.fontStyle = 'italic';
+        if (art?.numStroke !== undefined) tx.style.stroke = { color: art.numStroke, width: 4, join: 'round' };
         tx.anchor.set(0.5); tx.x = lp.x; tx.y = lp.y + (i === 0 || i === RULES.END ? -10 : 0);
         this.addChild(tx);
       }
     }
-    for (const bell of RULES.BELLS) {
+    for (const bell of art ? [] : RULES.BELLS) {
       const p = this.point(bell, R - 40);
       const g = new Graphics();
       g.moveTo(-8, 6).bezierCurveTo(-7, -2, -6, -9, 0, -9).bezierCurveTo(6, -9, 7, -2, 8, 6).closePath().fill({ color: k.tick, alpha: 0.85 });
@@ -174,8 +200,47 @@ export class Dial extends Container {
     const alpha = this.doomLevel ? 0.55 + 0.25 * Math.sin(this.glowT * 3) : 0.22;
     this.doomBand.clear().arc(cx, cy, R + 13, a0, a1).stroke({ color: COLORS.doom, width: 18 + this.doomLevel * 2, alpha });
   }
+  /** Builds the themed face once its pictures are ready. */
+  private async loadArt(id: string) {
+    const a = DIAL_ART[id].art;
+    const cv = await loadDial(id).catch(() => null);
+    if (!cv || this.destroyed) return;
+    const top = D(DIAL_VIEW.x, DIAL_VIEW.y);
+    const full = (c: HTMLCanvasElement) => { const s = new Sprite(Texture.from(c)); s.x = top.x; s.y = top.y; s.width = DIAL_VIEW.w * DIAL_S; s.height = DIAL_VIEW.h * DIAL_S; return s; };
+    this.artC.addChild(full(cv.under));
+    if (cv.spins.length) {
+      const sc = new Container();
+      const m = new Graphics().moveTo(this.cx - (a.clip ?? 150) * DIAL_S, this.cy).arc(this.cx, this.cy, (a.clip ?? 150) * DIAL_S, Math.PI, TAU).closePath().fill(0xffffff);
+      sc.mask = m;
+      cv.spins.forEach((c, i) => {
+        const l = a.spins![i];
+        const s = new Sprite(Texture.from(c)); s.anchor.set(0.5);
+        const p = D(l.cx, l.cy); s.x = p.x; s.y = p.y; s.width = s.height = l.r * 2 * DIAL_S;
+        sc.addChild(s);
+        this.spins.push({ s, speed: l.speed });
+      });
+      this.artC.addChild(m, sc);
+    }
+    if (cv.pulse && a.pulse) { const s = full(cv.pulse); this.artC.addChild(s); this.pulse = { s, ...a.pulse }; s.alpha = a.pulse.max; }
+    this.artC.addChild(full(cv.over));
+    if (a.embers && this.motion) {
+      // sparks off the heated rim (from DOOM_AT to the end)
+      this.embers = new Embers(() => { const t = RULES.DOOM_AT + Math.random() * (RULES.END - RULES.DOOM_AT); const p = this.point(t, this.R + 8 + Math.random() * 14); return p; }, 5, 2.6);
+      this.artC.addChild(this.embers);
+    }
+    this.artC.alpha = 0;
+    void this.tw.run(300, (k) => { this.artC.alpha = k; });
+  }
+
   tick(ms: number) {
     this.glowT += ms / 1000;
+    if (this.motion && this.spins.length) {
+      const step = this.kick * Math.min(1, ms / 250);
+      this.kick -= step;
+      for (const p of this.spins) p.s.rotation += p.speed * (ms / 1000) + Math.sign(p.speed) * step / Math.max(0.5, Math.abs(p.speed) * 6);
+    }
+    if (this.pulse) { const k = this.motion ? 0.5 + 0.5 * Math.sin((this.glowT / this.pulse.period) * TAU) : 1; this.pulse.s.alpha = this.pulse.min + (this.pulse.max - this.pulse.min) * k; }
+    this.embers?.tick(ms);
     if (this.doomLevel) this.drawDoom();
     for (const p of this.pins.values()) if (p.pi === 1 && !p.card) p.face.rotation = Math.sin(this.glowT * 2 + p.T) * 0.12;
   }
@@ -193,6 +258,7 @@ export class Dial extends Container {
     };
     if (!animate || from === t) { put(t); return; }
     const steps = Math.abs(t - from);
+    this.kick += Math.min(steps, 12) * 0.05;
     const dur = Math.min(900, 160 + steps * 90);
     let last = Math.round(from);
     await this.tw.run(dur, (k) => {

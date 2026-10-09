@@ -31,7 +31,7 @@ export interface Settings {
 const DEFAULT_SETTINGS: Settings = { volume: 0.7, bgm: 0.5, muted: false, speed: 1, reduced: false, level: 'normal', lastDeck: 'balance', guided: false, name: '', vibeBig: true, vibeTap: true, attackPreview: true, packConfirm: true };
 
 /** Per-deck looks and the card shown for the deck (presets included, so it is kept apart from the deck list). */
-export interface DeckLook { back?: string; dial?: string; key?: string }
+export interface DeckLook { back?: string; dial?: string; mat?: string; key?: string }
 
 export interface OnlineSession { code: string; token: string; name: string; at: number }
 

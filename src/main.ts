@@ -4,6 +4,7 @@ import { Application, Container } from 'pixi.js';
 import type { DeckDef } from './core/decks';
 import { audio } from './render/audio';
 import { Backdrop } from './render/backdrop';
+import { preloadBacks } from './render/looks';
 import { BattleScene, type BattleConfig, type BattleResult } from './render/battle';
 import { Fx } from './render/fx';
 import { COLORS, DESIGN } from './render/theme';
@@ -34,6 +35,7 @@ async function loadFonts() {
 
 async function boot() {
   await loadFonts();
+  void preloadBacks(); // themed card backs are pictures; get them ready while the home screen comes up
   const app = new Application();
   const stageEl = document.getElementById('stage')!;
   // sizing is driven by relayout() below rather than Pixi's resizeTo, so the canvas and the layout always agree
@@ -274,10 +276,13 @@ async function boot() {
     shake.addChild(packScene);
     shake.addChild(fx.layer);
   };
-  /** Card back and dial of a deck; the AI shows a random back. */
+  /** Card back, dial and mat of a deck; the AI shows a random back and (often) a random mat. */
   const looksFor = (deckId: string, ai: boolean) => {
-    const backs = LOOKS.filter((l) => l.kind === 'back');
-    return { back: deckLook(deckId, 'back'), dial: deckLook(deckId, 'dial'), foeBack: ai ? backs[Math.floor(Math.random() * backs.length)].id : undefined };
+    const pick = (k: 'back' | 'mat') => { const l = LOOKS.filter((x) => x.kind === k); return l[Math.floor(Math.random() * l.length)].id; };
+    return {
+      back: deckLook(deckId, 'back'), dial: deckLook(deckId, 'dial'), mat: deckLook(deckId, 'mat'), still: store.settings.reduced,
+      foeBack: ai ? pick('back') : undefined, foeMat: ai && Math.random() < 0.6 ? pick('mat') : undefined,
+    };
   };
   /** A free game against the AI: the VS screen, then the board (paused until the VS screen goes). */
   const startFree = (cfg: BattleConfig) => {
@@ -313,7 +318,13 @@ async function boot() {
     };
     audio.bgm('battle', true);
     live.attackPreview = store.settings.attackPreview !== false;
-    if (!live.looks && cfg.net) live.looks = looksFor(myDeckOf(cfg)?.id ?? store.settings.lastDeck ?? '', false);
+    if (!live.looks && cfg.net) {
+      // online: your looks, and the opponent's card back and mat as they chose them
+      const mine = looksFor(myDeckOf(cfg)?.id ?? store.settings.lastDeck ?? '', false);
+      const foe = cfg.net.init.foe;
+      // looking on at others: only your clock face (the players' own backs and mats are theirs to show)
+      live.looks = cfg.net.watch ? { back: 'back:brass', dial: mine.dial, still: mine.still } : { ...mine, foeBack: foe?.back, foeMat: foe?.mat };
+    }
     battle = new BattleScene(tw, fx, app.ticker, live, onResult, () => {
       if (cfg.net?.watch) { screens.watchMenu(() => {}, () => { endBattle(); flow.leave(); screens.onlineMenu(); }); return; }
       const speed = tw.speed;
@@ -335,7 +346,7 @@ async function boot() {
   const flow: OnlineFlow = new OnlineFlow({
     showLobby: () => { endBattle(); screens.lobby(); },
     showWatch: () => { endBattle(); screens.watchLobby(); },
-    profile: () => ({ title: shownTitle()?.id, fav: favCard() }),
+    profile: () => ({ title: shownTitle()?.id, fav: favCard(), back: deckLook(store.settings.lastDeck ?? '', 'back'), mat: deckLook(store.settings.lastDeck ?? '', 'mat') }),
     showConnecting: (msg) => screens.connecting(msg),
     showError: (msg) => { endBattle(); screens.error(msg, () => screens.onlineMenu()); },
     startBattle: (link) => {

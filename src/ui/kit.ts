@@ -2,6 +2,8 @@
 import { cardDef } from '../core/cards';
 import { audio } from '../render/audio';
 import { cardBack, cardFace, packArt } from '../render/cardArt';
+import { backSvg } from '../render/lookArt';
+import { artBack, isArtBack } from '../render/looks';
 import type { Tier } from '../meta/rating';
 import { titleById } from '../meta/titles';
 import { store } from './storage';
@@ -27,7 +29,9 @@ const memo = (key: string, make: () => HTMLCanvasElement, type = 'image/webp', q
   return u;
 };
 export const cardImg = (id: string) => memo('f:' + id, () => cardFace(id));
-export const backImg = (style: string) => memo('b:' + style, () => cardBack(style));
+export const backImg = (style: string) => (isArtBack(style) && !artBack(style) ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(backSvg(style, 340, 476, true))}` : memo('b:' + style, () => cardBack(style)));
+/** Themed pictures straight from their SVG (previews in menus). */
+export const svgImg = (svgText: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText)}`;
 export const packImg = (name: string, sub: string) => memo('p:' + name, () => packArt(name, sub), 'image/webp', 0.92);
 /** The illustration part of a card face, as a CSS background (art box: 18,62 to 322,250 on a 340×476 face). */
 export const artStyle = (id: string) => `background-image:url("${cardImg(id)}")`;
