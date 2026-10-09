@@ -1,7 +1,7 @@
 /* Home-screen progression checks: `npm run test:meta` */
 import assert from 'node:assert/strict';
 import { BEGINNER, GIFTS, LOGIN_CALENDAR, NEW_META, checkLogin, claimMission, claimPresents, claimable, dailyMissions, dailyView, deckShares, rankOf, recentShares, recordBattle, recordMatch, track } from '../meta/progress';
-import { BASE_TITLE_COUNT, TITLES, earnedTitles, titleById } from '../meta/titles';
+import { BASE_TITLE_COUNT, TITLES, earnedTitles, titleById, titleOpen } from '../meta/titles';
 import { SEASONS } from '../meta/ranks';
 
 const m = NEW_META();
@@ -84,6 +84,15 @@ assert.equal(BASE_TITLE_COUNT, 53);
 assert.equal(TITLES.length, 53 + SEASONS.length * 6, 'six season titles per season (見習い to 刻神)');
 assert.deepEqual(titleById('season1-novice')?.season, { id: 1, tier: 'novice', label: '第1季', rank: '見習い' });
 assert.equal(titleById('season1-shin')?.name, '第1季 刻神');
+// 季の称号 are given only once their season is over
+assert.equal(titleOpen('season1-shin', '2026-12-01'), false, 'not while 第1季 runs');
+assert.equal(titleOpen('first', '2026-12-01'), true);
+{
+  const { rollSeason } = await import('../meta/rating');
+  const r = { rating: 1500, season: 1, sPeak: 1500, sGames: 3, sWins: 2, seasons: [{ season: 1, peak: 2100, tier: 'shin', games: 9, wins: 9 }] };
+  assert.equal(rollSeason(r, '2026-12-01'), null);
+  assert.deepEqual(r.seasons, [], 'a result of the season still running is dropped');
+}
 assert.ok(earnedTitles({ ...zero, seasonTiers: { 1: 'sei' } }).includes('season1-sei'));
 assert.ok(!earnedTitles({ ...zero, seasonTiers: { 1: 'sei' } }).includes('season1-go'), 'only the best rank of a season');
 const steps = (ids: string[]) => ids.map((id) => titleById(id)!.tone);

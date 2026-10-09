@@ -2,7 +2,8 @@
 import { CARD_LIST, cardDef } from '../core/cards';
 import type { DeckDef } from '../core/decks';
 import { DEFAULT_LOOK, LOOKS, THEMES, lookById, ownsLook, setProgress, type LookKind } from '../meta/economy';
-import { RENAMED_TITLES, TITLES, earnedTitles, titleById, type TitleCtx, type TitleDef } from '../meta/titles';
+import { RENAMED_TITLES, TITLES, earnedTitles, titleById, titleOpen, type TitleCtx, type TitleDef } from '../meta/titles';
+import { localDate } from '../meta/economy';
 import { store } from './storage';
 
 export function titleCtx(): TitleCtx {
@@ -27,16 +28,19 @@ export function titleCtx(): TitleCtx {
 export function myTitles(): string[] {
   const now = earnedTitles(titleCtx());
   const m = store.meta;
-  // titles of the first list: renamed ones move to their new id, retired ones are dropped
-  const valid = new Set(TITLES.map((t) => t.id));
+  // titles of the first list: renamed ones move to their new id, retired ones are dropped; so are 季の称号 of a
+  // season still running (they are only given once it is over)
+  const today = localDate();
+  const valid = new Set(TITLES.filter((t) => titleOpen(t.id, today)).map((t) => t.id));
   const before = m.titlesEarned ?? [];
   const moved = [...new Set(before.map((id) => RENAMED_TITLES[id] ?? id).filter((id) => valid.has(id)))];
   if (moved.length !== before.length || moved.some((id, i) => id !== before[i])) { m.titlesEarned = moved; store.saveMeta(); }
   if (m.title && m.title !== '-' && !valid.has(m.title)) { m.title = RENAMED_TITLES[m.title] && valid.has(RENAMED_TITLES[m.title]) ? RENAMED_TITLES[m.title] : ''; store.saveMeta(); }
   const kept = m.titlesEarned ?? [];
-  const add = now.filter((t) => !kept.includes(t));
+  const nowOk = now.filter((t) => valid.has(t));
+  const add = nowOk.filter((t) => !kept.includes(t));
   if (add.length) { m.titlesEarned = [...kept, ...add]; store.saveMeta(); }
-  const all = new Set([...kept, ...now]);
+  const all = new Set([...kept, ...nowOk]);
   return TITLES.map((t) => t.id).filter((id) => all.has(id));
 }
 /** The title shown under the name: the chosen one if it is still earned, else the newest earned, else none. */

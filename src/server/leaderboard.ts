@@ -7,9 +7,9 @@
  */
 import { CARDS } from '../core/cards';
 import { cleanName } from '../core/net';
-import { titleById } from '../meta/titles';
-import { OPP_SPREAD, RATING_RESET, START_RATING, applyRatingReset, foeById, nextRating, rollSeason, seasonAt, tierOf, type SeasonResult, type SubmitReq } from '../meta/rating';
+import { titleOpen } from '../meta/titles';
 import { jstDay } from '../meta/ranks';
+import { OPP_SPREAD, RATING_RESET, START_RATING, applyRatingReset, foeById, nextRating, rollSeason, seasonAt, tierOf, type SeasonResult, type SubmitReq } from '../meta/rating';
 import type { PlayStats } from './stats';
 import type { Transfer } from './transfer';
 import type { Replays } from './replays';
@@ -69,7 +69,7 @@ export class Leaderboard {
     if ('status' in rec) return rec;
     if (body.name !== undefined) rec.name = cleanName(body.name);
     // what others see next to the name: a real title and a real card, or nothing
-    if (body.title !== undefined) { if (typeof body.title === 'string' && titleById(body.title)) rec.title = body.title; else delete rec.title; }
+    if (body.title !== undefined) { if (typeof body.title === 'string' && titleOpen(body.title, jstDay(this.now()))) rec.title = body.title; else delete rec.title; }
     if (body.fav !== undefined) { if (typeof body.fav === 'string' && CARDS[body.fav] && !CARDS[body.fav].token) rec.fav = body.fav; else delete rec.fav; }
     const games = Array.isArray(body.games) ? (body.games as SubmitReq[]).slice(0, 20) : [];
     const accepted: string[] = [], refused: string[] = [];
@@ -116,7 +116,7 @@ export class Leaderboard {
     await this.kv.put('rk:snap', snap);
     const row = (p: PlayerRec, me: boolean): RankRow => ({
       name: p.name, rating: p.rating, tier: tierOf(p.rating).tier.id, games: p.sGames ?? p.games, wins: p.sWins ?? p.wins, peak: p.peak,
-      ...(p.title ? { title: p.title } : {}), ...(p.fav ? { fav: p.fav } : {}), prev: snap.prev[p.id] ?? null, ...(me ? { me: true } : {}),
+      ...(p.title && titleOpen(p.title, today) ? { title: p.title } : {}), ...(p.fav ? { fav: p.fav } : {}), prev: snap.prev[p.id] ?? null, ...(me ? { me: true } : {}),
     });
     let meId: string | null = null;
     if (validId(body.id) && validId(body.secret)) {

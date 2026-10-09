@@ -85,6 +85,8 @@ export function seasonStartRating(rating: number): number {
  */
 export function rollSeason(r: { rating: number; games?: number; wins?: number; season?: number; sPeak?: number; sGames?: number; sWins?: number; seasons?: SeasonResult[]; streak?: number }, day: string): SeasonResult | null {
   const cur = seasonAt(day);
+  // results can only be of seasons already over (anything else is dropped, and so is its 季の称号)
+  if (r.seasons?.some((x) => x.season >= cur.id)) r.seasons = r.seasons.filter((x) => x.season < cur.id);
   // records from before seasons existed join the first one with what they have played so far
   if (r.season === undefined) { r.season = cur.id; r.sPeak = r.rating; r.sGames = r.sGames ?? r.games ?? 0; r.sWins = r.sWins ?? r.wins ?? 0; return null; }
   if (r.season >= cur.id) return null;

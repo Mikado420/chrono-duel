@@ -7,7 +7,8 @@
  */
 import { CARDS } from '../core/cards';
 import { validateDeck } from '../core/decks';
-import { titleById } from '../meta/titles';
+import { titleOpen } from '../meta/titles';
+import { jstDay } from '../meta/ranks';
 import { lookById } from '../meta/economy';
 import { actor, apply, createGame, legalActions, other, type Action, type GameState, type PlayerIndex } from '../core/engine';
 import { VERSION } from '../version';
@@ -42,7 +43,7 @@ export const MAX_WATCHERS = 8;
 /** Only known titles, real collectible cards and existing looks of the right kind are passed on to the other side. */
 function cleanProfile(p: Profile | undefined): { title?: string; fav?: string; back?: string; mat?: string } {
   const out: { title?: string; fav?: string; back?: string; mat?: string } = {};
-  if (p && typeof p.title === 'string' && titleById(p.title)) out.title = p.title;
+  if (p && typeof p.title === 'string' && titleOpen(p.title, jstDay(Date.now()))) out.title = p.title;
   if (p && typeof p.fav === 'string' && CARDS[p.fav] && !CARDS[p.fav].token) out.fav = p.fav;
   if (p && typeof p.back === 'string' && lookById(p.back)?.kind === 'back') out.back = p.back;
   if (p && typeof p.mat === 'string' && lookById(p.mat)?.kind === 'mat') out.mat = p.mat;

@@ -37,7 +37,7 @@ export interface TitleCtx {
   seasonTiers?: Record<number, string>;
 }
 
-import { SEASONS, TIERS } from './ranks';
+import { SEASONS, TIERS, seasonAt } from './ranks';
 
 /** Rated games before the first rating counts as settled (rating.ts PLACEMENT_GAMES). */
 const PLACEMENT = 10;
@@ -132,4 +132,10 @@ export const titleById = (id: string | undefined | null): TitleDef | undefined =
 /** Ids of the titles `c` has earned, in list order. */
 export function earnedTitles(c: TitleCtx): string[] {
   return ALL.filter((t) => t.test(c)).map((t) => t.id);
+}
+
+/** Whether `id` can be held on `day`: a 季の称号 only once its season is over (it is given when the season ends). */
+export function titleOpen(id: string | undefined | null, day: string): boolean {
+  const t = titleById(id);
+  return !!t && (!t.season || seasonAt(day).id > t.season.id);
 }
