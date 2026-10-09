@@ -1,3 +1,4 @@
+import type { EventProgress } from './events';
 /**
  * Long-term progression shown on the home screen: player rank, login bonus, daily and beginner missions,
  * the present box and news. Pure logic over a serializable `Meta` object (the UI stores it).
@@ -43,6 +44,8 @@ export interface Meta {
   presentLog: PresentLog[];
   /** `seq` when the present box was last opened: presents above it show NEW. */
   presentsSeen: number;
+  /** This week's イベント (see events.ts). */
+  event?: EventProgress;
 }
 export interface MatchRec { at: number; mode: 'free' | 'rated' | 'online'; result: 'win' | 'lose' | 'draw'; foe: string; deck: string; deckId: string; myHp: number; foeHp: number; reason: string }
 export interface PresentLog { from: string; text: string; prize: Prize; at: string; got: string }
@@ -65,6 +68,8 @@ export const rankPrize = (r: number): Prize => (r % 5 === 0 ? { coins: 50, ticke
 function give(m: Meta, from: string, text: string, prize: Prize, today: string) {
   m.presents.unshift({ id: `p${++m.seq}`, from, text, prize, at: today });
 }
+/** A prize of the week's event, as a present. */
+export function grantEventPrize(m: Meta, text: string, prize: Prize, today: string) { give(m, 'イベント', text, prize, today); }
 /** The reward for a finished season, as a present. */
 export function grantSeasonReward(m: Meta, text: string, prize: { coins: number; tickets: number }, today: string) {
   give(m, '運営', text, { coins: prize.coins, ...(prize.tickets ? { tickets: prize.tickets } : {}) }, today);
@@ -239,6 +244,7 @@ export function recentShares(meta: Meta, n = 20, keep = 3): DeckShare[] {
 // ------------------------------------------------------------------ news
 export interface News { id: string; date: string; tag: 'お知らせ' | '新カード' | '機能追加' | '不具合修正'; title: string; body: string }
 export const NEWS: News[] = [
+  { id: 'n33', date: '2026-10-09', tag: '機能追加', title: 'シーズン・イベント・リプレイ共有・引き継ぎコードが登場', body: 'レート戦にシーズンができました。新しい弾が出るたびに1期が終わり、その期の最高ランクに応じてコイン・パックチケットと、その期だけの称号（刻士以上）がもらえます。次の期は1つ下のランクの最初から始まり、ランキングも期ごとになります。バトルに「イベント」が加わり、毎週月曜に「伝説の宴」「鏡の刻」「時の加速」などのルールが入れ替わります（1・3・5勝で報酬）。AIとの対戦の結果画面から「リプレイを共有」でき、リンクを開くと誰でも試合を見返せます。フレンド対戦には、ずっと変わらない「いつもの部屋」ができ、招待リンクを一度送ればお互いに開くだけで対戦できます。機種変更のときは、その他の「引き継ぎ」で発行するコードでデータを移せます（24時間以内に1回）。' },
   { id: 'n32', date: '2026-10-09', tag: '機能追加', title: 'レートのランクと称号を一新しました', body: 'レート戦のランクを「見習い・刻士（1200）・刻匠（1400）・刻豪（1600）・刻聖（1800）・刻神（2000）」の6段階にしました。称号は53種に増え、黄・緑・青・銅・銀・金・赤の7つの格に分かれます。格が高いほど札が豪華になり、銀と金には光が走り、赤は炎のように揺らめきます。「無傷の凱旋」「完全なる時計」など、勝ち方で手に入る称号も加わりました。名前が変わった称号は新しい称号へ引き継いでいます。また、基本デッキを削除できるようになりました（デッキ一覧からいつでも戻せます）。' },
   { id: 'n31', date: '2026-10-09', tag: 'お知らせ', title: '着せ替えの品ぞろえと価格を変更しました', body: '「カードの裏面」の名前を「スリーブ」に変えました。着せ替えは標準と8つのテーマだけになり、テーマの文字盤・マットは400コイン、スリーブは200コイン、3点セットは800コインです（一部を持っているときはその分を引いた額でそろえられます）。販売を終えたスリーブ・文字盤・マットを持っていた方には、代金をコインでお返ししています。' },
   { id: 'n30', date: '2026-10-09', tag: '機能追加', title: 'プレイマットと8つのテーマが登場しました', body: '自分の側の盤面に敷く「プレイマット」が加わりました。あわせて、文字盤・カードの裏面・マットがそろった8つのテーマ（透かし機械・天文時計・大聖堂・蒸気機関・和時計・深海の羅針盤・鍛冶場・記憶の書庫）をショップに追加しました。文字盤の奥で歯車が回ったり、終焉が近づくと縁が赤熱したりします。どれも300コインで、2点以上をまとめて交換すると2割引です。以前の色違いの文字盤は販売を終え、交換していた方には代金をコインでお返ししています。オンライン対戦では、あなたの裏面とマットが相手にも見えます。' },

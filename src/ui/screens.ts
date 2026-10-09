@@ -2,7 +2,7 @@ import { CARDS, CARD_LIST, RARITY_NAMES, SET_NAMES, cardDef, keywordsOf, KEYWORD
 import { maxCopies, PRESET_DECKS, validateDeck, type DeckDef } from '../core/decks';
 import { NET, cleanName, normalizeCode, type Presence } from '../core/net';
 import { RULES } from '../core/rules';
-import { inviteLink } from '../net/config';
+import { inviteLink, myRoomCode } from '../net/config';
 import type { OnlineFlow } from '../net/flow';
 import { audio } from '../render/audio';
 import type { BattleResult } from '../render/battle';
@@ -17,6 +17,7 @@ import {
   type MissionView, type News, type Prize, type Stat,
 } from '../meta/progress';
 import { TITLES, TONE_NAMES } from '../meta/titles';
+import { EVENT_PRIZES, eventOf, eventProgress } from '../meta/events';
 import { VERSION } from '../version';
 import { pwa } from '../pwa';
 import { store } from './storage';
@@ -102,6 +103,11 @@ export interface ScreenHost {
   flow(): OnlineFlow;
   /** Opens the action log of the game on screen (the result screen keeps the finished game behind it). */
   openLog(): void;
+  /** The finished game can be shared as a replay (games against the AI keep their record). */
+  canShareReplay(): boolean;
+  /** Starts a game of this week's event (with the chosen deck when the event uses your own). */
+  startEvent(deck: DeckDef | null): void;
+  shareReplay(): Promise<string | null>;
 }
 
 export class Screens {
@@ -463,6 +469,7 @@ export class Screens {
       h('button', { class: 'mtile', disabled: !fn, onclick: () => { if (!fn) return; audio.play('select'); fn(); } },
         h('span', {}, h('span', { class: 'em', html: emblem }), h('span', { class: 'pl' }, h('b', {}, title), h('small', {}, en)), h('span', { class: 'st' }, sub)));
     const E = {
+      event: '<svg viewBox="0 0 120 120" fill="none"><path d="M60 6l14 30 32 4-24 22 6 32-28-16-28 16 6-32-24-22 32-4z" fill="#3a1a14" stroke="#e0b25c" stroke-width="4" stroke-linejoin="round"/><circle cx="60" cy="62" r="16" fill="#0f3a35" stroke="#5fd0b5" stroke-width="3"/><path d="M60 62V52M60 62l7 4" stroke="#fff3d4" stroke-width="3" stroke-linecap="round"/></svg>',
       rated: '<svg viewBox="0 0 118 128" fill="none"><path d="M59 4l52 30v60l-52 30-52-30V34z" fill="#c99640"/><path d="M59 12l45 26v52l-45 26-45-26V38z" fill="#0f3a35"/><path d="M59 20l38 22v44l-38 22-38-22V42z" stroke="#5fd0b5" stroke-width="2"/><circle cx="59" cy="64" r="24" stroke="#e0b25c" stroke-width="2"/><path d="M59 64V46M59 64l13 8" stroke="#fff3d4" stroke-width="3" stroke-linecap="round"/><circle cx="59" cy="64" r="3.5" fill="#e0b25c"/><path d="M59 0l4 7h-8z" fill="#fff3d4"/></svg>',
       free: '<svg viewBox="0 0 118 118" fill="none"><g fill="#c99640"><rect x="54" y="2" width="10" height="18" rx="2"/><rect x="54" y="98" width="10" height="18" rx="2"/><rect x="2" y="54" width="18" height="10" rx="2"/><rect x="98" y="54" width="18" height="10" rx="2"/><rect x="54" y="2" width="10" height="18" rx="2" transform="rotate(45 59 59)"/><rect x="54" y="2" width="10" height="18" rx="2" transform="rotate(-45 59 59)"/><rect x="54" y="98" width="10" height="18" rx="2" transform="rotate(45 59 59)"/><rect x="54" y="98" width="10" height="18" rx="2" transform="rotate(-45 59 59)"/></g><circle cx="59" cy="59" r="42" fill="#c99640"/><circle cx="59" cy="59" r="34" fill="#13323b"/><circle cx="59" cy="59" r="26" stroke="#e0b25c" stroke-width="1.5" stroke-dasharray="2 4"/><path d="M44 74l30-30M74 74L44 44" stroke="#fff3d4" stroke-width="4" stroke-linecap="round"/></svg>',
       friend: '<svg viewBox="0 0 130 100" fill="none"><circle cx="46" cy="50" r="36" fill="#0f3a35" stroke="#5fd0b5" stroke-width="4"/><circle cx="84" cy="50" r="36" fill="#3a1a14" fill-opacity=".85" stroke="#e9674f" stroke-width="4"/><path d="M46 50V28M46 50l12 8" stroke="#b9ffe9" stroke-width="3" stroke-linecap="round"/><path d="M84 50V26M84 50l-11 9" stroke="#ffd0c4" stroke-width="3" stroke-linecap="round"/><path d="M65 20a36 36 0 010 60" stroke="#c99640" stroke-width="5"/></svg>',
@@ -475,9 +482,37 @@ export class Screens {
         tile('レート戦', 'RATED', E.rated, `${tr.tier.name} ・ ${fmt(rt.rating)}`, () => this.rated()),
         tile('フリー対戦', 'FREE', E.free, `AIの強さを選んで練習 ・ ${r.win}勝${r.lose}敗`, () => this.setup()),
         tile('フレンド対戦', 'FRIEND', E.friend, flow.available ? `あいことば・招待・観戦 ・ ${o.win}勝${o.lose}敗` : '準備中', flow.available ? () => this.onlineMenu() : null),
+        tile('イベント', 'EVENT', E.event, `今週：${eventOf(today).event.name} ・ ${eventProgress(store.meta.event, today).wins}勝`, () => this.eventScreen()),
         tile('遊び方', 'GUIDE', E.guide, 'ルールと操作をおさらい', () => this.rules(() => this.battleTab()))),
       h('div', { class: `first-win${won ? ' done' : ''}` }, h('b', {}, '今日の初勝利'), won ? '受け取りました。また明日' : h('span', {}, `コイン `, h('span', { class: 'num', style: 'color:var(--gold)' }, `+${DAILY_BONUS}`), ` ・ 対戦の報酬は1日${DAILY_MATCH_CAP}コインまで`)),
     ));
+  }
+
+  /** This week's event: what it is, the week's progress and prizes, and a start button. */
+  eventScreen() {
+    const today = localDate();
+    const { event: ev, until } = eventOf(today);
+    const p = eventProgress(store.meta.event, today);
+    const decks = store.allDecks();
+    let mine = decks.find((d) => d.id === store.settings.lastDeck && d.valid) ?? decks.find((d) => d.valid) ?? decks[0];
+    const render = () => {
+      const [, mm, dd] = until.split('-');
+      this.page('イベント', () => this.battleTab(), [
+        h('div', { class: 'event-hero pn gold' },
+          h('small', {}, `今週のイベント ・ ${Number(mm)}月${Number(dd)}日（日）まで`),
+          h('b', {}, ev.name),
+          h('span', {}, ev.blurb)),
+        h('ul', { class: 'earn' }, ...ev.rules.map((t) => h('li', {}, t))),
+        h('div', { class: 'sec-title' }, `今週の勝利 ${p.wins}勝（${p.games}戦）`),
+        h('div', { class: 'event-prizes' }, ...EVENT_PRIZES.map((x) => h('div', { class: `ep${p.wins >= x.wins ? ' got' : ''}` },
+          h('b', {}, `${x.wins}勝`), h('span', {}, [x.prize.coins ? `コイン${x.prize.coins}` : '', x.prize.tickets ? `チケット${x.prize.tickets}枚` : ''].filter(Boolean).join('＋')), h('small', {}, p.wins >= x.wins ? '受け取り済み（プレゼント）' : 'まだ')))),
+        ev.ownDeck ? h('div', { class: 'sec-title' }, 'デッキ') : null,
+        ev.ownDeck ? h('div', { class: 'opt-list' }, ...decks.map((d) => h('button', { class: 'opt', 'aria-pressed': String(d.id === mine.id), disabled: !d.valid, onclick: () => { mine = d; audio.play('select'); render(); } }, h('div', {}, h('div', { class: 'nm' }, d.name))))) : null,
+        h('button', { class: 'hexbtn gold big', disabled: ev.ownDeck && !mine.valid, onclick: () => { if (ev.ownDeck) { store.settings.lastDeck = mine.id; store.saveSettings(); } audio.play('summon'); this.clear(); this.host.startEvent(ev.ownDeck ? mine : null); } }, 'イベントに挑む'),
+        h('p', { class: 'shop-note' }, 'イベントは毎週月曜に入れ替わります。ふだんの対戦と同じようにコインや称号の記録も進みます。'),
+      ]);
+    };
+    render();
   }
 
   // ---------------------------------------------------------------- menu tab
@@ -1320,13 +1355,13 @@ export class Screens {
     render();
   }
   /** Menu while looking on: keep watching, or leave the room. */
-  watchMenu(resume: () => void, leave: () => void) {
+  watchMenu(resume: () => void, leave: () => void, what: '観戦' | 'リプレイ' = '観戦') {
     this.mount(h('div', { class: 'screen dim title' },
       h('div', { class: 'panel', style: 'width:min(380px,100%)' },
-        h('h2', {}, '観戦中'),
-        h('button', { class: 'btn primary', onclick: () => { this.clear(); resume(); } }, '観戦に戻る'),
-        h('button', { class: 'btn', onclick: () => this.rules(() => this.watchMenu(resume, leave)) }, '遊び方'),
-        h('button', { class: 'btn danger', onclick: () => { this.clear(); leave(); } }, '観戦をやめる'))));
+        h('h2', {}, `${what}中`),
+        h('button', { class: 'btn primary', onclick: () => { this.clear(); resume(); } }, `${what}に戻る`),
+        h('button', { class: 'btn', onclick: () => this.rules(() => this.watchMenu(resume, leave, what)) }, '遊び方'),
+        h('button', { class: 'btn danger', onclick: () => { this.clear(); leave(); } }, `${what}をやめる`))));
   }
 
   // ---------------------------------------------------------------- result
@@ -1408,9 +1443,33 @@ export class Screens {
       h('small', {}, `対戦相手：${g.foe || '対戦相手'}（レート ${g.foeRating}）`),
       up ? h('div', { class: 'promo' }, `昇格！「${t1.name}」になりました`) : down ? h('small', {}, `「${t1.name}」に降格しました`) : null);
   }
+  /** Uploads the game just played and offers the link (share sheet where the phone has one). */
+  private async replayShare() {
+    this.toast('リプレイを用意しています…');
+    const link = await this.host.shareReplay();
+    if (!link) return;
+    const share = async () => {
+      if ('share' in navigator) { try { await navigator.share({ title: 'クロノ・デュエル リプレイ', text: '対戦のリプレイです', url: link }); return; } catch { /* closed */ } }
+      try { await navigator.clipboard.writeText(link); this.toast('リンクをコピーしました'); } catch { this.toast('コピーできませんでした'); }
+    };
+    const k = this.sheet('リプレイを共有', ICON.share, [
+      h('p', { class: 'shop-note', style: 'text-align:left' }, 'このリンクを開くと、だれでもこの対戦を最初から見られます（あなたの手札も見えます）。'),
+      h('div', { class: 'tx-code', style: 'word-break:break-all' }, h('small', { style: 'font-size:12px;color:var(--ivory)' }, link)),
+    ], [h('div', { class: 'btn-row', style: 'width:100%' },
+      h('button', { class: 'hexbtn silver', onclick: () => k.close() }, '閉じる'),
+      h('button', { class: 'hexbtn gold', onclick: () => void share() }, 'share' in navigator ? '送る' : 'リンクをコピー'))]);
+  }
+  /** After a replay: watch it again or leave. */
+  replayEnd(again: () => void, leave: () => void) {
+    const k = this.sheet('リプレイ終了', null, [h('p', { style: 'margin:0;text-align:center' }, '対戦の最後まで再生しました')],
+      [h('div', { class: 'btn-row', style: 'width:100%' },
+        h('button', { class: 'hexbtn silver', onclick: () => { k.close(); leave(); } }, 'ホームへ'),
+        h('button', { class: 'hexbtn gold', onclick: () => { k.close(); again(); } }, 'もう一度見る'))]);
+  }
   private resultChips(leave: () => void) {
     return [
       h('button', { class: 'chip-btn', onclick: () => this.host.openLog() }, '対戦のログ'),
+      this.host.canShareReplay() ? h('button', { class: 'chip-btn', onclick: () => void this.replayShare() }, 'リプレイを共有') : null,
       h('button', { class: 'chip-btn', onclick: () => { leave(); this.decks(); } }, 'デッキを変える'),
       claimable(store.meta, localDate()) ? h('button', { class: 'chip-btn gold', onclick: () => { leave(); this.missions('daily', () => this.home()); } }, 'ミッションへ') : PACKS.some((p) => canOpen(store.wallet, p)) ? h('button', { class: 'chip-btn gold', onclick: () => { leave(); this.packShop(PACKS[0]); } }, 'パックを引く') : null,
     ];
@@ -1469,13 +1528,24 @@ export class Screens {
     const door = (cls: string, title: string, en: string, sub: string, icon: string, fn: () => void, tag?: HTMLElement) =>
       h('button', { class: `door ${cls}`, onclick: () => { audio.play('select'); fn(); } }, h('span', {}, h('span', { html: icon }), h('span', { class: 't' }, h('b', {}, title), en ? h('em', {}, en) : null, h('small', {}, sub)), tag ?? null));
     this.page('フレンド対戦', () => this.battleTab(), [
+      h('div', { class: 'myroom pn' },
+        h('div', { class: 'mr-hd' }, h('b', {}, 'いつもの部屋'), h('span', { class: 'codebox sm' }, ...[...myRoomCode()].map((c) => h('span', {}, c)))),
+        h('small', {}, 'あなた専用の、ずっと変わらない部屋です。招待リンクを一度送っておけば、あとはお互いにリンクを開くだけで、先に来た方が待って対戦が始まります。'),
+        h('div', { class: 'btn-row' },
+          h('button', { class: 'hexbtn', onclick: () => { const link = inviteLink(myRoomCode()); if (typeof navigator.share === 'function') void navigator.share({ title: 'クロノ・デュエル', text: 'いつもの部屋で勝負しよう！（リンクを開けば入れます）', url: link }).catch(() => undefined); else void navigator.clipboard?.writeText(link).then(() => this.toast('招待リンクをコピーしました'), () => this.toast(link)); } }, '招待リンクを送る'),
+          h('button', { class: 'hexbtn gold', onclick: () => { const d = this.bestDeck(); audio.play('summon'); flow.meet(myRoomCode(), store.settings.name || 'プレイヤー', d.cards); } }, '部屋に入る'))),
       h('div', { class: 'doors' },
         door('create', '部屋を作る', 'CREATE', 'あいことばと招待リンクを\n友達に送ります', '<svg viewBox="0 0 92 104" fill="none"><path d="M46 4l40 22v52L46 100 6 78V26z" fill="#0f3a35" stroke="#5fd0b5" stroke-width="3"/><path d="M46 30v40M26 50h40" stroke="#b9ffe9" stroke-width="5" stroke-linecap="round"/></svg>', () => this.createRoom()),
         door('join', 'あいことばで入る', 'JOIN', `友達から聞いた\n${NET.CODE_LEN}文字を入れます`, '<svg viewBox="0 0 92 104" fill="none"><rect x="14" y="10" width="54" height="84" rx="4" fill="#2a1d07" stroke="#e0b25c" stroke-width="3"/><circle cx="56" cy="54" r="4" fill="#e0b25c"/><path d="M90 52H40M54 38l-14 14 14 14" stroke="#fff3d4" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>', () => this.codeSheet('join')),
         door('watch', '観戦する', '', 'あいことばで友達の対戦を見る', '<svg viewBox="0 0 60 60" fill="none"><path d="M4 30s10-16 26-16 26 16 26 16-10 16-26 16S4 30 4 30z" stroke="#c2d2d4" stroke-width="3"/><circle cx="30" cy="30" r="8" fill="#c2d2d4"/></svg>', () => this.codeSheet('watch'))),
       h('div', { class: 'pn' }, h('p', { style: 'margin:10px 0 0;font-size:12px;line-height:1.7;color:#c2d2d4' }, '招待リンクを開いた友達は、名前とデッキを選ぶだけで入れます。部屋の中でもデッキと名前を変えられます。', h('br', {}), `フレンド対戦の戦績 ${o.win}勝 ${o.lose}敗${o.draw ? ` ${o.draw}分` : ''} ・ 勝利でコイン${MATCH_REWARD.online[0]}`)),
     ]);
-    if (invite) setTimeout(() => this.codeSheet('join', invite), 60);
+    // an invite link: with a name and a deck ready, go straight in (whoever arrives first waits for the other)
+    if (invite) {
+      const d = this.bestDeck();
+      if (store.settings.name && d?.valid) setTimeout(() => { this.toast(`招待された部屋（${invite}）に入ります`); audio.play('summon'); flow.meet(invite, store.settings.name, d.cards); }, 60);
+      else setTimeout(() => this.codeSheet('join', invite), 60);
+    }
   }
   private bestDeck() {
     const decks = store.allDecks();
@@ -1498,7 +1568,7 @@ export class Screens {
       store.settings.name = cleanName(name); if (mode === 'join') store.settings.lastDeck = deck.id; store.saveSettings();
       ref.close();
       audio.play('summon');
-      if (mode === 'join') flow.join(c, name, deck.cards); else flow.watch(c, name);
+      if (mode === 'join') { if (code0 && c === normalizeCode(code0)) flow.meet(c, name, deck.cards); else flow.join(c, name, deck.cards); } else flow.watch(c, name);
     } }, mode === 'join' ? '入室' : '観戦する');
     const input = h('input', { class: 'code-input', value: code, maxlength: String(NET.CODE_LEN + 2), placeholder: 'ABCDE', autocomplete: 'off', autocapitalize: 'characters', 'aria-label': 'あいことば',
       oninput: (e: Event) => { const el = e.target as HTMLInputElement; code = el.value.toUpperCase(); el.value = code; go.disabled = !normalizeCode(code); } });

@@ -6,6 +6,8 @@ import { store } from '../ui/storage';
 import { favCard, shownTitle } from '../ui/profile';
 import { cleanBook, EMPTY_BOOK, type DeckBook } from '../meta/deckbook';
 import { TRANSFER_KEYS, normalizeTransferCode } from '../server/transfer';
+import type { SharedReplay } from '../server/replays';
+import type { GameLog } from '../core/gamelog';
 
 const httpBase = () => serverUrl()?.replace(/^ws/, 'http') ?? null;
 export const rankingAvailable = () => httpBase() !== null;
@@ -59,6 +61,22 @@ export async function redeemTransfer(code: string): Promise<true | { error: stri
   } catch { return { error: 'この端末に保存できませんでした（ブラウザの保存領域を確かめてください）' }; }
   return true;
 }
+
+// ------------------------------------------------------------------ リプレイ共有
+/** Uploads a finished game and returns its id (or why it could not). */
+export async function shareReplay(log: GameLog, info: { names: [string, string]; decks: [string, string]; mode: string }): Promise<{ id: string } | { error: string }> {
+  const r = await call<{ id: string }>('/api/replay/save', { log, info });
+  if (r.status === 200 && r.body?.id) return r.body;
+  return { error: r.status === 0 ? 'サーバーにつながりません。通信を確かめてください' : '共有できませんでした' };
+}
+export async function loadReplay(id: string): Promise<SharedReplay | { error: string }> {
+  const r = await call<SharedReplay>('/api/replay/get', { id });
+  if (r.status === 200 && r.body) return r.body;
+  return { error: r.status === 0 ? 'サーバーにつながりません' : 'このリプレイは見つかりません' };
+}
+export const replayLink = (id: string) => `${location.origin}${location.pathname}#/replay/${id}`;
+/** A replay id from a link (#/replay/xxxxxxxxxx), or null. */
+export const replayFromHash = (hash: string) => { const m = hash.match(/^#\/replay\/([a-z2-9]{10})$/); return m ? m[1] : null; };
 
 interface SubmitRes { rating: number; games: number; wins: number; peak: number; accepted: string[]; refused: string[] }
 /** Sends finished rated games; on success the server's numbers replace the local ones. Returns true if in sync. */

@@ -46,3 +46,31 @@ assert.equal(await kv.get(`tx:${r3.code}`), undefined, 'expired codes are swept'
 assert.equal((await tx.issue({ save: { 'cd.wallet': '{}' } })).status, 400, 'a save without its account is refused');
 assert.equal((await tx.issue({ save: { 'cd.account': 'a', 'cd.meta': 'y'.repeat(700_000) } })).status, 413);
 console.log('transfer ok');
+
+// shared replays: only real, finished games are kept, and anyone with the id can read them back
+{
+  const { Replays } = await import('../server/replays');
+  const { createGame, actor, legalActions, apply } = await import('../core/engine');
+  const { chooseAction } = await import('../core/ai');
+  const { PRESET_DECKS } = await import('../core/decks');
+  const rp = new Replays(kv, () => now);
+  const decks: [string[], string[]] = [PRESET_DECKS[0].cards, PRESET_DECKS[1].cards];
+  const { state } = createGame(decks, 7, 0);
+  const actions = [];
+  while (!state.over && actions.length < 800) { const pi = actor(state); if (pi === -1) break; const a = chooseAction(state, pi as 0 | 1, 'easy'); actions.push(a); apply(state, a); }
+  void legalActions;
+  const log = { seed: 7, first: 0 as const, decks, actions };
+  const saved = await rp.save({ log, info: { names: ['アリス', 'AI'], decks: ['均衡', '速攻'], mode: 'free' } });
+  assert.equal(saved.status, 200);
+  const id = (saved.body as { id: string }).id;
+  assert.match(id, /^[a-z2-9]{10}$/);
+  const back = await rp.get({ id });
+  assert.equal(back.status, 200);
+  assert.deepEqual((back.body as { log: typeof log }).log.actions.length, actions.length);
+  assert.equal((back.body as { info: { names: string[] } }).info.names[0], 'アリス');
+  assert.equal((await rp.save({ log: { ...log, actions: actions.slice(0, 5) } })).status, 400, 'an unfinished game is refused');
+  assert.equal((await rp.save({ log: { ...log, actions: [{ t: 'wait' }, ...actions] } })).status, 400, 'a made-up record is refused');
+  assert.equal((await rp.get({ id: 'nope' })).status, 400);
+  assert.equal((await rp.get({ id: 'abcdefghjk' })).status, 404);
+  console.log('replays ok');
+}

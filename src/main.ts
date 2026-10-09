@@ -11,15 +11,18 @@ import { COLORS, DESIGN } from './render/theme';
 import { Tweener } from './render/tween';
 import { PackOpenScene } from './render/packOpen';
 import { MIN_ACTIONS, applyReward, canOpen, localDate, openPack, packById, reward, type Reward } from './meta/economy';
-import { bump, dailyView, grantSeasonReward, recordBattle, recordMatch, track } from './meta/progress';
+import { bump, dailyView, grantEventPrize, grantSeasonReward, recordBattle, recordMatch, track } from './meta/progress';
 import { haptics } from './render/haptics';
 import { LOOKS, PITY, refundRetired } from './meta/economy';
 import { deckKey, deckLook, favCard, shownTitle } from './ui/profile';
 import { CARD_LIST } from './core/cards';
 import { SEASON_REWARDS, TIERS, applyRatingReset, finishRated, foeById, foeLevel, makeOpponent, rollSeason, startRated, tierOf, type RatedGame } from './meta/rating';
 import { seasonById } from './meta/ranks';
+import { eventOf, eventProgress, recordEventGame } from './meta/events';
 import { rivalById, rivalCfg, rivalDeckCards, rivalDeckName } from './meta/roster';
-import { deckBook, refreshDeckBook, reportMatch, saveLiveGame, syncRated, takeLiveGame } from './net/api';
+import { deckBook, loadReplay, refreshDeckBook, replayFromHash, replayLink, reportMatch, saveLiveGame, shareReplay, syncRated, takeLiveGame } from './net/api';
+import type { GameLog } from './core/gamelog';
+import type { SharedReplay } from './server/replays';
 import { bookKey, listFor } from './meta/deckbook';
 import { VERSION } from './version';
 import { codeFromHash } from './net/config';
@@ -103,6 +106,8 @@ async function boot() {
   relayout();
   let closePackRef: (() => void) | null = null;
   let pendingNotice = '';
+  /** The record of the last game against the AI, for sharing it as a replay. */
+  let lastShare: { log: GameLog; info: { names: [string, string]; decks: [string, string]; mode: string } } | null = null;
   const root = document.getElementById('ui')!;
 
   const applySettings = () => {
@@ -159,6 +164,12 @@ async function boot() {
     const online = !!lastCfg?.net;
     saveLiveGame(null);
     if (lastCfg?.net?.watch) { screens.resultWatch(r, () => { endBattle(); flow.leave(); screens.onlineMenu(); }); return; }
+    if (lastCfg?.replay) { const again = lastCfg; tw.speed = store.settings.speed || 1; screens.replayEnd(() => { screens.clear(); run(again); }, () => { endBattle(); screens.home(); }); return; }
+    // games against the AI keep their full record: it can be shared as a replay
+    lastShare = r.log && !lastCfg?.net && r.reason !== 'surrender' ? {
+      log: r.log,
+      info: { names: [store.settings.name || 'プレイヤー', lastCfg?.rated ? lastCfg.foeName ?? '相手' : `AI（${lastCfg?.aiDeckName ?? ''}）`], decks: [lastCfg?.myDeckName ?? '', lastCfg?.aiDeckName ?? ''], mode: lastCfg?.rated ? 'rated' : 'free' },
+    } : null;
     const today0 = localDate();
     const before = dailyView(store.meta, today0).map((v) => ({ id: v.m.id, now: v.now }));
     const rec = online ? store.onlineRecord : store.record;
@@ -200,8 +211,19 @@ async function boot() {
       store.saveRated();
       void syncRated();
     }
+    // イベント: the week's wins pay out at 1, 3 and 5
+    if (lastCfg?.event) {
+      const today1 = localDate();
+      const ev = eventOf(today1).event;
+      const p = (store.meta.event = eventProgress(store.meta.event, today1));
+      if (r.myActions >= MIN_ACTIONS || r.winner === 0) {
+        for (const x of recordEventGame(p, r.winner === 0)) grantEventPrize(store.meta, `${ev.name}で${x.wins}勝`, x.prize, today1);
+      }
+      store.saveMeta();
+    }
     // play statistics: this seat's deck, the cards it used, the result and the game record (anonymous, fails soft)
-    void reportMatch({
+    // (an event's games start from a changed position, so they are left out)
+    if (!lastCfg?.event) void reportMatch({
       gid: !online && liveGid ? liveGid : newId(), id: store.account().id, v: VERSION,
       mode: online ? 'online' : lastCfg?.rated ? 'rated' : 'free', ai: online ? undefined : lastCfg?.level,
       deck: online ? flow.myDeck : lastCfg?.myDeck ?? [], played: r.played,
@@ -337,13 +359,25 @@ async function boot() {
     tw.speed = 0;
     screens.versus(me, foe, () => { tw.speed = store.settings.speed || speed || 1; });
   };
+  /** This week's event: its decks and opening, then the VS screen as for a free game. */
+  const startEvent = (deck: DeckDef | null) => {
+    const ev = eventOf(localDate()).event;
+    const set = ev.setup(deck?.cards ?? null);
+    const myDeck = set.myDeck ?? deck?.cards ?? [];
+    startFree({ myDeck, myDeckName: deck && ev.ownDeck ? deck.name : 'イベントのデッキ', myDeckId: ev.ownDeck ? deck?.id : undefined, aiDeck: set.aiDeck, aiDeckName: set.aiDeckName, level: set.level, event: { id: ev.id, name: ev.name, open: set.open } });
+  };
+  /** Plays a shared game back (from a replay link). */
+  const watchReplay = (r: SharedReplay) => {
+    screens.clear();
+    run({ myDeck: r.log.decks[0], myDeckName: r.info.decks[0], aiDeck: r.log.decks[1], aiDeckName: r.info.decks[1], level: 'normal', replay: { log: r.log, names: [r.info.names[0] || 'プレイヤー', r.info.names[1] || '相手'] }, looks: { back: 'back:brass', dial: deckLook(store.settings.lastDeck ?? '', 'dial'), still: store.settings.reduced } });
+  };
   const run = (cfg: BattleConfig) => {
     endBattle();
     lastCfg = cfg;
     battleStartedAt = Date.now();
     liveGid = cfg.net ? '' : newId();
     const gid = liveGid;
-    const live: BattleConfig = cfg.net ? cfg : {
+    const live: BattleConfig = cfg.net || cfg.event ? cfg : {
       ...cfg,
       onProgress: (log, n) => saveLiveGame({
         gid, id: store.account().id, v: VERSION, mode: cfg.rated ? 'rated' : 'free', ai: cfg.level, deck: cfg.myDeck, played: [],
@@ -361,13 +395,14 @@ async function boot() {
     }
     battle = new BattleScene(tw, fx, app.ticker, live, onResult, () => {
       if (cfg.net?.watch) { screens.watchMenu(() => {}, () => { endBattle(); flow.leave(); screens.onlineMenu(); }); return; }
+      if (cfg.replay) { const sp = tw.speed; tw.speed = 0; screens.watchMenu(() => { tw.speed = sp; }, () => { endBattle(); tw.speed = store.settings.speed || 1; screens.home(); }, 'リプレイ'); return; }
       const speed = tw.speed;
       if (!cfg.net) tw.speed = 0; // pause animations and the AI while the menu is open (a live match cannot wait)
       const resume = () => { tw.speed = store.settings.speed || speed; };
       screens.battleMenu(resume, () => { resume(); battle?.surrender(); });
     }, log, () => setLogOpen(!document.body.classList.contains('log-open')));
     document.body.classList.add('in-battle');
-    if (!store.settings.guided && !cfg.net?.watch) {
+    if (!store.settings.guided && !cfg.net?.watch && !cfg.replay) {
       const speed = tw.speed;
       tw.speed = 0;
       screens.guide(() => { store.settings.guided = true; store.saveSettings(); tw.speed = store.settings.speed || speed; });
@@ -409,13 +444,30 @@ async function boot() {
     startBattle: (deck: DeckDef, ai: DeckDef, level) => startFree({ myDeck: deck.cards, myDeckName: deck.name, myDeckId: deck.id, aiDeck: ai.cards, aiDeckName: ai.name, level }),
     applySettings,
     openLog: () => setLogOpen(true),
+    startEvent: (deck: DeckDef | null) => startEvent(deck),
+    canShareReplay: () => !!lastShare,
+    shareReplay: async () => {
+      if (!lastShare) return null;
+      const r = await shareReplay(lastShare.log, lastShare.info);
+      if ('error' in r) { screens.toast(r.error); return null; }
+      return replayLink(r.id);
+    },
   });
 
   if (location.hash === '#debug' || /[?&]debug\b/.test(location.search)) (window as unknown as { __cd: unknown }).__cd = { battle: () => battle?.debug(), app, screens, audio };
   window.addEventListener('pointerdown', () => audio.unlock(), { once: true });
   document.getElementById('loading')?.remove();
   const invite = codeFromHash(location.hash);
-  if (invite) {
+  const rid = replayFromHash(location.hash);
+  if (rid) {
+    history.replaceState(null, '', location.pathname + location.search);
+    screens.title();
+    void (async () => {
+      const r = await loadReplay(rid);
+      if ('error' in r) { screens.toast(r.error); return; }
+      watchReplay(r);
+    })();
+  } else if (invite) {
     history.replaceState(null, '', location.pathname + location.search);
     screens.onlineMenu(invite);
   } else if (!flow.resume()) screens.title();

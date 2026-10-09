@@ -7,7 +7,7 @@ import {
   type Action, type GameEvent, type GameState, type PlayerIndex, type Target,
 } from '../core/engine';
 import type { GameLog } from '../core/gamelog';
-import { HIDDEN, NET, type NetLink, type NetResult, type ServerMsg } from '../core/net';
+import { HIDDEN, NET, sameAction, type NetLink, type NetResult, type ServerMsg } from '../core/net';
 import { RULES } from '../core/rules';
 import { FeatTracker, type Feat } from '../core/feats';
 import { audio } from './audio';
@@ -52,6 +52,10 @@ export interface BattleConfig {
   attackPreview?: boolean;
   /** Who moves first, when it was decided before the battle (the VS screen shows it). */
   first?: PlayerIndex;
+  /** イベント: its id, and how it changes the opening position (the game is not reported or shared). */
+  event?: { id: string; name: string; open?: (s: GameState) => void };
+  /** Watching a shared game again (リプレイ): every move comes from the record; nothing can be played. */
+  replay?: { log: GameLog; names: [string, string] };
 }
 export interface BattleResult { winner: PlayerIndex | -1; reason: 'ko' | 'time' | 'surrender' | 'timeout' | 'disconnect'; myHp: number; foeHp: number; actions: number; myActions: number; stats: { spells: number; summons: number; reserves: number; attacks: number };
   /** Every card the player used (summoned, cast or reserved) this game, for the play statistics. */
@@ -139,10 +143,10 @@ export class BattleScene extends Container {
   /** How the game is being won (勝ち方の称号). */
   private feats = new FeatTracker();
 
-  private get foe(): string { return this.cfg.net?.watch?.names[1] ?? this.cfg.net?.foeName ?? this.cfg.foeName ?? 'AI'; }
+  private get foe(): string { return this.cfg.replay?.names[1] ?? this.cfg.net?.watch?.names[1] ?? this.cfg.net?.foeName ?? this.cfg.foeName ?? 'AI'; }
   /** Looking on at someone else's game: nothing can be played and seat 0 goes by its own name. */
-  private get watching() { return !!this.cfg.net?.watch; }
-  private get me(): string { return this.cfg.net?.watch?.names[0] ?? 'あなた'; }
+  private get watching() { return !!this.cfg.net?.watch || !!this.cfg.replay; }
+  private get me(): string { return this.cfg.replay?.names[0] ?? this.cfg.net?.watch?.names[0] ?? 'あなた'; }
   private deckPile = new Container();
   private deckPileTxt = label('', 15, COLORS.ivory, { font: FONTS.num, weight: '700', align: 'center' });
   // ---- attack preview: chevrons to the real target, a ring on it and the outcome
@@ -162,7 +166,7 @@ export class BattleScene extends Container {
     this.foeMat.mask = this.foeMatMask; this.myMat.mask = this.myMatMask;
     if (isArtMat(cfg.looks?.mat)) void this.loadMyMat(cfg.looks.mat);
     if (isArtMat(cfg.looks?.foeMat)) void this.loadFoeMat(cfg.looks.foeMat);
-    this.huds = [new Hud(0, cfg.net?.watch?.names[0] ?? 'あなた'), new Hud(1, cfg.net?.watch ? cfg.net.watch.names[1] : cfg.net ? cfg.net.foeName : cfg.foeName ?? `AI（${AI_LEVEL_NAMES[cfg.level]}）・ ${cfg.aiDeckName}`)];
+    this.huds = [new Hud(0, cfg.replay?.names[0] ?? cfg.net?.watch?.names[0] ?? 'あなた'), new Hud(1, cfg.replay ? cfg.replay.names[1] : cfg.net?.watch ? cfg.net.watch.names[1] : cfg.net ? cfg.net.foeName : cfg.foeName ?? `AI（${AI_LEVEL_NAMES[cfg.level]}）・ ${cfg.aiDeckName}`)];
     this.huds[1].x = 16; this.huds[1].y = 44;
     this.huds[0].x = 16;
     this.drawBtn = new Button('ドロー', 124, 66, 'plain', `${RULES.COST_DRAW}刻`, () => this.tryAction({ t: 'draw' }));
@@ -177,13 +181,21 @@ export class BattleScene extends Container {
     this.deckPileTxt.anchor.set(0.5); this.deckPileTxt.y = 44;
     this.deckPile.addChild(this.deckPileTxt);
     this.deckPile.eventMode = 'none';
-    if (cfg.net?.watch) {
-      const t = label(`観戦中 ・ ${cfg.net.watch.names[0]} 対 ${cfg.net.watch.names[1]}`, 18, COLORS.brass, { weight: '700', align: 'center' });
+    const shown = cfg.replay ? { what: 'リプレイ', names: cfg.replay.names } : cfg.net?.watch ? { what: '観戦中', names: cfg.net.watch.names } : null;
+    if (shown) {
+      const t = label(`${shown.what} ・ ${shown.names[0]} 対 ${shown.names[1]}`, 18, COLORS.brass, { weight: '700', align: 'center' });
       t.anchor.set(0.5);
       const w = t.width + 36;
       this.watchChip.addChild(new Graphics().roundRect(-w / 2, -18, w, 36, 18).fill({ color: COLORS.ink, alpha: 0.88 }).roundRect(-w / 2, -18, w, 36, 18).stroke({ color: COLORS.brassDeep, width: 2 }), t);
       this.watchChip.x = 360; this.watchChip.y = 76;
       this.drawBtn.visible = false; this.waitBtn.visible = false;
+    }
+    if (cfg.replay) {
+      // replay speed: ×1 → ×2 → ×4
+      const sp = new Button('×1', 92, 46, 'plain', '速さ', () => { this.replaySpeed = this.replaySpeed >= 4 ? 1 : this.replaySpeed * 2; this.tw.speed = this.replaySpeed; sp.setText(`×${this.replaySpeed}`); });
+      sp.x = 648; sp.y = 120;
+      this.watchChip.addChild(sp);
+      sp.position.set(648 - this.watchChip.x, 120 - this.watchChip.y);
     }
     this.addChild(this.matLayer, this.vignette, this.board, this.dial, this.units, this.aimRing, this.huds[0], this.huds[1], this.foeHandLayer, this.deckPile, this.drawBtn, this.waitBtn, this.menuBtn, this.logBtn, this.handLayer, this.arrowG, this.aimPanel, this.actionBar, this.overlay, this.watchChip, this.toastC);
     this.eventMode = 'static';
@@ -347,12 +359,40 @@ export class BattleScene extends Container {
     }
   }
 
+  private replaySpeed = 1;
+  /** Plays a shared game back from its record, one move at a time. */
+  private async startReplay(log: GameLog) {
+    const { state } = createGame([log.decks[0], log.decks[1]], log.seed, log.first);
+    this.s = state;
+    this.tw.speed = this.replaySpeed;
+    this.syncAll(false);
+    await this.dealIntro(log.first);
+    this.ready = true;
+    for (const a of log.actions) {
+      if (this.destroyed_ || this.s.over) break;
+      const pi = actor(this.s);
+      const legal = pi === -1 ? undefined : legalActions(this.s, pi).find((x) => sameAction(x, a));
+      if (!legal) break;
+      this.busy = true;
+      this.refreshControls();
+      await this.tw.wait(pi === 0 ? 520 : 620);
+      if (this.destroyed_) return;
+      await this.play(apply(this.s, legal));
+    }
+    if (this.destroyed_) return;
+    if (this.s.over) await this.finish();
+    else this.toast('記録はここまでです');
+  }
+
   private async start() {
+    if (this.cfg.replay) { await this.startReplay(this.cfg.replay.log); return; }
     const seed = this.cfg.seed ?? Math.floor(Math.random() * 1e9);
     const first = this.cfg.first ?? ((Math.random() < 0.5 ? 0 : 1) as PlayerIndex);
     const { state } = createGame([this.cfg.myDeck, this.cfg.aiDeck], seed, first);
+    this.cfg.event?.open?.(state);
     this.s = state;
-    this.log = { seed, first, decks: [this.cfg.myDeck.slice(), this.cfg.aiDeck.slice()], actions: [] };
+    // an event's opening is not part of the record, so its games are neither replayed nor reported
+    this.log = this.cfg.event ? null : { seed, first, decks: [this.cfg.myDeck.slice(), this.cfg.aiDeck.slice()], actions: [] };
     this.syncAll(false);
     await this.dealIntro(first);
     this.ready = true; // lets the move timer show

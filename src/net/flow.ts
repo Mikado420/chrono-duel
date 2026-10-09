@@ -50,14 +50,25 @@ export class OnlineFlow {
   private emit() { this.changeFns.forEach((f) => f()); }
 
   create(name: string, deck: string[], tries = 0) {
-    this.lastCreate = { name, deck, tries };
+    this.lastCreate = { name, deck, tries }; this.lastMeet = null;
     this.enter(randomCode(), name, deck, 'create');
   }
 
   join(code: string, name: string, deck: string[]) {
-    this.lastCreate = null;
+    this.lastCreate = null; this.lastMeet = null;
     this.enter(code, name, deck, 'join');
   }
+
+  /**
+   * Meet in a known room (an invite link, いつもの部屋): join whoever is waiting there, or wait there first if
+   * nobody is. Whichever of two friends arrives first waits for the other.
+   */
+  meet(code: string, name: string, deck: string[], tries = 0) {
+    this.lastCreate = null;
+    this.lastMeet = { code, name, deck, tries };
+    this.enter(code, name, deck, 'join');
+  }
+  private lastMeet: { code: string; name: string; deck: string[]; tries: number } | null = null;
 
   /** Look on at a friend's room. Nothing is saved for resuming: a spectator just opens the room again. */
   watch(code: string, name: string) {
@@ -162,6 +173,7 @@ export class OnlineFlow {
     switch (m.t) {
       case 'welcome':
         this.resuming = false;
+        if (this.lastMeet) this.lastMeet = { ...this.lastMeet, tries: 0 };
         this.phase = m.phase;
         this.foe = m.foe;
         store.saveSession({ code: m.code, token: m.token, name: this.myName, at: Date.now() });
@@ -188,6 +200,13 @@ export class OnlineFlow {
       case 'rematch': this.rematch = m.rematch; this.emit(); break;
       case 'over': this.phase = 'over'; this.emit(); break;
       case 'error':
+        // meeting in a known room: nobody there yet → wait there; somebody arrived meanwhile → join them
+        if (this.lastMeet && this.lastMeet.tries < 4 && (m.code === 'gone' || m.code === 'taken')) {
+          const l = this.lastMeet;
+          this.lastMeet = { ...l, tries: l.tries + 1 };
+          this.enter(l.code, l.name, l.deck, m.code === 'gone' ? 'create' : 'join');
+          break;
+        }
         // a freshly drawn room code happened to be in use: draw another one
         if (m.code === 'taken' && this.lastCreate && this.lastCreate.tries < 5) { const l = this.lastCreate; this.create(l.name, l.deck, l.tries + 1); break; }
         if (m.code === 'taken') { this.fail(m.msg); break; }
