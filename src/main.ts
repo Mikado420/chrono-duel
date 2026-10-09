@@ -19,6 +19,8 @@ import { CARD_LIST } from './core/cards';
 import { SEASON_REWARDS, TIERS, applyRatingReset, finishRated, foeById, foeLevel, makeOpponent, rollSeason, startRated, tierOf, type RatedGame } from './meta/rating';
 import { seasonById } from './meta/ranks';
 import { eventOf, eventProgress, recordEventGame } from './meta/events';
+import { levelOfLv } from './core/ai';
+import { quirksOf, type RivalCfg } from './core/rival';
 import { rivalById, rivalCfg, rivalDeckCards, rivalDeckName } from './meta/roster';
 import { deckBook, loadReplay, refreshDeckBook, replayFromHash, replayLink, reportMatch, saveLiveGame, shareReplay, syncRated, takeLiveGame } from './net/api';
 import type { GameLog } from './core/gamelog';
@@ -179,7 +181,7 @@ async function boot() {
     if (online) store.saveOnlineRecord(); else store.saveRecord();
     // coins for playing
     const today = localDate();
-    const rw: Reward = reward(store.wallet, { mode: online ? 'online' : lastCfg?.rated ? 'rated' : 'ai', level: lastCfg?.level ?? 'normal', winner: r.winner, reason: r.reason, myActions: r.myActions, today });
+    const rw: Reward = reward(store.wallet, { mode: online ? 'online' : lastCfg?.rated ? 'rated' : 'ai', level: lastCfg?.level ?? 'normal', lv: !lastCfg?.rated ? lastCfg?.rival?.lv : undefined, winner: r.winner, reason: r.reason, myActions: r.myActions, today });
     applyReward(store.wallet, rw, today);
     store.saveWallet();
     // rank and missions
@@ -290,7 +292,7 @@ async function boot() {
     store.saveRated();
     if (ended) {
       const s = seasonById(ended.season), t = TIERS.find((x) => x.id === ended.tier)!;
-      grantSeasonReward(store.meta, `${s?.name ?? `第${ended.season}期`}の報酬（最高ランク ${t.name}）`, SEASON_REWARDS[ended.tier], localDate());
+      grantSeasonReward(store.meta, `${s?.name ?? `第${ended.season}季`}の報酬（最高ランク ${t.name}）`, SEASON_REWARDS[ended.tier], localDate());
       store.saveMeta();
       pendingNotice = [pendingNotice, `${s?.name ?? ''}が終わりました。最高ランク「${t.name}」の報酬をプレゼントに送りました。新しいシーズンはレート ${store.rated.rating}（${before} から）で始まります`].filter(Boolean).join('\n');
     }
@@ -348,7 +350,7 @@ async function boot() {
     const aiCard = [...new Set(cfg.aiDeck)].sort((a, b) => 'CREL'.indexOf(CARD_LIST.find((x) => x.id === b)?.rarity ?? 'C') - 'CREL'.indexOf(CARD_LIST.find((x) => x.id === a)?.rarity ?? 'C'))[0] ?? 'dragon';
     showVs(
       { name: store.settings.name || 'あなた', card: deck ? deckKey(deck) : favCard(), first: first === 0, title: shownTitle()?.id, deck: cfg.myDeckName },
-      { name: `AI ・ ${cfg.aiDeckName}`, card: aiCard, first: first === 1 },
+      { name: cfg.rival ? `AI Lv${cfg.rival.lv} ・ ${cfg.aiDeckName}` : `AI ・ ${cfg.aiDeckName}`, card: aiCard, first: first === 1 },
       () => run(c));
   };
   /** Starts the board under the VS screen with the clock stopped, and lets it run when the VS screen goes. */
@@ -359,12 +361,14 @@ async function boot() {
     tw.speed = 0;
     screens.versus(me, foe, () => { tw.speed = store.settings.speed || speed || 1; });
   };
+  /** The AI of free play and events: the rated opponents' brain at `lv`, moving without a person's pauses. */
+  const aiAt = (lv: number, deck: string): { rival: RivalCfg; level: ReturnType<typeof levelOfLv> } => ({ rival: { name: 'AI', lv, persona: 'steady', deck, quirks: quirksOf('AI') }, level: levelOfLv(lv) });
   /** This week's event: its decks and opening, then the VS screen as for a free game. */
-  const startEvent = (deck: DeckDef | null) => {
+  const startEvent = (deck: DeckDef | null, drafted?: string[]) => {
     const ev = eventOf(localDate()).event;
-    const set = ev.setup(deck?.cards ?? null);
+    const set = ev.setup(drafted ?? deck?.cards ?? null);
     const myDeck = set.myDeck ?? deck?.cards ?? [];
-    startFree({ myDeck, myDeckName: deck && ev.ownDeck ? deck.name : 'イベントのデッキ', myDeckId: ev.ownDeck ? deck?.id : undefined, aiDeck: set.aiDeck, aiDeckName: set.aiDeckName, level: set.level, event: { id: ev.id, name: ev.name, open: set.open } });
+    startFree({ myDeck, myDeckName: deck && ev.ownDeck ? deck.name : ev.draft ? '継承したデッキ' : 'イベントのデッキ', myDeckId: ev.ownDeck ? deck?.id : undefined, aiDeck: set.aiDeck, aiDeckName: set.aiDeckName, ...aiAt(set.lv, set.aiDeckId ?? ''), event: { id: ev.id, name: ev.name, open: set.open, turnMs: set.turnMs } });
   };
   /** Plays a shared game back (from a replay link). */
   const watchReplay = (r: SharedReplay) => {
@@ -441,10 +445,10 @@ async function boot() {
     takeNotice: () => { const n = pendingNotice; pendingNotice = ''; return n; },
     root,
     flow: () => flow,
-    startBattle: (deck: DeckDef, ai: DeckDef, level) => startFree({ myDeck: deck.cards, myDeckName: deck.name, myDeckId: deck.id, aiDeck: ai.cards, aiDeckName: ai.name, level }),
+    startBattle: (deck: DeckDef, ai: DeckDef, lv: number) => startFree({ myDeck: deck.cards, myDeckName: deck.name, myDeckId: deck.id, aiDeck: ai.cards, aiDeckName: ai.name, ...aiAt(lv, ai.id) }),
     applySettings,
     openLog: () => setLogOpen(true),
-    startEvent: (deck: DeckDef | null) => startEvent(deck),
+    startEvent: (deck: DeckDef | null, drafted?: string[]) => startEvent(deck, drafted),
     canShareReplay: () => !!lastShare,
     shareReplay: async () => {
       if (!lastShare) return null;

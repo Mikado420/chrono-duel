@@ -18,7 +18,7 @@ function write(key: string, v: unknown) {
 }
 
 export interface Settings {
-  volume: number; bgm: number; muted: boolean; speed: number; reduced: boolean; level: AiLevel; lastDeck: string; guided: boolean; name: string;
+  volume: number; bgm: number; muted: boolean; speed: number; reduced: boolean; level: AiLevel; /** AI strength for free play (Lv1–10); missing on older saves (then from `level`). */ aiLv?: number; lastDeck: string; guided: boolean; name: string;
   /** Vibrate on the big moments (a legend, the finishing blow, a heavy hit on your base). */
   vibeBig: boolean;
   /** Short taps of vibration for your own actions (placing a card, attacking). */

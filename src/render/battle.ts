@@ -52,8 +52,8 @@ export interface BattleConfig {
   attackPreview?: boolean;
   /** Who moves first, when it was decided before the battle (the VS screen shows it). */
   first?: PlayerIndex;
-  /** イベント: its id, and how it changes the opening position (the game is not reported or shared). */
-  event?: { id: string; name: string; open?: (s: GameState) => void };
+  /** イベント: its id, how it changes the opening position (the game is not reported or shared), and a move clock. */
+  event?: { id: string; name: string; open?: (s: GameState) => void; turnMs?: number };
   /** Watching a shared game again (リプレイ): every move comes from the record; nothing can be played. */
   replay?: { log: GameLog; names: [string, string] };
 }
@@ -66,6 +66,8 @@ export interface BattleResult { winner: PlayerIndex | -1; reason: 'ko' | 'time' 
   log?: GameLog }
 
 const LANE_X = [150, 360, 570];
+/** Pins that use no reservation slot (残響, 囮の書), shown apart; pins set before an event game are not counted. */
+const echoCount = (p: GameState['players'][number]) => p.resv.filter((r) => !r.preset).length - resvCount(p);
 /** Vertical layout in design units. Tall phones get extra height, which is shared out by `applyLayout`. */
 const L = { front: 647, youHud: 922, hand: 1128, bar: 1112 };
 const ROW_Y: Record<PlayerIndex, number> = { 1: 522, 0: 772 };
@@ -156,7 +158,7 @@ export class BattleScene extends Container {
   private aimPanel = new Container();
   private watchChip = new Container();
   /** Online and rated games run a move timer (45s, then an automatic wait; three in a row forfeits). */
-  private get timed() { return !!this.cfg.net || !!this.cfg.rated; }
+  private get timed() { return !!this.cfg.net || !!this.cfg.rated || !!this.cfg.event?.turnMs; }
   private strikes = 0;
 
   constructor(private tw: Tweener, private fx: Fx, private ticker: Ticker, private cfg: BattleConfig, private onEnd: (r: BattleResult) => void, private onMenu: () => void, private onLog: (text: string, side: PlayerIndex | -1) => void = () => {}, private onLogToggle: () => void = () => {}) {
@@ -166,7 +168,7 @@ export class BattleScene extends Container {
     this.foeMat.mask = this.foeMatMask; this.myMat.mask = this.myMatMask;
     if (isArtMat(cfg.looks?.mat)) void this.loadMyMat(cfg.looks.mat);
     if (isArtMat(cfg.looks?.foeMat)) void this.loadFoeMat(cfg.looks.foeMat);
-    this.huds = [new Hud(0, cfg.replay?.names[0] ?? cfg.net?.watch?.names[0] ?? 'あなた'), new Hud(1, cfg.replay ? cfg.replay.names[1] : cfg.net?.watch ? cfg.net.watch.names[1] : cfg.net ? cfg.net.foeName : cfg.foeName ?? `AI（${AI_LEVEL_NAMES[cfg.level]}）・ ${cfg.aiDeckName}`)];
+    this.huds = [new Hud(0, cfg.replay?.names[0] ?? cfg.net?.watch?.names[0] ?? 'あなた'), new Hud(1, cfg.replay ? cfg.replay.names[1] : cfg.net?.watch ? cfg.net.watch.names[1] : cfg.net ? cfg.net.foeName : cfg.foeName ?? (cfg.rival ? `AI Lv${cfg.rival.lv} ・ ${cfg.aiDeckName}` : `AI（${AI_LEVEL_NAMES[cfg.level]}）・ ${cfg.aiDeckName}`))];
     this.huds[1].x = 16; this.huds[1].y = 44;
     this.huds[0].x = 16;
     this.drawBtn = new Button('ドロー', 124, 66, 'plain', `${RULES.COST_DRAW}刻`, () => this.tryAction({ t: 'draw' }));
@@ -391,6 +393,7 @@ export class BattleScene extends Container {
     const { state } = createGame([this.cfg.myDeck, this.cfg.aiDeck], seed, first);
     this.cfg.event?.open?.(state);
     this.s = state;
+    if (state.doomAt !== undefined) this.dial.setDoomFrom(state.doomAt);
     // an event's opening is not part of the record, so its games are neither replayed nor reported
     this.log = this.cfg.event ? null : { seed, first, decks: [this.cfg.myDeck.slice(), this.cfg.aiDeck.slice()], actions: [] };
     this.syncAll(false);
@@ -420,7 +423,7 @@ export class BattleScene extends Container {
     if (this.timerEnd === null || this.busy || this.finished || actor(this.s) !== 0 || performance.now() < this.timerEnd) return;
     this.timerEnd = null;
     this.strikes++;
-    if (this.strikes >= NET.MAX_AFK) { this.surrender('timeout'); return; }
+    if (this.cfg.rated && this.strikes >= NET.MAX_AFK) { this.surrender('timeout'); return; }
     this.toast('時間切れ：待機しました');
     void this.tryAction({ t: 'wait' }, true);
   }
@@ -434,6 +437,7 @@ export class BattleScene extends Container {
         this.refreshControls();
         // a person takes a moment to decide; rated opponents do too (the AI's own thinking counts towards it)
         let pause = this.cfg.rated ? 700 + Math.random() * 1900 : 420;
+        if (!this.cfg.rated) this.timerEnd = null;
         const t0 = performance.now();
         let act: Action;
         let hesitate = false;
@@ -443,9 +447,12 @@ export class BattleScene extends Container {
           if (this.destroyed_) return;
           if (mv.surrender) { await this.tw.wait(1200); if (!this.destroyed_) this.foeSurrender(); return; }
           act = mv.action;
-          pause = thinkMs(mv, rv, this.s, { streak: this.aiStreak, first: !this.aiMoved });
-          // 迷いの演出: a card is lifted from the hand and put back before the one played
-          hesitate = mv.kind === 'torn' && mv.alt !== undefined && Math.random() < 0.3;
+          // rated opponents take a person's time; the AI of free play and events moves at once
+          if (this.cfg.rated) {
+            pause = thinkMs(mv, rv, this.s, { streak: this.aiStreak, first: !this.aiMoved });
+            // 迷いの演出: a card is lifted from the hand and put back before the one played
+            hesitate = mv.kind === 'torn' && mv.alt !== undefined && Math.random() < 0.3;
+          }
         } else act = this.cfg.aiSpec ? await chooseActionSpecAsync(this.s, 1, this.cfg.aiSpec) : await chooseActionAsync(this.s, 1, this.cfg.level);
         if (this.destroyed_) return;
         const left = Math.max(0, pause - (performance.now() - t0));
@@ -463,6 +470,7 @@ export class BattleScene extends Container {
         this.busy = false;
         if (this.s.pending && !this.watching) { this.refreshControls(); this.showChoice(); return; }
         if (this.cfg.rated) this.setTimer(NET.TURN_MS);
+        else if (this.cfg.event?.turnMs) this.setTimer(this.cfg.event.turnMs);
         this.refreshControls();
         return;
       } else break;
@@ -473,7 +481,7 @@ export class BattleScene extends Container {
   private async tryAction(a: Action, auto = false) {
     if (this.busy || actor(this.s) !== 0) { audio.play('deny'); return; }
     if (!auto) this.strikes = 0;
-    if (this.cfg.rated) this.timerEnd = null;
+    if (this.cfg.rated || this.cfg.event?.turnMs) this.timerEnd = null;
     this.setMode({ k: 'idle' });
     this.closeModal();
     this.busy = true;
@@ -737,7 +745,7 @@ export class BattleScene extends Container {
         v.setReady(u.readyAt, p.time, u.reload);
       });
       this.huds[pi].setHp(p.hp);
-      this.huds[pi].setInfo(p.deck.length, pi === 1 ? p.hand.length : null, resvCount(p), p.resv.length - resvCount(p));
+      this.huds[pi].setInfo(p.deck.length, pi === 1 ? p.hand.length : null, resvCount(p), echoCount(p));
       void this.dial.setHand(pi, p.time, false);
       // pins
       const want = new Set(p.resv.map((r) => r.uid));
@@ -1468,7 +1476,7 @@ export class BattleScene extends Container {
           const n = this.foeHandLayer.children.length;
           await tw.to(b, { x: FOE_HAND_POS.x - 140 + ((n - 1) / 2) * 18, y: FOE_HAND_POS.y }, 240);
         }
-        this.huds[e.pi].setInfo(this.s.players[e.pi].deck.length, e.pi === 1 ? this.foeHandLayer.children.length : null, this.s.players[e.pi].resv.length);
+        this.huds[e.pi].setInfo(this.s.players[e.pi].deck.length, e.pi === 1 ? this.foeHandLayer.children.length : null, resvCount(this.s.players[e.pi]), echoCount(this.s.players[e.pi]));
         break;
       }
       case 'burn': this.toast(`${e.pi === 0 ? this.me : this.foe}：手札が一杯で${e.card === HIDDEN ? 'カード' : `「${cardDef(e.card).name}」`}を失った`); await tw.wait(500); break;

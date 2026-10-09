@@ -92,7 +92,39 @@ export function topBar(title: string, back: (() => void) | null, ...right: Child
 export function ribbon(titleId: string | undefined, cls = '') {
   const t = titleById(titleId);
   if (!t) return null;
+  if (t.season) return h('span', { class: `stt sv-${t.season.tier} sea-${t.season.id} ${cls}`, title: t.how, 'aria-label': t.name, html: seasonPlate(t.season.tier, t.season.label, t.season.rank) });
   return h('span', { class: `ttl t-${t.tone} ${cls}`, title: t.how }, h('b', {}, t.name));
+}
+
+/**
+ * 季の称号 (第1季「残響の刻」: blue, bells and ripples). The same plate for every rank, growing with it: 見習い to 刻匠 only
+ * deepen the blue and the emblem; 刻豪 adds a bell, ripples and sound waves outside; 刻聖 a belfry crown, a swinging bell
+ * and an afterimage; 刻神 blade wings, a halo, a turning dial, a threefold afterimage and sparks. Colours live in skin.css.
+ */
+function seasonPlate(tier: string, label: string, rank: string): string {
+  const L = TIER_LEVEL[tier] ?? 0;
+  const txt = `<span class="stt-ki">${label}</span><span class="stt-nm">${rank}</span>`;
+  if (L <= 2) {
+    const em = [
+      '<circle cx="8" cy="8" r="2" fill="currentColor"/><circle cx="8" cy="8" r="5" stroke="currentColor" stroke-width="1.2" opacity=".8"/>',
+      '<circle cx="8" cy="8" r="2" fill="currentColor"/><circle cx="8" cy="8" r="4.6" stroke="currentColor" stroke-width="1.2" opacity=".85"/><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1" stroke-dasharray="2.6 1.8" opacity=".5"/>',
+      '<circle cx="8" cy="8" r="2" fill="currentColor"/><circle cx="8" cy="8" r="4.3" stroke="currentColor" stroke-width="1.2" opacity=".9"/><circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width=".9" stroke-dasharray="2.2 1.6" opacity=".55"/><path d="M8 .3V2M8 14v1.7M.3 8H2m12 0h1.7" stroke="currentColor" stroke-width="1.2"/>',
+    ][L];
+    return `<span class="stt-pl"><svg class="stt-em" viewBox="0 0 16 16" fill="none">${em}</svg><span class="stt-ki">${label}</span><i class="stt-dv"></i><span class="stt-nm">${rank}</span></span>`;
+  }
+  const bellBody = 'M7 2.2C4.2 2.2 3.2 5 3.2 8.2L2 11.8h10l-1.2-3.6C10.8 5 9.8 2.2 7 2.2Z';
+  if (L === 3) {
+    const fl = (r: boolean) => `<svg class="stt-fl${r ? ' r' : ''}" viewBox="0 0 10 22" fill="none"><path d="M8.5 5Q3.5 11 8.5 17" stroke="currentColor" stroke-width="1.3"/><path d="M4.6 7.6Q1.8 11 4.6 14.4" stroke="currentColor" stroke-width="1" opacity=".6"/></svg>`;
+    return `${fl(false)}<span class="stt-pl"><i class="stt-rp"></i><i class="stt-rp" style="--d:1.2s"></i><svg class="stt-bl" viewBox="0 0 14 16" fill="none"><path d="M7 .8v1.4" stroke="#c3d9f7" stroke-width="1.2"/><path d="${bellBody}" fill="#c3d9f7" stroke="#0a2566"/><circle cx="7" cy="13.4" r="1.5" fill="#c3d9f7"/></svg><span class="stt-tw">${txt}</span></span>${fl(true)}`;
+  }
+  const echo = (x: number, d: number) => `<span class="stt-echo" style="--x:${x}px;--d:${d}s">${txt}</span>`;
+  if (L === 4) {
+    const fl = (r: boolean) => `<svg class="stt-fl${r ? ' r' : ''}" viewBox="0 0 16 22" fill="none"><path d="M14 3Q7 11 14 19" stroke="currentColor" stroke-width="1.5"/><path d="M10 6q-4.4 5 0 10" stroke="currentColor" stroke-width="1.2" opacity=".75"/><path d="M6.2 8.4Q4 11 6.2 13.6" stroke="currentColor" opacity=".5"/><path d="M.6 11l1.8-1.8L4.2 11l-1.8 1.8Z" fill="currentColor" opacity=".8"/></svg>`;
+    return `<svg class="stt-cr" viewBox="0 0 28 8" fill="none"><path d="M2 8Q14-1.5 26 8" stroke="currentColor" stroke-width="1.1"/><path d="M14 .4l1.3 2.2L14 4.8l-1.3-2.2Z" fill="currentColor"/></svg>${fl(false)}<span class="stt-pl"><i class="stt-rp"></i><i class="stt-rp" style="--d:.35s"></i><i class="stt-gl"></i><svg class="stt-bl" viewBox="0 0 14 16" fill="none"><path d="M7 .8v1.4" stroke="#eaf5ff" stroke-width="1.2"/><path d="${bellBody}" fill="#dcefff" stroke="#06144a"/><path d="M4.4 6.6c.3-1.9 1-2.9 2-3.2" stroke="#fff" stroke-width=".8"/><path d="M3 10.2h8" stroke="#6f9fe0" stroke-width=".6"/><circle cx="7" cy="13.4" r="1.5" fill="#eaf5ff"/></svg><span class="stt-tw">${txt}${echo(7, 0)}</span></span>${fl(true)}`;
+  }
+  const blade = (r: boolean) => `<svg class="stt-fl${r ? ' r' : ''}" viewBox="0 0 24 28" fill="none"><defs><linearGradient id="stt-blade" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#e6f6ff"/><stop offset="1" stop-color="#2a6fd8"/></linearGradient></defs><path d="M24 5 5 1.5l9 8Z" fill="url(#stt-blade)"/><path d="M24 23 5 26.5l9-8Z" fill="url(#stt-blade)"/><path d="M24 10.5 0 14l24 3.5Z" fill="url(#stt-blade)"/><path d="M19 7.5q-6 6.5 0 13" stroke="#9fdcff" stroke-width="1.1"/></svg>`;
+  const sparks = [[20, 0, -3], [36, 0.8, 2], [52, 1.6, -2], [68, 0.4, 4], [82, 2.1, -1]].map(([l, d, dx]) => `<i class="stt-spk" style="left:${l}%;--d:${d}s;--dx:${dx}px"></i>`).join('');
+  return `<svg class="stt-cr" viewBox="0 0 44 12" fill="none"><path d="M3 12Q22-2 41 12" stroke="#9fdcff" stroke-width="1.1"/><path d="m8 8.3-1.2-1.4M36 8.3l1.2-1.4M14 5l-.7-1.6M30 5l.7-1.6" stroke="#9fdcff"/><path d="m22 0 1.8 5.5L22 8l-1.8-2.5Z" fill="#eaf8ff"/><path d="m16.5 3.4 1.1 4.2-1.9.3Z" fill="#6fd0ff"/><path d="m27.5 3.4-1.1 4.2 1.9.3Z" fill="#6fd0ff"/></svg>${blade(false)}<span class="stt-pl"><svg class="stt-rg" viewBox="0 0 42 42" fill="none"><circle cx="21" cy="21" r="17" stroke="#6fd0ff" stroke-width=".8" stroke-dasharray="1.2 3.2"/><path d="M5 21a16 16 0 0 1 7-13M30 8a16 16 0 0 1 7 13" stroke="#6fd0ff" stroke-width="1.2"/><path d="M21 2v4m0 30v4M2 21h4m30 0h4" stroke="#bfeaff"/></svg><i class="stt-rp"></i><i class="stt-rp" style="--d:.3s"></i><i class="stt-gl"></i><svg class="stt-bl" viewBox="0 0 14 16" fill="none"><path d="M5 1.6 5.8.2 7 1.2 8.2.2 9 1.6Z" fill="#9fdcff"/><path d="M7 2C4.2 2 3.2 5 3.2 8.2L2 11.8h10l-1.2-3.6C10.8 5 9.8 2 7 2Z" fill="#0d1f66" stroke="#8fd4ff" stroke-width=".9"/><path d="M7.7 2.6 6.3 5.6l1.9 2.1-1.6 3.9" stroke="#cff3ff" stroke-width=".7"/><path d="M2 11.8h10" stroke="#cff3ff" stroke-width=".8"/><circle cx="7" cy="13.4" r="1.5" fill="#8fd4ff"/></svg><span class="stt-tw">${txt}${echo(4, 0)}${echo(8, 0.12)}${echo(12, 0.24)}</span></span>${blade(true)}${sparks}`;
 }
 /** Hexagonal badge of a rank, with or without its name. Higher ranks wear more: frame, rivets, laurels, rays, a crown, fire. */
 export function tierBadge(t: Tier, size: 'sm' | 'lg' = 'sm', withName = true) {

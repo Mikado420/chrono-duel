@@ -26,6 +26,8 @@ export interface Reservation {
   uid: number; card: string; T: number; revealed: boolean; echo?: EchoEffect;
   /** 囮の書: a fake pin that does nothing when it comes due and uses no slot. */
   decoy?: boolean;
+  /** Set before the game began (イベント「予約の嵐」): uses no slot. */
+  preset?: boolean;
 }
 export interface PlayerState {
   hp: number;
@@ -52,6 +54,8 @@ export interface GameState {
    * one of `options` with { t: 'choose', i }; it costs no time. `options` are card ids, or hand uids for 'discard'.
    */
   pending?: { pi: PlayerIndex; kind: 'seer' | 'discard' | 'recall'; options: (string | number)[]; owner: PlayerIndex };
+  /** When doom begins, if not at RULES.DOOM_AT (イベント「終焉開幕」: 0). */
+  doomAt?: number;
 }
 
 /** `x` is the extra time paid for 充填 (charge) cards; omitted for every other card. */
@@ -175,7 +179,7 @@ export function attackTarget(s: GameState, pi: PlayerIndex, lane: number): Targe
 }
 
 /** Reservations that use a slot (echoes do not). */
-export const resvCount = (p: PlayerState) => p.resv.reduce((n, r) => n + (r.echo || r.decoy ? 0 : 1), 0);
+export const resvCount = (p: PlayerState) => p.resv.reduce((n, r) => n + (r.echo || r.decoy || r.preset ? 0 : 1), 0);
 
 /** Whether 急襲 (rush) is active for `pi`: their clock is at least 2 behind. */
 export const rushActive = (s: GameState, pi: PlayerIndex) => s.players[other(pi)].time - s.players[pi].time >= 2;
@@ -946,7 +950,8 @@ function settle(s: GameState, ev: GameEvent[]) {
     if (checkKo(s, ev)) return;
     if (s.pending) return; // the choice comes first; the next settle (after it) carries on
     const w = worldTime(s);
-    const lvl = w >= RULES.DOOM_AT ? 1 + Math.floor((w - RULES.DOOM_AT) / RULES.DOOM_STEP) : 0;
+    const at = s.doomAt ?? RULES.DOOM_AT;
+    const lvl = w >= at ? 1 + Math.floor((w - at) / RULES.DOOM_STEP) : 0;
     if (lvl > s.doom) { s.doom = lvl; ev.push({ e: 'doom', level: lvl }); }
     const due: { pi: PlayerIndex; r: Reservation }[] = [];
     for (const pi of [0, 1] as PlayerIndex[]) {

@@ -8,6 +8,14 @@ import {
 /** easy/normal add noise to a greedy choice; hard looks one reply ahead; expert searches its own streak of moves and the opponent's. */
 export type AiLevel = 'easy' | 'normal' | 'hard' | 'expert';
 export const AI_LEVEL_NAMES: Record<AiLevel, string> = { easy: 'やさしい', normal: 'ふつう', hard: 'つよい', expert: '超つよい' };
+/**
+ * The AI of free play and events is shown and chosen as Lv1–10 (the same brain as the rated opponents). Rewards and
+ * play records still use the four old levels: Lv1–2 やさしい, Lv3–4 ふつう, Lv5–6 つよい, Lv7–10 超つよい.
+ */
+export const AI_LV_MAX = 10;
+export const levelOfLv = (lv: number): AiLevel => (lv <= 2 ? 'easy' : lv <= 4 ? 'normal' : lv <= 6 ? 'hard' : 'expert');
+/** Where an old choice of level lands on the Lv scale. */
+export const LV_OF_LEVEL: Record<AiLevel, number> = { easy: 1, normal: 3, hard: 5, expert: 8 };
 
 /** Weights of the static evaluation. Each AI level can use its own set (超つよい uses tuned ones). */
 export interface Weights { hp: number; danger: number; atk: number; body: number; open: number; hand: number; handExtra: number; resv: number; tempo: number; ready: number }

@@ -9,8 +9,12 @@
 export type TitleTone = 'yellow' | 'green' | 'blue' | 'bronze' | 'silver' | 'gold' | 'red';
 export const TONE_ORDER: TitleTone[] = ['yellow', 'green', 'blue', 'bronze', 'silver', 'gold', 'red'];
 export const TONE_NAMES: Record<TitleTone, string> = { yellow: '黄', green: '緑', blue: '青', bronze: '銅', silver: '銀', gold: '金', red: '赤' };
-export type TitleGroup = '勝利' | '対戦' | 'レート戦' | '戦い方' | '勝ち方' | '収集と継続' | 'シーズン';
-export interface TitleDef { id: string; name: string; how: string; tone: TitleTone; group: TitleGroup }
+export type TitleGroup = '勝利' | '対戦' | 'レート戦' | '戦い方' | '勝ち方' | '収集と継続' | '季の称号';
+export interface TitleDef {
+  id: string; name: string; how: string; tone: TitleTone; group: TitleGroup;
+  /** 季の称号: which season and rank (drawn as that season's plate instead of the grade's). */
+  season?: { id: number; tier: string; label: string; rank: string };
+}
 
 /** What the unlock checks look at (all of it is on the device already). */
 export interface TitleCtx {
@@ -38,7 +42,7 @@ import { SEASONS, TIERS } from './ranks';
 /** Rated games before the first rating counts as settled (rating.ts PLACEMENT_GAMES). */
 const PLACEMENT = 10;
 type T = TitleDef & { test: (c: TitleCtx) => boolean };
-const g = (group: TitleGroup) => (id: string, name: string, how: string, tone: TitleTone, test: (c: TitleCtx) => boolean): T => ({ id, name, how, tone, group, test });
+const g = (group: TitleGroup) => (id: string, name: string, how: string, tone: TitleTone, test: (c: TitleCtx) => boolean, season?: TitleDef['season']): T => ({ id, name, how, tone, group, test, ...(season ? { season } : {}) });
 const win = g('勝利'), war = g('対戦'), rate = g('レート戦'), act = g('戦い方'), way = g('勝ち方'), keep = g('収集と継続');
 const n = (c: TitleCtx, k: string) => c.counters[k] ?? 0;
 const rated = (peak: number) => (c: TitleCtx) => c.ratedGames > 0 && c.ratedPeak >= peak;
@@ -102,18 +106,18 @@ const ALL: T[] = [
   keep('login100', '百日の鐘', 'ログイン100日', 'bronze', (c) => c.loginDays >= 100),
   keep('tailor', '仕立て屋', 'テーマの文字盤・スリーブ・マットを3点そろえる', 'green', (c) => c.themesComplete >= 1),
 ];
-// シーズン: one title per finished season, for the best rank reached there (刻士 and up)
-const SEASON_TONE: Record<string, TitleTone> = { shi: 'blue', sho: 'bronze', go: 'silver', sei: 'gold', shin: 'red' };
-const season = g('シーズン');
+// 季の称号: one title per finished season, for the best rank reached there (見習い to 刻神)
+const SEASON_TONE: Record<string, TitleTone> = { novice: 'green', shi: 'blue', sho: 'bronze', go: 'silver', sei: 'gold', shin: 'red' };
+const season = g('季の称号');
 for (const se of SEASONS) {
   for (const t of TIERS) {
     const tone = SEASON_TONE[t.id];
-    if (tone) ALL.push(season(`season${se.id}-${t.id}`, `${se.name} ${t.name}`, `${se.name}（${se.set}）の最高ランクが${t.name}`, tone, (c) => c.seasonTiers?.[se.id] === t.id));
+    if (tone) ALL.push(season(`season${se.id}-${t.id}`, `${se.name} ${t.name}`, `${se.name}（${se.set}）の最高ランクが${t.name}`, tone, (c) => c.seasonTiers?.[se.id] === t.id, { id: se.id, tier: t.id, label: se.name, rank: t.name }));
   }
 }
 /** The titles every player can work towards (the season ones are added as seasons go by). */
-export const BASE_TITLE_COUNT = ALL.filter((t) => t.group !== 'シーズン').length;
-export const TITLES: TitleDef[] = ALL.map(({ id, name, how, tone, group }) => ({ id, name, how, tone, group }));
+export const BASE_TITLE_COUNT = ALL.filter((t) => t.group !== '季の称号').length;
+export const TITLES: TitleDef[] = ALL.map(({ id, name, how, tone, group, season: se }) => ({ id, name, how, tone, group, ...(se ? { season: se } : {}) }));
 
 /**
  * Titles of the first list (0.19 and before) that live on under a new id. Ids not listed here and not in TITLES

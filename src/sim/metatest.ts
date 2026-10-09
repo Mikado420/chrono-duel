@@ -81,7 +81,9 @@ assert.ok(earnedTitles({ ...zero, ratedGames: 3, ratedPeak: 1200 }).includes('r1
 assert.ok(!earnedTitles({ ...zero, ratedGames: 3, ratedPeak: 1200 }).includes('r1400'));
 // the agreed list: 53 titles, wins and games in six steps, every action at 100 / 500 / 1000
 assert.equal(BASE_TITLE_COUNT, 53);
-assert.equal(TITLES.length, 53 + SEASONS.length * 5, 'five season titles per season (刻士 and up)');
+assert.equal(TITLES.length, 53 + SEASONS.length * 6, 'six season titles per season (見習い to 刻神)');
+assert.deepEqual(titleById('season1-novice')?.season, { id: 1, tier: 'novice', label: '第1季', rank: '見習い' });
+assert.equal(titleById('season1-shin')?.name, '第1季 刻神');
 assert.ok(earnedTitles({ ...zero, seasonTiers: { 1: 'sei' } }).includes('season1-sei'));
 assert.ok(!earnedTitles({ ...zero, seasonTiers: { 1: 'sei' } }).includes('season1-go'), 'only the best rank of a season');
 const steps = (ids: string[]) => ids.map((id) => titleById(id)!.tone);

@@ -800,3 +800,103 @@ body.reduced .ttl, body.reduced .ttl > b::before, body.reduced .ttl > b::after {
 .event-prizes .ep small { font-size: 10px; color: var(--mute); }
 .event-prizes .ep.got { border-color: var(--gold); background: linear-gradient(180deg, #3a2e12, #1d1708); }
 .event-prizes .ep.got b { color: var(--gold); }
+
+/* ---- 季の称号（第1季「残響の刻」：青・鐘・波紋）。kit.ts seasonPlate が組み立てる ---- */
+.stt { position: relative; display: inline-flex; flex: none; align-items: center; vertical-align: middle; height: 22px; font-family: var(--f-display); }
+.stt-pl { position: relative; display: inline-flex; align-items: center; gap: 5px; height: 22px; white-space: nowrap; overflow: hidden; }
+.stt-pl::before { content: ''; position: absolute; z-index: 0; }
+.stt-ki { position: relative; z-index: 2; font-size: 9px; font-weight: 700; letter-spacing: .04em; }
+.stt-nm { position: relative; z-index: 2; font-size: 11.5px; font-weight: 800; letter-spacing: .1em; }
+.stt-em { position: relative; z-index: 2; width: 14px; height: 14px; flex: none; }
+.stt-dv { position: relative; z-index: 2; width: 1px; height: 10px; opacity: .5; }
+.stt-tw { position: relative; z-index: 2; display: inline-flex; align-items: center; gap: 5px; }
+.stt-fl { position: relative; flex: none; overflow: visible; }
+.stt-fl.r { transform: scaleX(-1); }
+.stt-cr { position: absolute; z-index: 3; left: 50%; transform: translateX(-50%); overflow: visible; }
+.stt-bl { position: absolute; z-index: 2; left: 12px; top: 3px; width: 14px; height: 16px; transform-origin: 50% 8%; }
+.stt-rp { position: absolute; z-index: 1; left: 19px; top: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%; opacity: 0; animation-iteration-count: infinite; animation-timing-function: ease-out; animation-delay: var(--d, 0s); }
+.stt-gl { position: absolute; z-index: 1; inset: 0; transform: translateX(-120%); animation: sttGl 4s ease-in-out infinite; }
+.stt-echo { position: absolute; left: 0; top: 0; height: 100%; display: inline-flex; align-items: center; gap: 5px; opacity: 0; pointer-events: none; animation: sttEcho 4s ease-out infinite; animation-delay: var(--d, 0s); }
+@keyframes sttGl { 0%, 6% { transform: translateX(-120%); } 32%, 100% { transform: translateX(120%); } }
+@keyframes sttEcho { 0%, 5% { opacity: 0; transform: translateX(0); } 9% { opacity: .6; } 38%, 100% { opacity: 0; transform: translateX(var(--x, 7px)); } }
+@keyframes sttSwing { 0%, 30%, 100% { transform: rotate(0); } 4% { transform: rotate(-18deg); } 10% { transform: rotate(13deg); } 16% { transform: rotate(-7deg); } 22% { transform: rotate(3deg); } }
+/* 見習い */
+.stt.sv-novice .stt-pl { padding: 0 12px 0 9px; background: #5f7d9e; clip-path: polygon(7px 0, calc(100% - 7px) 0, 100% 50%, calc(100% - 7px) 100%, 7px 100%, 0 50%); }
+.stt.sv-novice .stt-pl::before { inset: 1.2px; background: linear-gradient(180deg, #1a2a3a, #0e1822); clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 6px 100%, 0 50%); }
+.stt.sv-novice .stt-em, .stt.sv-novice .stt-ki { color: #93b4d6; }
+.stt.sv-novice .stt-dv { background: #93b4d6; }
+.stt.sv-novice .stt-nm { color: #dfe8f2; }
+/* 刻士 */
+.stt.sv-shi .stt-pl { padding: 0 13px 0 9px; background: linear-gradient(180deg, #8dbaff, #3f7fe0); clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 8px 100%, 0 50%); }
+.stt.sv-shi .stt-pl::before { inset: 1.3px; background: linear-gradient(180deg, #183563, #0b1a36); box-shadow: inset 0 0 0 1px rgba(110, 165, 245, .35); clip-path: polygon(7px 0, calc(100% - 7px) 0, 100% 50%, calc(100% - 7px) 100%, 7px 100%, 0 50%); }
+.stt.sv-shi .stt-em, .stt.sv-shi .stt-ki { color: #8dbaff; }
+.stt.sv-shi .stt-dv { background: #8dbaff; }
+.stt.sv-shi .stt-nm { color: #f0f6ff; }
+/* 刻匠（鋲は文字から離して両端に） */
+.stt.sv-sho { filter: drop-shadow(0 0 3px rgba(80, 150, 255, .4)); }
+.stt.sv-sho .stt-pl { padding: 0 19px 0 18px; background: linear-gradient(180deg, #cfe3ff, #4f8ce6 45%, #1f4fa8); clip-path: polygon(9px 0, calc(100% - 9px) 0, 100% 50%, calc(100% - 9px) 100%, 9px 100%, 0 50%); }
+.stt.sv-sho .stt-pl::before { inset: 1.5px; background: radial-gradient(circle at 6px 50%, #cfe3ff 0 1.3px, #0b2160 1.8px, transparent 2.2px), radial-gradient(circle at calc(100% - 6px) 50%, #cfe3ff 0 1.3px, #0b2160 1.8px, transparent 2.2px), linear-gradient(180deg, #2a62c4, #123a8a 55%, #0c2a6c); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3); clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 8px 100%, 0 50%); }
+.stt.sv-sho .stt-em { color: #cfe3ff; }
+.stt.sv-sho .stt-ki { color: #b5d3ff; }
+.stt.sv-sho .stt-dv { background: #b5d3ff; }
+.stt.sv-sho .stt-nm { color: #fff; text-shadow: 0 1px 0 #0a1f55; }
+/* 刻豪 */
+.stt.sv-go { filter: drop-shadow(0 0 5px rgba(90, 160, 255, .5)); }
+.stt.sv-go .stt-pl { padding: 0 17px 0 30px; background: linear-gradient(180deg, #f2f8ff, #a9c6ee 35%, #5a82c0 60%, #d6e6ff); clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 10px 100%, 0 50%); }
+.stt.sv-go .stt-pl::before { inset: 2px; background: repeating-linear-gradient(90deg, rgba(255, 255, 255, .05) 0 1px, transparent 1px 4px), linear-gradient(180deg, #2b66d0, #133f98 50%, #0a2566); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), inset 0 0 0 1px rgba(10, 30, 90, .6); clip-path: polygon(9px 0, calc(100% - 9px) 0, 100% 50%, calc(100% - 9px) 100%, 9px 100%, 0 50%); }
+.stt.sv-go .stt-ki { color: #b9d6ff; }
+.stt.sv-go .stt-nm { color: #f4f9ff; text-shadow: 0 1px 0 #061a4d, 0 0 4px rgba(150, 200, 255, .5); }
+.stt.sv-go .stt-fl { width: 10px; height: 22px; margin: 0 -1px; color: #b9d6ff; animation: sttFl 3.6s ease-in-out infinite; }
+.stt.sv-go .stt-bl { animation: sttSway 3.6s ease-in-out infinite; }
+.stt.sv-go .stt-rp { border: 1.3px solid rgba(200, 225, 255, .85); animation-name: sttRp4; animation-duration: 3.6s; }
+@keyframes sttFl { 0%, 100% { opacity: .5; } 15% { opacity: 1; } }
+@keyframes sttSway { 0%, 40%, 100% { transform: rotate(0); } 8% { transform: rotate(-9deg); } 18% { transform: rotate(6deg); } 28% { transform: rotate(-2deg); } }
+@keyframes sttRp4 { 0%, 4% { transform: scale(.3); opacity: 0; } 8% { opacity: .9; } 55%, 100% { transform: scale(11); opacity: 0; } }
+/* 刻聖 */
+.stt.sv-sei { margin-top: 6px; animation: sttAura5 4s ease-in-out infinite; }
+@keyframes sttAura5 { 0%, 100% { filter: drop-shadow(0 0 5px rgba(110, 180, 255, .5)); } 8% { filter: drop-shadow(0 0 11px rgba(160, 215, 255, .95)); } }
+.stt.sv-sei .stt-pl { padding: 0 20px 0 31px; background: linear-gradient(180deg, #fff, #bfe3ff 30%, #4f8fe0 60%, #e6f4ff); clip-path: polygon(12px 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 12px 100%, 0 50%); }
+.stt.sv-sei .stt-pl::before { inset: 2px; background: linear-gradient(180deg, #2457c8, #0d2a86 45%, #06144a); box-shadow: inset 0 0 0 1px rgba(191, 227, 255, .5), inset 0 1px 0 rgba(255, 255, 255, .4), inset 0 -4px 6px rgba(0, 0, 30, .5); clip-path: polygon(11px 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 11px 100%, 0 50%); }
+.stt.sv-sei .stt-ki { color: #a9d4ff; }
+.stt.sv-sei .stt-nm { color: #fff; text-shadow: 0 0 6px rgba(150, 210, 255, .85), 0 1px 0 #041040; letter-spacing: .14em; }
+.stt.sv-sei .stt-fl { width: 16px; height: 22px; margin: 0 -1px; color: #cfe6ff; }
+.stt.sv-sei .stt-cr { top: -7px; width: 28px; height: 8px; color: #cfe6ff; }
+.stt.sv-sei .stt-bl, .stt.sv-shin .stt-bl { animation: sttSwing 4s ease-in-out infinite; }
+.stt.sv-sei .stt-rp { border: 1.5px solid rgba(225, 242, 255, .95); box-shadow: 0 0 4px rgba(150, 210, 255, .6); animation-name: sttRp5; animation-duration: 4s; }
+@keyframes sttRp5 { 0%, 3% { transform: scale(.3); opacity: 0; } 6% { opacity: 1; } 48%, 100% { transform: scale(14); opacity: 0; } }
+.stt.sv-sei .stt-gl { background: linear-gradient(105deg, transparent 40%, rgba(220, 240, 255, .45) 50%, transparent 60%); }
+.stt.sv-sei .stt-echo .stt-ki, .stt.sv-sei .stt-echo .stt-nm { color: #dff1ff; text-shadow: 0 0 4px #7fc4ff; }
+/* 刻神 */
+.stt.sv-shin { margin-top: 10px; animation: sttAura6 2.2s ease-in-out infinite alternate; }
+@keyframes sttAura6 { from { filter: drop-shadow(0 0 6px rgba(60, 150, 255, .65)); } to { filter: drop-shadow(0 0 13px rgba(110, 200, 255, 1)); } }
+.stt.sv-shin .stt-pl { padding: 0 24px 0 35px; background: linear-gradient(180deg, #f2fbff, #6fd0ff 30%, #1d4fc8 62%, #9fdcff); clip-path: polygon(14px 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 14px 100%, 0 50%); }
+.stt.sv-shin .stt-pl::before { inset: 2px; background: radial-gradient(80% 140% at 50% 140%, #2a5ee0, transparent 70%), linear-gradient(180deg, #0b1748, #030820 55%, #0a1a58); box-shadow: inset 0 0 0 1px rgba(111, 208, 255, .75), inset 0 0 0 3px rgba(3, 8, 32, .9), inset 0 0 0 4px rgba(111, 208, 255, .35); clip-path: polygon(13px 0, calc(100% - 13px) 0, 100% 50%, calc(100% - 13px) 100%, 13px 100%, 0 50%); }
+.stt.sv-shin .stt-ki { color: #7fd6ff; }
+.stt.sv-shin .stt-nm { color: #f0faff; text-shadow: 0 0 8px #3aa0ff, 0 0 2px #bfeaff; letter-spacing: .18em; }
+.stt.sv-shin .stt-fl { width: 24px; height: 28px; margin: 0 -2px; }
+.stt.sv-shin .stt-cr { top: -11px; width: 44px; height: 12px; }
+.stt.sv-shin .stt-bl { left: 14px; }
+.stt.sv-shin .stt-rp { left: 21px; width: 24px; height: 14px; margin: -7px 0 0 -12px; border: 1.5px solid rgba(111, 208, 255, .95); box-shadow: 0 0 5px rgba(60, 160, 255, .9); animation-name: sttRp6; animation-duration: 4s; }
+@keyframes sttRp6 { 0%, 3% { transform: scale(.3) skewX(0); opacity: 0; } 6% { opacity: 1; } 26% { transform: scale(6) skewX(-20deg) rotate(4deg); } 50%, 100% { transform: scale(12) skewX(16deg) rotate(-3deg); opacity: 0; } }
+.stt.sv-shin .stt-gl { background: linear-gradient(105deg, transparent 42%, rgba(190, 235, 255, .5) 50%, transparent 58%); }
+.stt.sv-shin .stt-echo .stt-ki, .stt.sv-shin .stt-echo .stt-nm { color: #4fc0ff; text-shadow: 0 0 5px #1a7aff; }
+.stt-rg { position: absolute; z-index: 1; right: 2px; top: 50%; width: 42px; height: 42px; margin-top: -21px; opacity: .35; animation: sttSpin 20s linear infinite; }
+@keyframes sttSpin { to { transform: rotate(360deg); } }
+.stt-spk { position: absolute; z-index: 3; bottom: 2px; width: 2px; height: 2px; border-radius: 50%; background: #d6f3ff; box-shadow: 0 0 4px #3aa0ff, 0 0 8px #3aa0ff; opacity: 0; animation: sttSpk 2.6s linear infinite; animation-delay: var(--d, 0s); }
+@keyframes sttSpk { 0% { opacity: 0; transform: translate(0, 0); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--dx, 3px), -30px); } }
+@media (prefers-reduced-motion: reduce) { .stt, .stt * { animation: none !important; } }
+body.reduced .stt, body.reduced .stt * { animation: none !important; }
+
+/* フリー対戦のAIのLv */
+.seg2.lvpick button { min-height: 42px; padding: 0; font: 700 15px var(--f-num); }
+/* イベント「刻の継承」 */
+.draft-head { display: grid; gap: 6px; text-align: center; padding: 14px 16px; }
+.draft-head b { font: 800 20px var(--f-display); color: var(--gold-hi, #f3d58a); }
+.draft-head span { font-size: 12px; color: #c2d2d4; }
+.draft-offer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 14px 0 6px; }
+.draft-card { display: grid; gap: 6px; justify-items: center; }
+.draft-card .pick { padding: 0; border: 0; background: none; width: 100%; border-radius: 10px; transition: transform .15s; }
+.draft-card .pick:active { transform: scale(.96); }
+.draft-card .pick img { width: 100%; display: block; border-radius: 10px; box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 0 1px rgba(224, 178, 92, .5); }
+.draft-picked { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; margin-top: 8px; }
+.draft-picked img { width: 100%; border-radius: 4px; display: block; }

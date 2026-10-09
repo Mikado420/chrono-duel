@@ -17,11 +17,11 @@ import {
   type MissionView, type News, type Prize, type Stat,
 } from '../meta/progress';
 import { TITLES, TONE_NAMES } from '../meta/titles';
-import { EVENT_PRIZES, eventOf, eventProgress } from '../meta/events';
+import { DRAFT_PICKS, EVENT_PRIZES, draftOffer, eventOf, eventProgress } from '../meta/events';
 import { VERSION } from '../version';
 import { pwa } from '../pwa';
 import { store } from './storage';
-import { AI_LEVEL_NAMES, type AiLevel } from '../core/ai';
+import { AI_LV_MAX, LV_OF_LEVEL, levelOfLv } from '../core/ai';
 import { PLACEMENT_GAMES, SEASON_REWARDS, TIERS, seasonAt, tierOf, type Opponent, type RatedGame } from '../meta/rating';
 import { seasonById } from '../meta/ranks';
 import { fetchRanking, issueTransfer, rankingAvailable, redeemTransfer, syncRated } from '../net/api';
@@ -48,6 +48,8 @@ const openWiki = () => window.open('./wiki/', '_blank', 'noopener');
 const RANK = { C: 0, R: 1, E: 2, L: 3 } as const;
 const RARE_COLOR: Record<Rarity, string> = { C: '#9fb3b8', R: '#5fd0b5', E: '#c9a8ff', L: '#ffd66e' };
 const fmt = (n: number) => n.toLocaleString('ja-JP');
+/** The free-play AI strength (Lv1–10; older saves only had the four levels). */
+const aiLv = () => store.settings.aiLv ?? LV_OF_LEVEL[store.settings.level] ?? 3;
 const hasTokens = (d: { cards: string[] }) => d.cards.filter((c) => CARDS[c] && !CARDS[c].token);
 
 /** A playmat as a picture (shop, deck slot); 'mat:none' is the plain board. */
@@ -95,7 +97,7 @@ export interface ScreenHost {
   root: HTMLElement;
   openPack(id: string): void;
   /** Starts a game against the AI (the VS screen plays over its opening). */
-  startBattle(deck: DeckDef, ai: DeckDef, level: AiLevel): void;
+  startBattle(deck: DeckDef, ai: DeckDef, lv: number): void;
   startRated(deck: DeckDef): void;
   /** One-off message for the home screen (e.g. an abandoned rated game), or ''. */
   takeNotice(): string;
@@ -106,7 +108,7 @@ export interface ScreenHost {
   /** The finished game can be shared as a replay (games against the AI keep their record). */
   canShareReplay(): boolean;
   /** Starts a game of this week's event (with the chosen deck when the event uses your own). */
-  startEvent(deck: DeckDef | null): void;
+  startEvent(deck: DeckDef | null, drafted?: string[]): void;
   shareReplay(): Promise<string | null>;
 }
 
@@ -295,9 +297,9 @@ export class Screens {
           h('button', { class: 'feat', 'aria-label': `看板カード ${favDef.name}`, onclick: () => this.cardDetail(fav) }, h('span', {}, h('img', { src: cardImg(fav), alt: favDef.name }))),
           h('div', { class: 'feat-name' }, h('small', {}, '看板カード'), h('b', {}, favDef.name)))),
       h('div', { class: 'home-cta2' },
-        h('button', { class: 'cta-main', onclick: () => { audio.play('summon'); this.clear(); this.host.startBattle(quick, PRESET_DECKS[Math.floor(Math.random() * PRESET_DECKS.length)], store.settings.level); } },
+        h('button', { class: 'cta-main', onclick: () => { audio.play('summon'); this.clear(); this.host.startBattle(quick, PRESET_DECKS[Math.floor(Math.random() * PRESET_DECKS.length)], aiLv()); } },
           h('b', {}, 'バトル'),
-          h('small', {}, `フリー対戦 ・ ${quick.name} ・ AI ${AI_LEVEL_NAMES[store.settings.level] ?? 'ふつう'}`)),
+          h('small', {}, `フリー対戦 ・ ${quick.name} ・ AI Lv${aiLv()}`)),
         h('button', { class: 'cta-side', style: `--tier:${tr.color}`, onclick: () => this.rated() }, 'レート戦', h('small', {}, `${tr.name} ${fmt(rt.rating)}`))),
     );
     this.hub('home', body);
@@ -366,21 +368,21 @@ export class Screens {
         h('b', {}, g.score === 1 ? '勝' : g.score === 0 ? '敗' : '分'), h('span', { class: 'foe' }, g.foe ? `${g.foe}（${g.foeRating}）` : '対戦相手'), h('span', { class: 'dl' }, `${g.after - g.before >= 0 ? '+' : ''}${g.after - g.before}`), h('span', { class: 'rt' }, String(g.after))));
       const se = seasonAt(localDate());
       const reward = SEASON_REWARDS[tierOf(Math.max(r.sPeak ?? r.rating, r.rating)).tier.id];
-      const past = (r.seasons ?? []).map((x) => { const tt = TIERS.find((y) => y.id === x.tier)!; return h('div', { class: 'season-row' }, h('b', {}, seasonById(x.season)?.name ?? `第${x.season}期`), tierBadge(tt), h('span', { class: 'muted' }, `最高 ${x.peak} ・ ${x.games}戦${x.wins}勝`)); });
+      const past = (r.seasons ?? []).map((x) => { const tt = TIERS.find((y) => y.id === x.tier)!; return h('div', { class: 'season-row' }, h('b', {}, seasonById(x.season)?.name ?? `第${x.season}季`), tierBadge(tt), h('span', { class: 'muted' }, `最高 ${x.peak} ・ ${x.games}戦${x.wins}勝`)); });
       this.page('レート戦', () => this.battleTab(), [
         h('div', { class: 'season-band' }, h('b', {}, se.name), h('span', {}, `${se.set}のシーズン ・ 次の弾の配信まで`)),
         h('div', { class: 'rated-card', style: `--tier:${t.tier.color}` },
           tierBadge(t.tier, 'lg'),
           h('div', { class: 'rating' }, h('small', {}, 'RATING'), h('b', {}, String(r.rating))),
           h('div', { class: 'progress tier-prog' }, h('i', { style: `width:${t.next ? (t.into / t.span) * 100 : 100}%` })),
-          h('div', { class: 'small' }, t.next ? `次の段位「${t.next.name}」まで ${t.next.min - r.rating}` : '最高段位', `　・　今期の最高 ${Math.max(r.sPeak ?? r.rating, r.rating)}　・　今期 ${r.sGames ?? 0}戦${r.sWins ?? 0}勝`),
-          h('div', { class: 'small', style: 'margin-top:4px;opacity:.85' }, `今期の報酬（いまの最高ランク）：コイン${reward.coins}${reward.tickets ? `・チケット${reward.tickets}枚` : ''}${tierOf(Math.max(r.sPeak ?? r.rating, r.rating)).tier.id !== 'novice' ? '・シーズン称号' : ''}`)),
+          h('div', { class: 'small' }, t.next ? `次の段位「${t.next.name}」まで ${t.next.min - r.rating}` : '最高段位', `　・　今季の最高 ${Math.max(r.sPeak ?? r.rating, r.rating)}　・　今季 ${r.sGames ?? 0}戦${r.sWins ?? 0}勝`),
+          h('div', { class: 'small', style: 'margin-top:4px;opacity:.85' }, `今季の報酬（いまの最高ランク）：コイン${reward.coins}${reward.tickets ? `・チケット${reward.tickets}枚` : ''}・季の称号`)),
         h('ul', { class: 'earn' },
           h('li', {}, 'レートの近い相手とマッチングします。段位が上がるほど手強い相手が待っています'),
           h('li', {}, '自分よりレートの高い相手に勝つほど大きく上がり、低い相手に負けるほど大きく下がります'),
           h('li', {}, `はじめの${PLACEMENT_GAMES}戦は変動が大きくなります`),
           h('li', {}, '1手45秒の持ち時間があります。降参・途中でアプリを閉じた場合は敗北になります'),
-          h('li', {}, 'シーズンは新しい弾が出るたびに切り替わります。そのシーズンの最高ランクに応じてコイン・チケット・シーズン称号がもらえ、次のシーズンは1つ下のランクの最初から始まります')),
+          h('li', {}, 'シーズンは新しい弾が出るたびに切り替わります。そのシーズンの最高ランクに応じてコイン・チケットと、ランクごとに装飾の変わる季の称号がもらえ、次のシーズンは1つ下のランクの最初から始まります')),
         h('div', { class: 'sec-title' }, 'デッキ'), h('div', { class: 'opt-list' }, ...deckOpts),
         h('button', { class: 'hexbtn gold big', disabled: !mine.valid, onclick: () => { store.settings.lastDeck = mine.id; store.saveSettings(); audio.play('summon'); this.host.startRated(mine); } }, 'レート戦を開始'),
         hist.length ? h('div', { class: 'sec-title' }, '最近の結果') : null,
@@ -488,6 +490,34 @@ export class Screens {
     ));
   }
 
+  /** 刻の継承: 20 rounds of picking one card of three, then the game with the deck made. */
+  draftScreen() {
+    const picks: string[] = [];
+    let offer = draftOffer(picks);
+    const render = () => {
+      const units = picks.filter((c) => cardDef(c).kind === 'unit').length;
+      this.page('刻の継承', () => this.eventScreen(), [
+        h('div', { class: 'draft-head pn gold' },
+          h('b', {}, `${picks.length + 1} / ${DRAFT_PICKS} 枚目`),
+          h('span', {}, '3枚から1枚を選んでください'),
+          h('div', { class: 'progress' }, h('i', { style: `width:${(picks.length / DRAFT_PICKS) * 100}%` }))),
+        h('div', { class: 'draft-offer' }, ...offer.map((id) => h('div', { class: 'draft-card' },
+          h('button', { class: 'pick', 'aria-label': `${cardDef(id).name}を選ぶ`, onclick: () => {
+            picks.push(id);
+            audio.play('draw');
+            if (picks.length >= DRAFT_PICKS) { audio.play('summon'); this.clear(); this.host.startEvent(null, picks); return; }
+            offer = draftOffer(picks);
+            render();
+          } }, h('img', { src: cardImg(id), alt: cardDef(id).name })),
+          h('button', { class: 'chip-btn', onclick: () => this.cardDetail(id, { list: offer, onClose: render }) }, '詳しく')))),
+        h('div', { class: 'sec-title' }, `作っているデッキ　${picks.length}枚（ユニット${units}・術${picks.length - units}）`),
+        picks.length ? curveBars(picks) : null,
+        h('div', { class: 'draft-picked' }, ...picks.map((id) => h('img', { src: cardImg(id), alt: cardDef(id).name, loading: 'lazy' }))),
+      ]);
+    };
+    render();
+  }
+
   /** This week's event: what it is, the week's progress and prizes, and a start button. */
   eventScreen() {
     const today = localDate();
@@ -508,7 +538,11 @@ export class Screens {
           h('b', {}, `${x.wins}勝`), h('span', {}, [x.prize.coins ? `コイン${x.prize.coins}` : '', x.prize.tickets ? `チケット${x.prize.tickets}枚` : ''].filter(Boolean).join('＋')), h('small', {}, p.wins >= x.wins ? '受け取り済み（プレゼント）' : 'まだ')))),
         ev.ownDeck ? h('div', { class: 'sec-title' }, 'デッキ') : null,
         ev.ownDeck ? h('div', { class: 'opt-list' }, ...decks.map((d) => h('button', { class: 'opt', 'aria-pressed': String(d.id === mine.id), disabled: !d.valid, onclick: () => { mine = d; audio.play('select'); render(); } }, h('div', {}, h('div', { class: 'nm' }, d.name))))) : null,
-        h('button', { class: 'hexbtn gold big', disabled: ev.ownDeck && !mine.valid, onclick: () => { if (ev.ownDeck) { store.settings.lastDeck = mine.id; store.saveSettings(); } audio.play('summon'); this.clear(); this.host.startEvent(ev.ownDeck ? mine : null); } }, 'イベントに挑む'),
+        h('button', { class: 'hexbtn gold big', disabled: ev.ownDeck && !mine.valid, onclick: () => {
+          if (ev.draft) { audio.play('select'); this.draftScreen(); return; }
+          if (ev.ownDeck) { store.settings.lastDeck = mine.id; store.saveSettings(); }
+          audio.play('summon'); this.clear(); this.host.startEvent(ev.ownDeck ? mine : null);
+        } }, ev.draft ? 'デッキを作りはじめる' : 'イベントに挑む'),
         h('p', { class: 'shop-note' }, 'イベントは毎週月曜に入れ替わります。ふだんの対戦と同じようにコインや称号の記録も進みます。'),
       ]);
     };
@@ -596,7 +630,7 @@ export class Screens {
     switch (stat) {
       case 'pack': return () => this.packShop(PACKS[0]);
       case 'deck': return () => this.decks();
-      case 'hardWin': return () => this.setup('hard');
+      case 'hardWin': return () => this.setup(Math.max(5, aiLv()));
       case 'online': return flow.available ? () => this.onlineMenu() : null;
       default: return () => this.battleTab();
     }
@@ -913,11 +947,11 @@ export class Screens {
   }
 
   // ---------------------------------------------------------------- match setup
-  setup(level0?: AiLevel) {
+  setup(lv0?: number) {
     const decks = store.allDecks();
     let mine = decks.find((d) => d.id === store.settings.lastDeck && d.valid) ?? decks[0];
     let ai: DeckDef | 'random' = 'random';
-    let level = level0 ?? store.settings.level;
+    let level = lv0 ?? aiLv();
     const render = () => {
       const deckOpts = decks.map((d) => h('button', {
         class: 'opt', 'aria-pressed': String(d.id === mine.id), disabled: !d.valid,
@@ -925,14 +959,15 @@ export class Screens {
       }, h('div', {}, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, d.blurb ?? `${d.cards.length}枚・自作デッキ`)), !d.valid ? h('span', { class: 'badge' }, d.missing.length ? '未所持あり' : '未完成') : null));
       const aiOpts = [h('button', { class: 'opt', 'aria-pressed': String(ai === 'random'), onclick: () => { ai = 'random'; render(); } }, h('div', {}, h('div', { class: 'nm' }, 'おまかせ'), h('div', { class: 'ds' }, '4種のデッキから選ばれます'))),
         ...PRESET_DECKS.map((d) => h('button', { class: 'opt', 'aria-pressed': String(ai !== 'random' && ai.id === d.id), onclick: () => { ai = d; render(); } }, h('div', {}, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, d.blurb ?? ''))))];
-      const lv = (v: AiLevel, t: string) => h('button', { 'aria-pressed': String(level === v), onclick: () => { level = v; render(); } }, t);
+      const lv = (v: number) => h('button', { 'aria-pressed': String(level === v), 'aria-label': `レベル${v}`, onclick: () => { level = v; audio.play('select'); render(); } }, String(v));
       this.page('フリー対戦', () => this.battleTab(), [
         h('div', { class: 'sec-title' }, 'あなたのデッキ'), h('div', { class: 'opt-list' }, ...deckOpts),
         h('div', { class: 'sec-title' }, '相手（AI）のデッキ'), h('div', { class: 'opt-list' }, ...aiOpts),
-        h('div', { class: 'sec-title' }, 'AIの強さ'), h('div', { class: 'seg2' }, lv('easy', 'やさしい'), lv('normal', 'ふつう'), lv('hard', 'つよい'), lv('expert', '超つよい')),
+        h('div', { class: 'sec-title' }, `AIの強さ　Lv${level}`), h('div', { class: 'seg2 lvpick' }, ...Array.from({ length: AI_LV_MAX }, (_, i) => lv(i + 1))),
+        h('p', { class: 'shop-note', style: 'text-align:left;margin:-4px 0 0' }, 'レート戦の対戦相手と同じ頭脳です。Lv1〜2ははじめての人向け、Lv5〜6で手強く、Lv8以上は上級者向け。'),
         h('button', {
           class: 'hexbtn gold big', onclick: () => {
-            store.settings.lastDeck = mine.id; store.settings.level = level; store.saveSettings();
+            store.settings.lastDeck = mine.id; store.settings.aiLv = level; store.settings.level = levelOfLv(level); store.saveSettings();
             const aiDeck = ai === 'random' ? PRESET_DECKS[Math.floor(Math.random() * PRESET_DECKS.length)] : ai;
             audio.play('summon');
             this.clear();
@@ -1691,7 +1726,7 @@ export class Screens {
         tile('欠片で作る', `時の欠片 ${fmt(w.shards)}`, h('span', { html: '<svg viewBox="0 0 130 120" fill="none"><path d="M34 30l14 14-14 26-14-26z" fill="#9fe8ff" stroke="#e0f9ff" stroke-width="1.4"/><path d="M96 24l12 12-12 22-12-22z" fill="#9fe8ff" stroke="#e0f9ff" stroke-width="1.4"/><rect x="44" y="40" width="44" height="62" rx="5" fill="#13323b" stroke="#e0b25c" stroke-width="2.5"/><path d="M66 56v22M55 67h22" stroke="#e0b25c" stroke-width="3" stroke-linecap="round"/></svg>' }), () => this.collection('craft'))),
       h('div', { class: 'sec-title' }, 'コインの集め方'),
       h('ul', { class: 'earn' },
-        h('li', {}, `AI（ふつう）に勝利 ${MATCH_REWARD['ai-normal'][0]} ・ AI（つよい）に勝利 ${MATCH_REWARD['ai-hard'][0]} ・ オンラインで勝利 ${MATCH_REWARD.online[0]}`),
+        h('li', {}, `AI Lv3〜4に勝利 ${MATCH_REWARD['ai-normal'][0]} ・ AI Lv5〜6に勝利 ${MATCH_REWARD['ai-hard'][0]} ・ オンラインで勝利 ${MATCH_REWARD.online[0]}`),
         h('li', {}, `負けても参加で ${MATCH_REWARD['ai-normal'][1]}〜${MATCH_REWARD.online[1]}、引き分け ${MATCH_REWARD['ai-normal'][2]}〜${MATCH_REWARD.online[2]}`),
         h('li', {}, `その日はじめての勝利で +${DAILY_BONUS}（対戦の報酬は1日${DAILY_MATCH_CAP}コインまで）`),
         h('li', {}, 'ログインボーナス・デイリーミッション・ランクアップでも手に入ります')),

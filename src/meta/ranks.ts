@@ -18,7 +18,7 @@ export const TIERS: Tier[] = [
  */
 export interface Season { id: number; name: string; set: string; start: string }
 export const SEASONS: Season[] = [
-  { id: 1, name: '第1期', set: '第1弾「残響の刻」', start: '2026-10-09' },
+  { id: 1, name: '第1季', set: '第1弾「残響の刻」', start: '2026-10-09' },
 ];
 /** The day in Japan time (the players' day). */
 export const jstDay = (ms: number) => new Date(ms + 9 * 3600_000).toISOString().slice(0, 10);

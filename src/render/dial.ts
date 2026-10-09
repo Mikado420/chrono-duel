@@ -52,6 +52,8 @@ export class Dial extends Container {
   private plateSub: Text;
   private plateBg = new Graphics();
   private doomLevel = 0;
+  private doomFrom: number = RULES.DOOM_AT;
+  private doomLabel: { x: number; y: number } | null = null;
   private glowT = 0;
 
   private skin: DialSkin;
@@ -183,16 +185,23 @@ export class Dial extends Container {
       g.x = p.x; g.y = p.y;
       this.addChild(g);
     }
-    const dp = this.point(RULES.DOOM_AT, R + 44);
+    const dp = this.point(this.doomFrom, R + 44);
     const dl = label('終焉', 15, COLORS.doom, { font: FONTS.display, weight: '700' });
     dl.anchor.set(0.5); dl.x = dp.x; dl.y = dp.y;
+    this.doomLabel = dl;
     this.addChild(dl);
+    this.drawDoom();
+  }
+  /** Where doom begins this game (イベント「終焉開幕」 starts it at 0). */
+  setDoomFrom(t: number) {
+    this.doomFrom = t;
+    if (this.doomLabel) { const p = this.point(Math.max(t, 1.2), this.R + 44); this.doomLabel.x = p.x; this.doomLabel.y = p.y; }
     this.drawDoom();
   }
 
   private drawDoom() {
     const { cx, cy, R } = this;
-    const a0 = this.angleOf(RULES.DOOM_AT), a1 = TAU;
+    const a0 = this.angleOf(this.doomFrom), a1 = TAU;
     const alpha = this.doomLevel ? 0.55 + 0.25 * Math.sin(this.glowT * 3) : 0.22;
     this.doomBand.clear().arc(cx, cy, R + 13, a0, a1).stroke({ color: COLORS.doom, width: 18 + this.doomLevel * 2, alpha });
   }
@@ -221,7 +230,7 @@ export class Dial extends Container {
     this.artC.addChild(full(cv.over));
     if (a.embers && this.motion) {
       // sparks off the heated rim (from DOOM_AT to the end)
-      this.embers = new Embers(() => { const t = RULES.DOOM_AT + Math.random() * (RULES.END - RULES.DOOM_AT); const p = this.point(t, this.R + 8 + Math.random() * 14); return p; }, 5, 2.6);
+      this.embers = new Embers(() => { const t = this.doomFrom + Math.random() * (RULES.END - this.doomFrom); const p = this.point(t, this.R + 8 + Math.random() * 14); return p; }, 5, 2.6);
       this.artC.addChild(this.embers);
     }
     this.artC.alpha = 0;
