@@ -8,8 +8,11 @@
 import { CARDS } from '../core/cards';
 import { cleanName } from '../core/net';
 import { titleById } from '../meta/titles';
-import { OPP_SPREAD, RATING_RESET, START_RATING, applyRatingReset, foeById, nextRating, tierOf, type SubmitReq } from '../meta/rating';
+import { OPP_SPREAD, RATING_RESET, START_RATING, applyRatingReset, foeById, nextRating, rollSeason, seasonAt, tierOf, type SeasonResult, type SubmitReq } from '../meta/rating';
+import { jstDay } from '../meta/ranks';
 import type { PlayStats } from './stats';
+import type { Transfer } from './transfer';
+import type { Replays } from './replays';
 
 export interface KV {
   get<T>(k: string): Promise<T | undefined>;
@@ -17,8 +20,9 @@ export interface KV {
   list<T>(prefix: string): Promise<T[]>;
   /** Up to `limit` entries under `prefix` whose keys sort after `after`, in key order (for large collections). */
   page?<T>(prefix: string, after: string | undefined, limit: number): Promise<[string, T][]>;
+  delete?(k: string): Promise<void>;
 }
-export interface PlayerRec { id: string; key: string; name: string; rating: number; games: number; wins: number; peak: number; lastAt: number; lastGids: string[]; created: number; reset?: string; title?: string; fav?: string }
+export interface PlayerRec { id: string; key: string; name: string; rating: number; games: number; wins: number; peak: number; lastAt: number; lastGids: string[]; created: number; reset?: string; season?: number; sPeak?: number; sGames?: number; sWins?: number; seasons?: SeasonResult[]; title?: string; fav?: string }
 /** `prev`: the place at the end of the previous day the ranking was looked at (null: was not ranked then). */
 export interface RankRow { name: string; rating: number; tier: string; games: number; wins: number; peak: number; me?: boolean; title?: string; fav?: string; prev?: number | null }
 /** Places by player id for one day (Japan time), kept to show how places moved since the day before. */
@@ -48,10 +52,13 @@ export class Leaderboard {
     const rec = await this.kv.get<PlayerRec>(`p:${id}`);
     if (rec) {
       if (rec.key !== key) return bad(403, 'wrong key');
-      if (applyRatingReset(rec)) await this.kv.put(`p:${id}`, rec);
+      const reset = applyRatingReset(rec);
+      const day = jstDay(this.now()), was = rec.season;
+      rollSeason(rec, day);
+      if (reset || rec.season !== was) await this.kv.put(`p:${id}`, rec);
       return rec;
     }
-    const fresh: PlayerRec = { id, key, name: cleanName(name), rating: START_RATING, games: 0, wins: 0, peak: START_RATING, lastAt: 0, lastGids: [], created: this.now(), reset: RATING_RESET };
+    const fresh: PlayerRec = { id, key, name: cleanName(name), rating: START_RATING, games: 0, wins: 0, peak: START_RATING, lastAt: 0, lastGids: [], created: this.now(), reset: RATING_RESET, season: seasonAt(jstDay(this.now())).id, sPeak: START_RATING, sGames: 0, sWins: 0 };
     await this.kv.put(`p:${id}`, fresh);
     return fresh;
   }
@@ -78,20 +85,27 @@ export class Leaderboard {
       rec.rating = nextRating(rec.rating, rec.games, opp, g.score);
       rec.games++;
       if (g.score === 1) rec.wins++;
+      rec.sGames = (rec.sGames ?? 0) + 1;
+      if (g.score === 1) rec.sWins = (rec.sWins ?? 0) + 1;
+      rec.sPeak = Math.max(rec.sPeak ?? rec.rating, rec.rating);
       rec.peak = Math.max(rec.peak, rec.rating);
       rec.lastAt = g.at;
       rec.lastGids = [g.gid, ...rec.lastGids].slice(0, 50);
       accepted.push(g.gid);
     }
     await this.kv.put(`p:${rec.id}`, rec);
-    return { status: 200, body: { rating: rec.rating, games: rec.games, wins: rec.wins, peak: rec.peak, name: rec.name, accepted, refused } };
+    return { status: 200, body: { rating: rec.rating, games: rec.games, wins: rec.wins, peak: rec.peak, name: rec.name, season: rec.season, accepted, refused } };
   }
 
   /** POST /api/ranking: { id?, secret? } → top players and the caller's place. */
   async ranking(body: { id?: unknown; secret?: unknown }, limit = 50): Promise<ApiResult> {
+    // the ranking is per season: players who have not been back since the ranks were redrawn or a season turned are
+    // shown as they will be when they return (and saved then)
+    const today = jstDay(this.now()), season = seasonAt(today);
     const all = (await this.kv.list<PlayerRec>('p:')).filter((p) => p.games > 0);
-    // players who have not been back since the ranks were redrawn are shown at their reset rating (saved when they return)
-    for (const p of all) applyRatingReset(p);
+    for (const p of all) { applyRatingReset(p); rollSeason(p, today); }
+    const live = all.filter((p) => (p.sGames ?? 0) > 0);
+    all.length = 0; all.push(...live);
     all.sort((a, b) => b.rating - a.rating || b.wins - a.wins || a.created - b.created);
     // yesterday's places: the last places seen on an earlier day
     const day = rankDay(this.now());
@@ -101,7 +115,7 @@ export class Leaderboard {
     const snap: PlaceSnap = !old ? { day, prev: {}, cur } : old.day === day ? { ...old, cur } : { day, prev: old.cur, cur };
     await this.kv.put('rk:snap', snap);
     const row = (p: PlayerRec, me: boolean): RankRow => ({
-      name: p.name, rating: p.rating, tier: tierOf(p.rating).tier.id, games: p.games, wins: p.wins, peak: p.peak,
+      name: p.name, rating: p.rating, tier: tierOf(p.rating).tier.id, games: p.sGames ?? p.games, wins: p.sWins ?? p.wins, peak: p.peak,
       ...(p.title ? { title: p.title } : {}), ...(p.fav ? { fav: p.fav } : {}), prev: snap.prev[p.id] ?? null, ...(me ? { me: true } : {}),
     });
     let meId: string | null = null;
@@ -111,16 +125,20 @@ export class Leaderboard {
     }
     const top = all.slice(0, limit).map((p) => row(p, p.id === meId));
     const idx = meId ? all.findIndex((p) => p.id === meId) : -1;
-    return { status: 200, body: { total: all.length, top, me: idx >= 0 ? { place: idx + 1, ...row(all[idx], true) } : null } };
+    return { status: 200, body: { season: { id: season.id, name: season.name }, total: all.length, top, me: idx >= 0 ? { place: idx + 1, ...row(all[idx], true) } : null } };
   }
 }
 
 /** Routes /api/* requests to the leaderboard. Shared by the Worker and the dev server. */
-export async function handleApi(lb: Leaderboard, path: string, method: string, body: unknown, stats?: PlayStats): Promise<ApiResult> {
+export async function handleApi(lb: Leaderboard, path: string, method: string, body: unknown, stats?: PlayStats, more: { transfer?: Transfer; replays?: Replays } = {}): Promise<ApiResult> {
   const b = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
   if (method !== 'POST') return bad(405, 'use POST');
   if (path === '/api/rated') return lb.submit(b);
   if (path === '/api/ranking') return lb.ranking(b);
+  if (more.transfer && path === '/api/transfer/issue') return more.transfer.issue(b);
+  if (more.transfer && path === '/api/transfer/redeem') return more.transfer.redeem(b);
+  if (more.replays && path === '/api/replay/save') return more.replays.save(b);
+  if (more.replays && path === '/api/replay/get') return more.replays.get(b);
   if (stats && path === '/api/match') return stats.record(b);
   if (stats && path === '/api/stats') return stats.summary(b);
   if (stats && path === '/api/logs') return stats.logs(b);

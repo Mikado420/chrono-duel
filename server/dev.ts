@@ -9,6 +9,8 @@ import type { Duplex } from 'node:stream';
 import { normalizeCode, type ClientMsg, type ServerMsg } from '../src/core/net';
 import { Room, type Conn, type RoomEnv } from '../src/server/room';
 import { Leaderboard, handleApi, type KV } from '../src/server/leaderboard';
+import { Transfer } from '../src/server/transfer';
+import { Replays } from '../src/server/replays';
 import { PlayStats } from '../src/server/stats';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -88,8 +90,10 @@ const kv: KV = {
   list: async <T>(prefix: string) => [...mem.entries()].filter(([k]) => k.startsWith(prefix)).map(([, v]) => structuredClone(v) as T),
   page: async <T>(prefix: string, after: string | undefined, limit: number) =>
     [...mem.entries()].filter(([k]) => k.startsWith(prefix) && (!after || k > after)).sort(([a], [b]) => (a < b ? -1 : 1)).slice(0, limit).map(([k, v]) => [k, structuredClone(v) as T] as [string, T]),
+  delete: async (k) => { mem.delete(k); },
 };
 const board = new Leaderboard(kv, () => Date.now());
+const more = { transfer: new Transfer(kv, () => Date.now()), replays: new Replays(kv, () => Date.now()) };
 // game records: read them with `npm run logs -- http://localhost:8787 dev`
 const stats = new PlayStats(kv, () => Date.now(), process.env.ADMIN_TOKEN ?? 'dev');
 env.onLog = (r) => { void stats.keepRoom(r); };
@@ -103,7 +107,7 @@ const server = createServer((req, res) => {
   req.on('end', async () => {
     let body: unknown = {};
     try { body = text ? JSON.parse(text) : {}; } catch { /* handled below as an empty body */ }
-    const r = await handleApi(board, path, req.method ?? 'GET', body, stats);
+    const r = await handleApi(board, path, req.method ?? 'GET', body, stats, more);
     res.writeHead(r.status, { ...cors, 'content-type': 'application/json' });
     res.end(JSON.stringify(r.body));
   });

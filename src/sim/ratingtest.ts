@@ -1,6 +1,6 @@
 /* Rated play and the friends' ranking: `npm run test:rating` */
 import assert from 'node:assert/strict';
-import { AI_RATING, NEW_RATED, RATING_RESET, applyRatingReset, resetRating, RATED_FOES, START_RATING, finishRated, foeById, makeOpponent, nextRating, opponentPool, pickOpponent, rivalPool, startRated, tierOf } from '../meta/rating';
+import { AI_RATING, NEW_RATED, SEASONS, rollSeason, seasonStartRating, RATING_RESET, applyRatingReset, resetRating, RATED_FOES, START_RATING, finishRated, foeById, makeOpponent, nextRating, opponentPool, pickOpponent, rivalPool, startRated, tierOf } from '../meta/rating';
 import { ROSTER, deckAvailable, rivalById, rivalDeck, rivalId } from '../meta/roster';
 import { Leaderboard, MIN_GAME_MS, rankDay, type KV } from '../server/leaderboard';
 import { mulberry32 } from '../core/engine';
@@ -153,12 +153,33 @@ assert.deepEqual([2150, 1400, 1399, 1200, 1199, 1000, 850].map(resetRating), [14
   const D = { id: 'dddddddddddddddddddd', secret: 'vvvvvvvvvvvvvvvvvvvvvv', name: 'でぃー' };
   await lb.submit({ ...D, games: [] });
   const recD = mem.get(`p:${D.id}`) as { rating: number; games: number; reset?: string };
-  mem.set(`p:${D.id}`, { ...recD, rating: 1650, games: 30, reset: undefined });
+  mem.set(`p:${D.id}`, { ...recD, rating: 1650, games: 30, reset: undefined, season: undefined, sGames: undefined, sWins: undefined });
   const shown = ((await lb.ranking({})).body as { top: Row[] }).top.find((r) => r.name === 'でぃー');
   assert.equal(shown?.rating, 1400);
   const back = (await lb.submit({ ...D, games: [] })).body as { rating: number };
   assert.equal(back.rating, 1400);
   assert.equal((mem.get(`p:${D.id}`) as { reset?: string }).reset, RATING_RESET);
+}
+// seasons: one per set; a new one starts a rank lower and remembers the best rank of the last
+assert.deepEqual([1000, 1199, 1250, 1450, 1700, 1900, 2100].map(seasonStartRating), [1000, 1000, 1000, 1200, 1400, 1600, 1800]);
+{
+  const r = { rating: 1500, games: 12, wins: 7 } as Parameters<typeof rollSeason>[0];
+  assert.equal(rollSeason(r, '2026-10-10'), null, 'joining the first season');
+  assert.equal(r.season, 1); assert.equal(r.sGames, 12, 'games so far count for the first season');
+  r.sPeak = 1820;
+  SEASONS.push({ id: 2, name: '第2期', set: 'テスト', start: '2027-01-01' });
+  try {
+    assert.equal(rollSeason(r, '2026-12-31'), null, 'not before the new set');
+    const res = rollSeason(r, '2027-01-02')!;
+    assert.deepEqual(res, { season: 1, peak: 1820, tier: 'sei', games: 12, wins: 7 });
+    assert.equal(r.rating, 1200, 'starts one rank lower');
+    assert.equal(r.season, 2); assert.equal(r.sGames, 0);
+    assert.equal(r.seasons?.[0].tier, 'sei');
+    assert.equal(rollSeason(r, '2027-01-03'), null, 'only once');
+    const idle = { rating: 1300, season: 1, sGames: 0 } as Parameters<typeof rollSeason>[0];
+    assert.equal(rollSeason(idle, '2027-01-02'), null, 'no result for a season not played');
+    assert.equal(idle.rating, 1000, '刻士 goes back to 見習い');
+  } finally { SEASONS.pop(); }
 }
 console.log(`rating after one hard win: ${r1}; ranking ok`);
 console.log('all rating tests passed');

@@ -9,7 +9,7 @@
 export type TitleTone = 'yellow' | 'green' | 'blue' | 'bronze' | 'silver' | 'gold' | 'red';
 export const TONE_ORDER: TitleTone[] = ['yellow', 'green', 'blue', 'bronze', 'silver', 'gold', 'red'];
 export const TONE_NAMES: Record<TitleTone, string> = { yellow: '黄', green: '緑', blue: '青', bronze: '銅', silver: '銀', gold: '金', red: '赤' };
-export type TitleGroup = '勝利' | '対戦' | 'レート戦' | '戦い方' | '勝ち方' | '収集と継続';
+export type TitleGroup = '勝利' | '対戦' | 'レート戦' | '戦い方' | '勝ち方' | '収集と継続' | 'シーズン';
 export interface TitleDef { id: string; name: string; how: string; tone: TitleTone; group: TitleGroup }
 
 /** What the unlock checks look at (all of it is on the device already). */
@@ -29,7 +29,11 @@ export interface TitleCtx {
   ratedPeak: number;
   /** Longest run of rated wins. */
   ratedStreak: number;
+  /** Best rank (tier id) of each finished season, by season id. */
+  seasonTiers?: Record<number, string>;
 }
+
+import { SEASONS, TIERS } from './ranks';
 
 /** Rated games before the first rating counts as settled (rating.ts PLACEMENT_GAMES). */
 const PLACEMENT = 10;
@@ -98,6 +102,17 @@ const ALL: T[] = [
   keep('login100', '百日の鐘', 'ログイン100日', 'bronze', (c) => c.loginDays >= 100),
   keep('tailor', '仕立て屋', 'テーマの文字盤・スリーブ・マットを3点そろえる', 'green', (c) => c.themesComplete >= 1),
 ];
+// シーズン: one title per finished season, for the best rank reached there (刻士 and up)
+const SEASON_TONE: Record<string, TitleTone> = { shi: 'blue', sho: 'bronze', go: 'silver', sei: 'gold', shin: 'red' };
+const season = g('シーズン');
+for (const se of SEASONS) {
+  for (const t of TIERS) {
+    const tone = SEASON_TONE[t.id];
+    if (tone) ALL.push(season(`season${se.id}-${t.id}`, `${se.name} ${t.name}`, `${se.name}（${se.set}）の最高ランクが${t.name}`, tone, (c) => c.seasonTiers?.[se.id] === t.id));
+  }
+}
+/** The titles every player can work towards (the season ones are added as seasons go by). */
+export const BASE_TITLE_COUNT = ALL.filter((t) => t.group !== 'シーズン').length;
 export const TITLES: TitleDef[] = ALL.map(({ id, name, how, tone, group }) => ({ id, name, how, tone, group }));
 
 /**

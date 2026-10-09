@@ -11,12 +11,13 @@ import { COLORS, DESIGN } from './render/theme';
 import { Tweener } from './render/tween';
 import { PackOpenScene } from './render/packOpen';
 import { MIN_ACTIONS, applyReward, canOpen, localDate, openPack, packById, reward, type Reward } from './meta/economy';
-import { bump, dailyView, recordBattle, recordMatch, track } from './meta/progress';
+import { bump, dailyView, grantSeasonReward, recordBattle, recordMatch, track } from './meta/progress';
 import { haptics } from './render/haptics';
 import { LOOKS, PITY, refundRetired } from './meta/economy';
 import { deckKey, deckLook, favCard, shownTitle } from './ui/profile';
 import { CARD_LIST } from './core/cards';
-import { applyRatingReset, finishRated, foeById, foeLevel, makeOpponent, startRated, tierOf, type RatedGame } from './meta/rating';
+import { SEASON_REWARDS, TIERS, applyRatingReset, finishRated, foeById, foeLevel, makeOpponent, rollSeason, startRated, tierOf, type RatedGame } from './meta/rating';
+import { seasonById } from './meta/ranks';
 import { rivalById, rivalCfg, rivalDeckCards, rivalDeckName } from './meta/roster';
 import { deckBook, refreshDeckBook, reportMatch, saveLiveGame, syncRated, takeLiveGame } from './net/api';
 import { bookKey, listFor } from './meta/deckbook';
@@ -258,6 +259,18 @@ async function boot() {
     if (applyRatingReset(store.rated)) {
       store.saveRated();
       if (store.rated.games > 0) pendingNotice = [pendingNotice, `ランクの見直しにともない、レートを ${before} から ${store.rated.rating}（${tierOf(store.rated.rating).tier.name}）に調整しました`].filter(Boolean).join('\n');
+    }
+  }
+  // a new season (one per card set): the best rank of the last one pays out, the rating starts one rank lower
+  {
+    const before = store.rated.rating;
+    const ended = rollSeason(store.rated, localDate());
+    store.saveRated();
+    if (ended) {
+      const s = seasonById(ended.season), t = TIERS.find((x) => x.id === ended.tier)!;
+      grantSeasonReward(store.meta, `${s?.name ?? `第${ended.season}期`}の報酬（最高ランク ${t.name}）`, SEASON_REWARDS[ended.tier], localDate());
+      store.saveMeta();
+      pendingNotice = [pendingNotice, `${s?.name ?? ''}が終わりました。最高ランク「${t.name}」の報酬をプレゼントに送りました。新しいシーズンはレート ${store.rated.rating}（${before} から）で始まります`].filter(Boolean).join('\n');
     }
   }
   // a rated game left unfinished last time (app closed, tab killed) counts as a loss

@@ -16,16 +16,9 @@ export const PLACEMENT_GAMES = 10;
 export const K_PLACEMENT = 40;
 export const K_NORMAL = 24;
 
-export interface Tier { id: string; name: string; min: number; color: string }
-/** Ranks of rated play, every 200 from 1000 (everything below 1200, the start included, is 見習い). Colours follow the 称号 grades. */
-export const TIERS: Tier[] = [
-  { id: 'novice', name: '見習い', min: 0, color: '#8fd96a' },
-  { id: 'shi', name: '刻士', min: 1200, color: '#6aa8ff' },
-  { id: 'sho', name: '刻匠', min: 1400, color: '#d08a4e' },
-  { id: 'go', name: '刻豪', min: 1600, color: '#d6dde4' },
-  { id: 'sei', name: '刻聖', min: 1800, color: '#ffcf4a' },
-  { id: 'shin', name: '刻神', min: 2000, color: '#ff4a4a' },
-];
+export { TIERS, type Tier } from './ranks';
+import { SEASONS, TIERS, seasonAt, type Season, type Tier } from './ranks';
+export { SEASONS, seasonAt, type Season };
 
 /**
  * Rated opponents: the four AI levels plus steps between and above them, so there is always one near the player.
@@ -74,6 +67,36 @@ export function applyRatingReset(r: { rating: number; reset?: string; streak?: n
   if (r.streak !== undefined) r.streak = 0;
   return true;
 }
+// ------------------------------------------------------------------ seasons (one per card set)
+export interface SeasonResult { season: number; peak: number; tier: string; games: number; wins: number }
+/** What the best rank of a season pays (as a present when the next season starts). */
+export const SEASON_REWARDS: Record<string, { coins: number; tickets: number }> = {
+  novice: { coins: 100, tickets: 0 }, shi: { coins: 200, tickets: 1 }, sho: { coins: 300, tickets: 2 },
+  go: { coins: 400, tickets: 3 }, sei: { coins: 500, tickets: 4 }, shin: { coins: 800, tickets: 5 },
+};
+/** A new season starts at the beginning of the rank below the one held (見習い stays at 1000). */
+export function seasonStartRating(rating: number): number {
+  const i = TIERS.indexOf(tierOf(rating).tier);
+  return Math.max(START_RATING, TIERS[Math.max(0, i - 1)].min);
+}
+/**
+ * Moves a record into the season of `day`. Returns the result of the season that ended, if the player played in
+ * it (rewards and the season title come from it), else null. The first time, the record just joins the season.
+ */
+export function rollSeason(r: { rating: number; games?: number; wins?: number; season?: number; sPeak?: number; sGames?: number; sWins?: number; seasons?: SeasonResult[]; streak?: number }, day: string): SeasonResult | null {
+  const cur = seasonAt(day);
+  // records from before seasons existed join the first one with what they have played so far
+  if (r.season === undefined) { r.season = cur.id; r.sPeak = r.rating; r.sGames = r.sGames ?? r.games ?? 0; r.sWins = r.sWins ?? r.wins ?? 0; return null; }
+  if (r.season >= cur.id) return null;
+  const peak = Math.max(r.sPeak ?? r.rating, r.rating);
+  const res: SeasonResult | null = r.sGames ? { season: r.season, peak, tier: tierOf(peak).tier.id, games: r.sGames, wins: r.sWins ?? 0 } : null;
+  if (res) r.seasons = [res, ...(r.seasons ?? [])].slice(0, 50);
+  r.rating = seasonStartRating(r.rating);
+  r.season = cur.id; r.sPeak = r.rating; r.sGames = 0; r.sWins = 0;
+  if (r.streak !== undefined) r.streak = 0;
+  return res;
+}
+
 export function tierOf(rating: number): { tier: Tier; next: Tier | null; into: number; span: number } {
   let i = 0;
   while (i + 1 < TIERS.length && rating >= TIERS[i + 1].min) i++;
@@ -157,6 +180,13 @@ export interface Rated {
   bestStreak?: number;
   /** The last one-time reset applied (RATING_RESET). */
   reset?: string;
+  /** The season these numbers belong to, and this season's best rating, games and wins. */
+  season?: number;
+  sPeak?: number;
+  sGames?: number;
+  sWins?: number;
+  /** Results of the seasons played, newest first. */
+  seasons?: SeasonResult[];
   /** A rated game that was started and not finished yet. If the app is closed mid-game, it counts as a loss. */
   pending: { at: number; ai: string; deck: string; foe: string; foeRating: number } | null;
   /** Results not yet accepted by the ranking server. */
@@ -182,6 +212,9 @@ export function finishRated(r: Rated, score: 0 | 0.5 | 1, actions: number, now: 
   r.games++;
   if (score === 1) r.wins++;
   r.streak = score === 1 ? (r.streak ?? 0) + 1 : 0;
+  r.sGames = (r.sGames ?? 0) + 1;
+  if (score === 1) r.sWins = (r.sWins ?? 0) + 1;
+  r.sPeak = Math.max(r.sPeak ?? after, after);
   r.bestStreak = Math.max(r.bestStreak ?? 0, r.streak);
   r.peak = Math.max(r.peak, after);
   const g: RatedGame = { at: now, ai: p.ai, score, before, after, deck: p.deck, foe: p.foe ?? '', foeRating: opp };

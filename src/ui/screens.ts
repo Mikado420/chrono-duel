@@ -21,8 +21,9 @@ import { VERSION } from '../version';
 import { pwa } from '../pwa';
 import { store } from './storage';
 import { AI_LEVEL_NAMES, type AiLevel } from '../core/ai';
-import { PLACEMENT_GAMES, tierOf, type Opponent, type RatedGame } from '../meta/rating';
-import { fetchRanking, rankingAvailable, syncRated } from '../net/api';
+import { PLACEMENT_GAMES, SEASON_REWARDS, TIERS, seasonAt, tierOf, type Opponent, type RatedGame } from '../meta/rating';
+import { seasonById } from '../meta/ranks';
+import { fetchRanking, issueTransfer, rankingAvailable, redeemTransfer, syncRated } from '../net/api';
 import { ICON, artStyle, backImg, svgImg, cardImg, cardName, countBadge, countUp, h, newTag, packImg, pressable, purse, ribbon, svg, tierBadge, tierEmblem, topBar } from './kit';
 import { deckKey, deckLook, favCard, myTitles, newTitles, shownTitle } from './profile';
 
@@ -357,21 +358,29 @@ export class Screens {
         h('div', {}, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, d.blurb ?? `${d.cards.length}枚・自作デッキ`)), !d.valid ? h('span', { class: 'badge' }, d.missing.length ? '未所持あり' : '未完成') : null));
       const hist = r.history.slice(0, 8).map((g) => h('div', { class: `rh ${g.score === 1 ? 'w' : g.score === 0 ? 'l' : 'd'}` },
         h('b', {}, g.score === 1 ? '勝' : g.score === 0 ? '敗' : '分'), h('span', { class: 'foe' }, g.foe ? `${g.foe}（${g.foeRating}）` : '対戦相手'), h('span', { class: 'dl' }, `${g.after - g.before >= 0 ? '+' : ''}${g.after - g.before}`), h('span', { class: 'rt' }, String(g.after))));
+      const se = seasonAt(localDate());
+      const reward = SEASON_REWARDS[tierOf(Math.max(r.sPeak ?? r.rating, r.rating)).tier.id];
+      const past = (r.seasons ?? []).map((x) => { const tt = TIERS.find((y) => y.id === x.tier)!; return h('div', { class: 'season-row' }, h('b', {}, seasonById(x.season)?.name ?? `第${x.season}期`), tierBadge(tt), h('span', { class: 'muted' }, `最高 ${x.peak} ・ ${x.games}戦${x.wins}勝`)); });
       this.page('レート戦', () => this.battleTab(), [
+        h('div', { class: 'season-band' }, h('b', {}, se.name), h('span', {}, `${se.set}のシーズン ・ 次の弾の配信まで`)),
         h('div', { class: 'rated-card', style: `--tier:${t.tier.color}` },
           tierBadge(t.tier, 'lg'),
           h('div', { class: 'rating' }, h('small', {}, 'RATING'), h('b', {}, String(r.rating))),
           h('div', { class: 'progress tier-prog' }, h('i', { style: `width:${t.next ? (t.into / t.span) * 100 : 100}%` })),
-          h('div', { class: 'small' }, t.next ? `次の段位「${t.next.name}」まで ${t.next.min - r.rating}` : '最高段位', `　・　最高 ${r.peak}　・　${r.games}戦${r.wins}勝`)),
+          h('div', { class: 'small' }, t.next ? `次の段位「${t.next.name}」まで ${t.next.min - r.rating}` : '最高段位', `　・　今期の最高 ${Math.max(r.sPeak ?? r.rating, r.rating)}　・　今期 ${r.sGames ?? 0}戦${r.sWins ?? 0}勝`),
+          h('div', { class: 'small', style: 'margin-top:4px;opacity:.85' }, `今期の報酬（いまの最高ランク）：コイン${reward.coins}${reward.tickets ? `・チケット${reward.tickets}枚` : ''}${tierOf(Math.max(r.sPeak ?? r.rating, r.rating)).tier.id !== 'novice' ? '・シーズン称号' : ''}`)),
         h('ul', { class: 'earn' },
           h('li', {}, 'レートの近い相手とマッチングします。段位が上がるほど手強い相手が待っています'),
           h('li', {}, '自分よりレートの高い相手に勝つほど大きく上がり、低い相手に負けるほど大きく下がります'),
           h('li', {}, `はじめの${PLACEMENT_GAMES}戦は変動が大きくなります`),
-          h('li', {}, '1手45秒の持ち時間があります。降参・途中でアプリを閉じた場合は敗北になります')),
+          h('li', {}, '1手45秒の持ち時間があります。降参・途中でアプリを閉じた場合は敗北になります'),
+          h('li', {}, 'シーズンは新しい弾が出るたびに切り替わります。そのシーズンの最高ランクに応じてコイン・チケット・シーズン称号がもらえ、次のシーズンは1つ下のランクの最初から始まります')),
         h('div', { class: 'sec-title' }, 'デッキ'), h('div', { class: 'opt-list' }, ...deckOpts),
         h('button', { class: 'hexbtn gold big', disabled: !mine.valid, onclick: () => { store.settings.lastDeck = mine.id; store.saveSettings(); audio.play('summon'); this.host.startRated(mine); } }, 'レート戦を開始'),
         hist.length ? h('div', { class: 'sec-title' }, '最近の結果') : null,
         hist.length ? h('div', { class: 'rhist' }, ...hist) : null,
+        past.length ? h('div', { class: 'sec-title' }, 'これまでのシーズン') : null,
+        past.length ? h('div', { class: 'season-list' }, ...past) : null,
       ], [h('button', { class: 'chip-btn gold', onclick: () => this.ranking(() => this.rated()) }, 'ランキング')]);
     };
     render();
@@ -405,7 +414,7 @@ export class Screens {
       board.replaceChildren(...(res.top.length ? res.top.map((r, i) => row(i + 1, r)) : [h('p', { class: 'empty-note' }, 'まだ誰もレート戦をしていません。最初の1人になろう。')]));
       pin.replaceChildren(...(res.me ? [row(res.me.place, res.me)] : []));
       const unsent = store.rated.outbox.length;
-      note.textContent = `参加者 ${res.total}人 ・ 前日の順位は、その日に最後に見たときの順位です${unsent ? ` ・ 未送信の結果 ${unsent}件` : ''}`;
+      note.textContent = `${res.season ? `${res.season.name}のランキング ・ ` : ''}参加者 ${res.total}人 ・ 前日の順位は、その日に最後に見たときの順位です${unsent ? ` ・ 未送信の結果 ${unsent}件` : ''}`;
     };
     this.page('ランキング', back, [board, note, pin], rankingAvailable() ? [h('button', { class: 'chip-btn', onclick: () => void load() }, '更新')] : []);
     void load();
@@ -488,6 +497,7 @@ export class Screens {
         tile('遊び方', ICON.help, () => this.rules(() => this.menuTab())),
         tile('攻略wiki', ICON.wiki, openWiki),
         tile('設定', ICON.gear, () => this.settings(() => this.menuTab())),
+        tile('引き継ぎ', ICON.swap, () => this.transfer(() => this.menuTab())),
         tile('タイトルへ', ICON.door, () => this.title())),
       h('div', { class: 'ver' }, `クロノ・デュエル Ver. ${VERSION}`)));
   }
@@ -1179,6 +1189,53 @@ export class Screens {
   }
 
   // ---------------------------------------------------------------- settings
+  /** 引き継ぎ: move this device's save to another one with a short code (24 hours, once). */
+  transfer(back: () => void) {
+    let code: { code: string; until: number } | null = null;
+    let busy = false;
+    const render = () => {
+      const input = h('input', { class: 'tx-in', inputmode: 'latin', autocapitalize: 'characters', autocomplete: 'off', spellcheck: 'false', maxlength: '9', placeholder: 'AB3D-7KQ9', 'aria-label': '引き継ぎコード' }) as HTMLInputElement;
+      const issue = async () => {
+        if (busy) return; busy = true; render();
+        const r = await issueTransfer();
+        busy = false;
+        if ('error' in r) { this.toast(r.error); render(); return; }
+        code = r; audio.play('rareR'); render();
+      };
+      const redeem = () => {
+        const v = input.value.trim();
+        if (!v) { this.toast('コードを入力してください'); return; }
+        const k = this.sheet('この端末に引き継ぐ', null, [h('p', { style: 'margin:0;line-height:1.8;text-align:center' }, 'この端末のデータ（カード・コイン・称号・デッキ・レートなど）は、', h('br', {}), '引き継いだデータで', h('b', {}, '上書き'), 'されます。よろしいですか？')],
+          [h('div', { class: 'btn-row', style: 'width:100%' },
+            h('button', { class: 'hexbtn silver', onclick: () => k.close() }, 'やめる'),
+            h('button', { class: 'hexbtn gold', onclick: async () => {
+              k.close();
+              const r = await redeemTransfer(v);
+              if (r !== true) { this.toast(r.error); return; }
+              this.toast('引き継ぎました。読み込み直します');
+              setTimeout(() => location.reload(), 900);
+            } }, '引き継ぐ'))]);
+      };
+      const until = code ? new Date(code.until) : null;
+      this.page('引き継ぎ', back, [
+        h('div', { class: 'pn tx-box' },
+          h('span', { class: 'hd' }, 'この端末のデータを移す'),
+          h('p', { class: 'shop-note', style: 'text-align:left' }, '引き継ぎコードを発行して、新しい端末で入力してください。コードは24時間、1回だけ使えます。カード・コイン・称号・着せ替え・デッキ・戦績・レートが移ります。'),
+          code
+            ? h('div', { class: 'tx-code' },
+              h('b', {}, code.code),
+              h('small', {}, `${until!.getMonth() + 1}月${until!.getDate()}日 ${String(until!.getHours()).padStart(2, '0')}:${String(until!.getMinutes()).padStart(2, '0')} まで有効`),
+              h('button', { class: 'chip-btn', onclick: () => { void navigator.clipboard?.writeText(code!.code).then(() => this.toast('コピーしました'), () => this.toast('コピーできませんでした')); } }, 'コピー'))
+            : h('button', { class: 'hexbtn gold', disabled: busy, onclick: issue }, busy ? '発行中…' : '引き継ぎコードを発行'),
+          h('p', { class: 'shop-note', style: 'text-align:left;font-size:11px' }, '発行してもこの端末のデータは消えません。両方の端末で遊ぶと記録は別々に進みます。コードは他の人に教えないでください。')),
+        h('div', { class: 'pn tx-box' },
+          h('span', { class: 'hd' }, '別の端末から引き継ぐ'),
+          h('p', { class: 'shop-note', style: 'text-align:left' }, '前の端末で発行したコードを入力してください。'),
+          h('div', { class: 'tx-row' }, input, h('button', { class: 'hexbtn gold', onclick: redeem }, '引き継ぐ'))),
+      ]);
+    };
+    render();
+  }
   settings(back: () => void) {
     const s = store.settings;
     const commit = () => { store.saveSettings(); this.host.applySettings(); };

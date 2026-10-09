@@ -1,7 +1,8 @@
 /* Home-screen progression checks: `npm run test:meta` */
 import assert from 'node:assert/strict';
 import { BEGINNER, GIFTS, LOGIN_CALENDAR, NEW_META, checkLogin, claimMission, claimPresents, claimable, dailyMissions, dailyView, deckShares, rankOf, recentShares, recordBattle, recordMatch, track } from '../meta/progress';
-import { TITLES, earnedTitles, titleById } from '../meta/titles';
+import { BASE_TITLE_COUNT, TITLES, earnedTitles, titleById } from '../meta/titles';
+import { SEASONS } from '../meta/ranks';
 
 const m = NEW_META();
 // login bonus: once a day, 7-day cycle, lands in the present box
@@ -79,7 +80,10 @@ assert.ok(!earnedTitles({ ...zero, ratedPeak: 1200 }).includes('r1200'), 'rated 
 assert.ok(earnedTitles({ ...zero, ratedGames: 3, ratedPeak: 1200 }).includes('r1200'));
 assert.ok(!earnedTitles({ ...zero, ratedGames: 3, ratedPeak: 1200 }).includes('r1400'));
 // the agreed list: 53 titles, wins and games in six steps, every action at 100 / 500 / 1000
-assert.equal(TITLES.length, 53);
+assert.equal(BASE_TITLE_COUNT, 53);
+assert.equal(TITLES.length, 53 + SEASONS.length * 5, 'five season titles per season (刻士 and up)');
+assert.ok(earnedTitles({ ...zero, seasonTiers: { 1: 'sei' } }).includes('season1-sei'));
+assert.ok(!earnedTitles({ ...zero, seasonTiers: { 1: 'sei' } }).includes('season1-go'), 'only the best rank of a season');
 const steps = (ids: string[]) => ids.map((id) => titleById(id)!.tone);
 assert.deepEqual(steps(['first', 'ten', 'win50', 'win100', 'win300', 'win500']), ['yellow', 'green', 'blue', 'bronze', 'silver', 'gold']);
 assert.deepEqual(steps(['war10', 'war50', 'war100', 'war300', 'war500', 'war1000']), ['yellow', 'green', 'blue', 'bronze', 'silver', 'gold']);

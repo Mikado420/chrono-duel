@@ -20,6 +20,7 @@ export function titleCtx(): TitleCtx {
     ratedGames: r.games,
     ratedPeak: r.peak,
     ratedStreak: r.bestStreak ?? 0,
+    seasonTiers: Object.fromEntries((r.seasons ?? []).map((x) => [x.season, x.tier])),
   };
 }
 /** Titles earned: those the numbers give now, plus every title earned before (a title once earned is kept). */

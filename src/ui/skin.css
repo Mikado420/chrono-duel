@@ -772,3 +772,15 @@ body.reduced .ttl, body.reduced .ttl > b::before, body.reduced .ttl > b::after {
 
 .rtbox .rtemblem { display: inline-grid; flex: none; width: 58px; height: 60px; }
 .rtbox .rtemblem svg { width: 100%; height: 100%; overflow: visible; }
+.tx-box { display: grid; gap: 10px; padding: 14px; margin-bottom: 12px; }
+.tx-code { display: grid; justify-items: center; gap: 6px; padding: 12px; border-radius: 10px; background: #0a1418; border: 1px dashed var(--gold); }
+.tx-code b { font: 800 30px var(--f-num); letter-spacing: .14em; color: var(--gold); }
+.tx-code small { color: var(--mute); font-size: 11px; }
+.tx-row { display: flex; gap: 8px; }
+.tx-in { flex: 1; min-width: 0; height: 44px; border-radius: 8px; border: 1px solid var(--line); background: #0a1418; color: var(--ivory); font: 700 18px var(--f-num); letter-spacing: .12em; text-transform: uppercase; padding: 0 12px; }
+.season-band { display: flex; align-items: baseline; justify-content: center; gap: 10px; padding: 6px 0 10px; }
+.season-band b { font: 800 18px var(--f-display); color: var(--gold); letter-spacing: .12em; }
+.season-band span { font-size: 11px; color: var(--mute); }
+.season-list { display: grid; gap: 6px; }
+.season-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; background: var(--ink2); font-size: 12px; }
+.season-row > b { font: 700 13px var(--f-display); min-width: 48px; }

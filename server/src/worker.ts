@@ -10,6 +10,8 @@ import { normalizeCode, type ClientMsg, type ServerMsg } from '../../src/core/ne
 import { Room, type Conn, type RoomEnv, type RoomSnapshot } from '../../src/server/room';
 import { Leaderboard, handleApi, type KV } from '../../src/server/leaderboard';
 import { PlayStats, type RoomLog } from '../../src/server/stats';
+import { Transfer } from '../../src/server/transfer';
+import { Replays } from '../../src/server/replays';
 
 export interface Env {
   ROOMS: DurableObjectNamespace<RoomDO>;
@@ -63,6 +65,8 @@ async function api(req: Request, env: Env): Promise<Response> {
 export class RankingDO extends DurableObject<Env> {
   private lb: Leaderboard;
   private stats: PlayStats;
+  private transfer: Transfer;
+  private replays: Replays;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     const kv: KV = {
@@ -70,7 +74,10 @@ export class RankingDO extends DurableObject<Env> {
       put: async (k, v) => { await ctx.storage.put(k, v); },
       list: async <T>(prefix: string) => [...(await ctx.storage.list<T>({ prefix })).values()],
       page: async <T>(prefix: string, after: string | undefined, limit: number) => [...(await ctx.storage.list<T>({ prefix, limit, ...(after ? { startAfter: after } : {}) })).entries()],
+      delete: async (k) => { await ctx.storage.delete(k); },
     };
+    this.transfer = new Transfer(kv, () => Date.now(), () => crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32);
+    this.replays = new Replays(kv, () => Date.now(), () => crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32);
     this.lb = new Leaderboard(kv, () => Date.now());
     this.stats = new PlayStats(kv, () => Date.now(), env.ADMIN_TOKEN);
   }
@@ -78,11 +85,13 @@ export class RankingDO extends DurableObject<Env> {
   async keepRoom(r: RoomLog): Promise<void> { await this.stats.keepRoom(r); }
   async fetch(req: Request): Promise<Response> {
     const text = await req.text();
-    // a game record (actions of both sides) makes a report a few KB; leave room for long games
-    if (text.length > 131_072) return Response.json({ error: 'too large' }, { status: 413 });
+    // a game record (actions of both sides) makes a report a few KB; leave room for long games. A whole save
+    // (引き継ぎ) is bigger.
+    const path = new URL(req.url).pathname;
+    if (text.length > (path === '/api/transfer/issue' ? 700_000 : 131_072)) return Response.json({ error: 'too large' }, { status: 413 });
     let body: unknown = null;
     try { body = text ? JSON.parse(text) : {}; } catch { return Response.json({ error: 'bad json' }, { status: 400 }); }
-    const r = await handleApi(this.lb, new URL(req.url).pathname, req.method, body, this.stats);
+    const r = await handleApi(this.lb, path, req.method, body, this.stats, { transfer: this.transfer, replays: this.replays });
     return Response.json(r.body, { status: r.status });
   }
 }

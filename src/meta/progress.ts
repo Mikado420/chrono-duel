@@ -65,6 +65,10 @@ export const rankPrize = (r: number): Prize => (r % 5 === 0 ? { coins: 50, ticke
 function give(m: Meta, from: string, text: string, prize: Prize, today: string) {
   m.presents.unshift({ id: `p${++m.seq}`, from, text, prize, at: today });
 }
+/** The reward for a finished season, as a present. */
+export function grantSeasonReward(m: Meta, text: string, prize: { coins: number; tickets: number }, today: string) {
+  give(m, '運営', text, { coins: prize.coins, ...(prize.tickets ? { tickets: prize.tickets } : {}) }, today);
+}
 export function claimPresents(m: Meta, ids?: string[], today = ''): Prize {
   const take = m.presents.filter((p) => !ids || ids.includes(p.id));
   m.presents = m.presents.filter((p) => !take.includes(p));
