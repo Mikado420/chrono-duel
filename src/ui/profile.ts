@@ -1,7 +1,7 @@
 /** The player's public face (title, featured card) and deck keys, built from what is stored on the device. */
 import { CARD_LIST, cardDef } from '../core/cards';
 import type { DeckDef } from '../core/decks';
-import { DEFAULT_LOOK, ownedCount, ownsLook, type LookKind } from '../meta/economy';
+import { DEFAULT_LOOK, lookById, ownedCount, ownsLook, type LookKind } from '../meta/economy';
 import { rankOf } from '../meta/progress';
 import { TITLES, earnedTitles, titleById, type TitleCtx, type TitleDef } from '../meta/titles';
 import { store } from './storage';
@@ -54,7 +54,7 @@ export function deckKey(d: Pick<DeckDef, 'id' | 'cards'>): string {
 /** The look a deck uses (falls back to the default when the chosen one is not owned). */
 export function deckLook(deckId: string, kind: LookKind): string {
   const id = store.lookOf(deckId)[kind];
-  return id && ownsLook(store.wallet, id) ? id : DEFAULT_LOOK[kind];
+  return id && lookById(id)?.kind === kind && ownsLook(store.wallet, id) ? id : DEFAULT_LOOK[kind];
 }
 export function favCard(): string {
   const f = store.meta.favorite;

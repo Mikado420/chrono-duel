@@ -23,10 +23,6 @@ interface Pin { c: Container; pi: PlayerIndex; T: number; card: string | null; f
 export interface DialSkin { face: number; faceAlpha: number; rim: number; inner: number; tick: number; minor: number; num: number; star?: boolean; art?: DialLook }
 export const DIAL_SKINS: Record<string, DialSkin> = {
   'dial:brass': { face: COLORS.ink2, faceAlpha: 0.9, rim: COLORS.brassDeep, inner: COLORS.line, tick: COLORS.brass, minor: COLORS.mute, num: COLORS.brass },
-  'dial:verdigris': { face: 0x0c2a26, faceAlpha: 0.92, rim: 0x3fa58f, inner: 0x1f6b5c, tick: 0x8fe3c8, minor: 0x5f9f8f, num: 0x9ff0dc },
-  'dial:ember': { face: 0x1d0f0b, faceAlpha: 0.92, rim: 0xc8642f, inner: 0x6e2a12, tick: 0xffb07a, minor: 0xb06a48, num: 0xffc08a },
-  'dial:ivory': { face: 0x26231d, faceAlpha: 0.94, rim: 0xe9dfc8, inner: 0x6b6352, tick: 0xf6efdc, minor: 0xb5ab95, num: 0xf6efdc },
-  'dial:night': { face: 0x0b1030, faceAlpha: 0.94, rim: 0xb9c6e6, inner: 0x2f3a6a, tick: 0xe6e2ff, minor: 0x8a93c4, num: 0xd6dcff, star: true },
   ...Object.fromEntries(Object.entries(DIAL_ART).map(([id, a]) => [id, { face: a.face, faceAlpha: 1, rim: a.rim, inner: a.rim, tick: a.tick, minor: a.minor, num: a.num, art: a }])),
 };
 /** A design-space point of a themed face, on the board. */

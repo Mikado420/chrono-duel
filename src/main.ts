@@ -13,7 +13,7 @@ import { PackOpenScene } from './render/packOpen';
 import { MIN_ACTIONS, applyReward, canOpen, localDate, openPack, packById, reward, type Reward } from './meta/economy';
 import { dailyView, recordBattle, recordMatch, track } from './meta/progress';
 import { haptics } from './render/haptics';
-import { LOOKS, PITY } from './meta/economy';
+import { LOOKS, PITY, refundRetired } from './meta/economy';
 import { deckKey, deckLook, favCard, shownTitle } from './ui/profile';
 import { CARD_LIST } from './core/cards';
 import { finishRated, foeById, foeLevel, makeOpponent, startRated, type RatedGame } from './meta/rating';
@@ -239,6 +239,13 @@ async function boot() {
       });
     }, () => screens.rated());
   };
+  // looks that are no longer sold: their price comes back as coins
+  const refund = refundRetired(store.wallet);
+  if (refund) {
+    store.saveWallet();
+    // decks that used them fall back to the standard look (deckLook ignores looks that no longer exist)
+    pendingNotice = `販売を終えた文字盤・マットの代金 ${refund} コインをお返ししました`;
+  }
   // a rated game left unfinished last time (app closed, tab killed) counts as a loss
   if (store.rated.pending) {
     const g = finishRated(store.rated, 0, 0, Date.now(), newId());

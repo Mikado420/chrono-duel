@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { CARD_LIST, setOf } from '../core/cards';
 import { mulberry32 } from '../core/engine';
-import { CRAFT_COST, DAILY_BONUS, DAILY_MATCH_CAP, DEFAULT_LOOK, DUPE_SHARDS, LOOKS, MATCH_REWARD, NEW_WALLET, PACKS, PITY, applyReward, buyLook, canOpen, craft, craftBlock, lookBlock, lookById, missingCards, openPack, ownedCount, ownsLook, reward, setProgress , THEMES, buyTheme, themeOffer} from '../meta/economy';
+import { CRAFT_COST, DAILY_BONUS, DAILY_MATCH_CAP, DEFAULT_LOOK, DUPE_SHARDS, LOOKS, MATCH_REWARD, NEW_WALLET, PACKS, PITY, applyReward, buyLook, canOpen, craft, craftBlock, lookBlock, lookById, missingCards, openPack, ownedCount, ownsLook, reward, setProgress , THEMES, buyTheme, themeOffer, THEME_PRICE, refundRetired} from '../meta/economy';
 
 const rand = mulberry32(99);
 const pack = PACKS[0];
@@ -125,5 +125,14 @@ assert.ok(Object.values(DUPE_SHARDS).every((v, i) => v * 4 <= Object.values(CRAF
   t.looks.push('back:astro', 'dial:astro');
   const one = themeOffer(t, 'astro');
   assert.equal(one.price, one.full, 'no discount for a single part');
+  // only the eight themes are sold besides the free defaults; each part costs the same
+  assert.deepEqual(LOOKS.filter((l) => (l.kind === 'dial' || l.kind === 'mat') && l.price > 0).every((l) => !!l.theme), true);
+  assert.ok(LOOKS.filter((l) => l.theme).every((l) => l.price === THEME_PRICE));
+  // retired looks are refunded once
+  const old = NEW_WALLET(); old.coins = 10; old.looks = ['dial:night', 'mat:felt', 'back:forge'];
+  assert.equal(refundRetired(old), 900);
+  assert.equal(old.coins, 910);
+  assert.deepEqual(old.looks, ['back:forge']);
+  assert.equal(refundRetired(old), 0, 'only once');
 }
 console.log('all economy tests passed');

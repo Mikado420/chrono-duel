@@ -343,12 +343,6 @@ const matGear = (r: number, teeth: number, tw: number) => {
 };
 
 export const MAT_ART: Record<string, MatLook> = {
-  'mat:felt': {
-    defs: '<radialGradient id="g" cx="50%" cy="40%" r="75%"><stop offset="0" stop-color="#173a30"/><stop offset="1" stop-color="#0a1a16"/></radialGradient>' + vig('v', 0.35),
-    under: `<rect ${MR} fill="url(#g)"/>`,
-    over: `<rect ${MR} fill="url(#v)"/><rect x="0" y="366" width="390" height="5" fill="#6d4d1c"/><line x1="0" y1="374" x2="390" y2="374" stroke="#c9a15a" stroke-width="1" opacity=".6"/>
-<g fill="#c9a15a"><path d="M0 378 H26 V384 H6 V404 H0 Z"/><path d="M390 378 H364 V384 H384 V404 H390 Z"/></g>`,
-  },
   'mat:skeleton': {
     defs: '<linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#12181b"/><stop offset="1" stop-color="#0a0d0f"/></linearGradient>' + vig('v', 0.55),
     under: `<rect ${MR} fill="url(#g)"/>`,
