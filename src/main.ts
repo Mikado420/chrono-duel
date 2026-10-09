@@ -244,7 +244,7 @@ async function boot() {
   if (refund) {
     store.saveWallet();
     // decks that used them fall back to the standard look (deckLook ignores looks that no longer exist)
-    pendingNotice = `販売を終えた文字盤・マットの代金 ${refund} コインをお返ししました`;
+    pendingNotice = `販売を終えた着せ替え（スリーブ・文字盤・マット）の代金 ${refund} コインをお返ししました`;
   }
   // a rated game left unfinished last time (app closed, tab killed) counts as a loss
   if (store.rated.pending) {

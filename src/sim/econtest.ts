@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { CARD_LIST, setOf } from '../core/cards';
 import { mulberry32 } from '../core/engine';
-import { CRAFT_COST, DAILY_BONUS, DAILY_MATCH_CAP, DEFAULT_LOOK, DUPE_SHARDS, LOOKS, MATCH_REWARD, NEW_WALLET, PACKS, PITY, applyReward, buyLook, canOpen, craft, craftBlock, lookBlock, lookById, missingCards, openPack, ownedCount, ownsLook, reward, setProgress , THEMES, buyTheme, themeOffer, THEME_PRICE, refundRetired} from '../meta/economy';
+import { CRAFT_COST, DAILY_BONUS, DAILY_MATCH_CAP, DEFAULT_LOOK, DUPE_SHARDS, LOOKS, MATCH_REWARD, NEW_WALLET, PACKS, PITY, applyReward, buyLook, canOpen, craft, craftBlock, lookBlock, lookById, missingCards, openPack, ownedCount, ownsLook, reward, setProgress , THEMES, buyTheme, themeOffer, THEME_PRICES, THEME_SET_PRICE, refundRetired} from '../meta/economy';
 
 const rand = mulberry32(99);
 const pack = PACKS[0];
@@ -90,14 +90,14 @@ assert.ok(Object.values(DUPE_SHARDS).every((v, i) => v * 4 <= Object.values(CRAF
 {
   const w = NEW_WALLET();
   assert.ok(ownsLook(w, DEFAULT_LOOK.back) && ownsLook(w, DEFAULT_LOOK.dial));
-  assert.ok(!ownsLook(w, 'back:gear'));
-  assert.ok(lookBlock(w, 'back:gear'), 'no coins, no purchase');
-  assert.equal(buyLook(w, 'back:gear'), false);
+  assert.ok(!ownsLook(w, 'back:astro'));
+  assert.ok(lookBlock(w, 'back:astro'), 'no coins, no purchase');
+  assert.equal(buyLook(w, 'back:astro'), false);
   w.coins = 1000;
-  assert.equal(buyLook(w, 'back:gear'), true);
-  assert.equal(w.coins, 1000 - lookById('back:gear')!.price);
-  assert.ok(ownsLook(w, 'back:gear'));
-  assert.equal(buyLook(w, 'back:gear'), false, 'only once');
+  assert.equal(buyLook(w, 'back:astro'), true);
+  assert.equal(w.coins, 1000 - lookById('back:astro')!.price);
+  assert.ok(ownsLook(w, 'back:astro'));
+  assert.equal(buyLook(w, 'back:astro'), false, 'only once');
   assert.ok(LOOKS.every((l) => l.price >= 0 && (l.kind === 'back' || l.kind === 'dial' || l.kind === 'mat')));
   // every kind has a free default, and every theme has one of each kind
   for (const k of ['back', 'dial', 'mat'] as const) assert.equal(lookById(DEFAULT_LOOK[k])?.price, 0);
@@ -108,13 +108,15 @@ assert.ok(Object.values(DUPE_SHARDS).every((v, i) => v * 4 <= Object.values(CRAF
   const t = NEW_WALLET();
   const all = themeOffer(t, 'forge');
   assert.equal(all.ids.length, 3);
-  assert.ok(all.price < all.full);
+  assert.equal(all.full, 1000);
+  assert.equal(all.price, THEME_SET_PRICE);
   t.coins = all.price - 1;
   assert.equal(buyTheme(t, 'forge'), false);
   t.coins = 5000;
   assert.ok(buyLook(t, 'back:forge'));
   const rest = themeOffer(t, 'forge');
   assert.deepEqual(rest.ids.sort(), ['dial:forge', 'mat:forge']);
+  assert.equal(rest.price, THEME_SET_PRICE - THEME_PRICES.back, 'the set price less what was already paid');
   const before = t.coins;
   assert.ok(buyTheme(t, 'forge'));
   assert.equal(t.coins, before - rest.price);
@@ -124,14 +126,16 @@ assert.ok(Object.values(DUPE_SHARDS).every((v, i) => v * 4 <= Object.values(CRAF
   assert.equal(themeOffer(t, 'astro').ids.length, 3);
   t.looks.push('back:astro', 'dial:astro');
   const one = themeOffer(t, 'astro');
-  assert.equal(one.price, one.full, 'no discount for a single part');
-  // only the eight themes are sold besides the free defaults; each part costs the same
-  assert.deepEqual(LOOKS.filter((l) => (l.kind === 'dial' || l.kind === 'mat') && l.price > 0).every((l) => !!l.theme), true);
-  assert.ok(LOOKS.filter((l) => l.theme).every((l) => l.price === THEME_PRICE));
+  assert.equal(one.price, Math.min(one.full, THEME_SET_PRICE - 600), 'never more than the parts, never more than the set');
+  assert.equal(one.price, 200);
+  // only the free defaults and the eight themes are sold, at 400 / 200 / 400
+  assert.ok(LOOKS.filter((l) => l.price > 0).every((l) => !!l.theme));
+  assert.equal(LOOKS.filter((l) => !l.theme).length, 3, 'one free default of each kind');
+  assert.ok(LOOKS.filter((l) => l.theme).every((l) => l.price === THEME_PRICES[l.kind]));
   // retired looks are refunded once
-  const old = NEW_WALLET(); old.coins = 10; old.looks = ['dial:night', 'mat:felt', 'back:forge'];
-  assert.equal(refundRetired(old), 900);
-  assert.equal(old.coins, 910);
+  const old = NEW_WALLET(); old.coins = 10; old.looks = ['dial:night', 'mat:felt', 'back:star', 'back:forge'];
+  assert.equal(refundRetired(old), 1400);
+  assert.equal(old.coins, 1410);
   assert.deepEqual(old.looks, ['back:forge']);
   assert.equal(refundRetired(old), 0, 'only once');
 }

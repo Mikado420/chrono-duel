@@ -60,25 +60,21 @@ export const THEMES: ThemeDef[] = [
   { id: 'forge', name: '鍛冶場', blurb: '赤熱する鋳鉄と、炉の照り返し' },
   { id: 'archive', name: '記憶の書庫', blurb: '羊皮紙と羽根ペン、開いた古書' },
 ];
-/** Every part of a theme costs the same. */
-export const THEME_PRICE = 300;
-/** A whole theme bought at once costs this share of its parts. */
-export const THEME_SET_RATE = 0.8;
+/** What each part of a theme costs. */
+export const THEME_PRICES: Record<LookKind, number> = { dial: 400, back: 200, mat: 400 };
+/** A whole theme (clock face, sleeve and playmat) bought at once. */
+export const THEME_SET_PRICE = 800;
 const themed = (t: string, dial: [string, string], back: [string, string], mat: [string, string]): LookDef[] => [
-  { id: `dial:${t}`, kind: 'dial', name: dial[0], price: THEME_PRICE, blurb: dial[1], theme: t },
-  { id: `back:${t}`, kind: 'back', name: back[0], price: THEME_PRICE, blurb: back[1], theme: t },
-  { id: `mat:${t}`, kind: 'mat', name: mat[0], price: THEME_PRICE, blurb: mat[1], theme: t },
+  { id: `dial:${t}`, kind: 'dial', name: dial[0], price: THEME_PRICES.dial, blurb: dial[1], theme: t },
+  { id: `back:${t}`, kind: 'back', name: back[0], price: THEME_PRICES.back, blurb: back[1], theme: t },
+  { id: `mat:${t}`, kind: 'mat', name: mat[0], price: THEME_PRICES.mat, blurb: mat[1], theme: t },
 ];
-/** Card backs (your deck pile, cards you show face down) and clock faces (the dial during your games). */
+/** Sleeves (card backs: your deck pile, cards shown face down), clock faces and playmats. Only the defaults and the 8 themes. */
 export const LOOKS: LookDef[] = [
-  { id: 'back:brass', kind: 'back', name: '真鍮の時計', price: 0, blurb: 'はじめから持っている裏面' },
-  { id: 'back:gear', kind: 'back', name: '真鍮の歯車', price: 300, blurb: '噛み合う歯車を刻んだ裏面' },
-  { id: 'back:ember', kind: 'back', name: '熾火の文字盤', price: 400, blurb: '赤く燃える針の裏面' },
-  { id: 'back:tide', kind: 'back', name: '潮の満ち引き', price: 400, blurb: '残響の波紋を描いた裏面' },
-  { id: 'back:star', kind: 'back', name: '夜明けの星図', price: 500, blurb: '星の運行を記した裏面' },
+  { id: 'back:brass', kind: 'back', name: '真鍮の時計', price: 0, blurb: 'はじめから持っているスリーブ' },
   { id: 'dial:brass', kind: 'dial', name: '標準', price: 0, blurb: 'はじめから持っている文字盤' },
   { id: 'mat:none', kind: 'mat', name: 'なし', price: 0, blurb: 'いつもの盤面' },
-  ...themed('skeleton', ['透かし機械', '奥で歯車が回る文字盤'], ['重なる歯車', '大歯車を中央に据えた裏面'], ['機械室', '端で大歯車がゆっくり回る']),
+  ...themed('skeleton', ['透かし機械', '奥で歯車が回る文字盤'], ['重なる歯車', '大歯車を中央に据えたスリーブ'], ['機械室', '端で大歯車がゆっくり回る']),
   ...themed('astro', ['天文時計', '黄道の輪がめぐる青い天空'], ['天球儀', '星空に金の天球儀'], ['天文台の床', '大理石に真鍮の子午線']),
   ...themed('cathedral', ['薔薇窓', '石の狭間に光る16の尖頭窓'], ['双子窓', '尖頭アーチの薔薇窓と細窓'], ['迷宮の床', '石床の迷宮に色ガラスの光']),
   ...themed('steam', ['刻圧計', '銅の縁に鋲を打った白い圧力計'], ['汽缶の銘板', '鋲打ちの鉄に真鍮の銘板'], ['ボイラー室', '鋲打ちの鉄板と銅管、漏れる蒸気']),
@@ -89,7 +85,7 @@ export const LOOKS: LookDef[] = [
 ];
 export const DEFAULT_LOOK: Record<LookKind, string> = { back: 'back:brass', dial: 'dial:brass', mat: 'mat:none' };
 /** Looks that were sold once and are gone: whoever bought one gets the coins back (`refundRetired`). */
-export const RETIRED_LOOKS: Record<string, number> = { 'dial:verdigris': 400, 'dial:ember': 500, 'dial:ivory': 500, 'dial:night': 600, 'mat:felt': 300 };
+export const RETIRED_LOOKS: Record<string, number> = { 'back:gear': 300, 'back:ember': 400, 'back:tide': 400, 'back:star': 500, 'dial:verdigris': 400, 'dial:ember': 500, 'dial:ivory': 500, 'dial:night': 600, 'mat:felt': 300 };
 /** Takes retired looks out of a wallet and returns their price as coins; the coins refunded (0 when none). */
 export function refundRetired(w: Wallet): number {
   const gone = (w.looks ?? []).filter((id) => id in RETIRED_LOOKS);
@@ -111,10 +107,12 @@ export function lookBlock(w: Wallet, id: string): string | null {
 }
 /** The looks of a theme the wallet does not have yet, and what they cost together. */
 export function themeOffer(w: Wallet, theme: string): { ids: string[]; full: number; price: number } {
-  const ids = LOOKS.filter((l) => l.theme === theme && !ownsLook(w, l.id)).map((l) => l.id);
+  const parts = LOOKS.filter((l) => l.theme === theme);
+  const ids = parts.filter((l) => !ownsLook(w, l.id)).map((l) => l.id);
   const full = ids.reduce((a, id) => a + lookById(id)!.price, 0);
-  // the set price only applies when at least two parts are bought together
-  return { ids, full, price: ids.length >= 2 ? Math.round((full * THEME_SET_RATE) / 10) * 10 : full };
+  // completing a set never costs more than the set price less what the parts already owned cost
+  const paid = parts.filter((l) => ownsLook(w, l.id)).reduce((a, l) => a + l.price, 0);
+  return { ids, full, price: Math.min(full, Math.max(0, THEME_SET_PRICE - paid)) };
 }
 export function buyTheme(w: Wallet, theme: string): boolean {
   const o = themeOffer(w, theme);
