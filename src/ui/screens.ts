@@ -23,7 +23,7 @@ import { store } from './storage';
 import { AI_LEVEL_NAMES, type AiLevel } from '../core/ai';
 import { PLACEMENT_GAMES, tierOf, type Opponent, type RatedGame } from '../meta/rating';
 import { fetchRanking, rankingAvailable, syncRated } from '../net/api';
-import { ICON, artStyle, backImg, svgImg, cardImg, cardName, countBadge, countUp, h, newTag, packImg, pressable, purse, ribbon, svg, tierBadge, topBar } from './kit';
+import { ICON, artStyle, backImg, svgImg, cardImg, cardName, countBadge, countUp, h, newTag, packImg, pressable, purse, ribbon, svg, tierBadge, tierEmblem, topBar } from './kit';
 import { deckKey, deckLook, favCard, myTitles, newTitles, shownTitle } from './profile';
 
 export { h } from './kit';
@@ -328,7 +328,7 @@ export class Screens {
       const t = s.tierRating !== undefined ? tierOf(s.tierRating).tier : null;
       return h('div', { class: `vs-plate ${side}` },
         h('b', {}, s.name),
-        t ? h('div', { class: 'tr', style: `color:${t.color}` }, h('span', { class: 'tier-badge', style: `--tier:${t.color}` }, h('i', {})), t.name, h('span', { class: 'num' }, fmt(s.tierRating!))) : null,
+        t ? h('div', { class: 'tr', style: `color:${t.color}` }, tierBadge(t, 'sm', false), t.name, h('span', { class: 'num' }, fmt(s.tierRating!))) : null,
         ribbon(s.title),
         s.deck ? h('small', {}, `デッキ：${s.deck}`) : null);
     };
@@ -392,7 +392,7 @@ export class Screens {
         h('div', { class: 'pl' }, String(place), h('sup', {}, sfx), move),
         h('div', { class: 'av', style: artStyle(r.fav && CARDS[r.fav] ? r.fav : 'gear') }),
         h('div', { class: 'nm' }, h('b', {}, r.name, r.me ? h('span', { class: 'you-tag' }, 'あなた') : null),
-          h('div', { class: 'sub' }, h('span', { class: 'tier-badge', style: `--tier:${t.color}` }, h('i', {}), h('b', {}, t.name)), ribbon(r.title))),
+          h('div', { class: 'sub' }, tierBadge(t), ribbon(r.title))),
         h('div', { class: 'rt' }, rising ? h('span', { class: 'rise' }, '急上昇') : h('small', {}, 'レート'), h('br', {}), h('span', {}, fmt(r.rating))));
     };
     const load = async () => {
@@ -703,7 +703,7 @@ export class Screens {
             h('div', { class: 'bar' }, h('i', { style: `width:${(rk.into / rk.need) * 100}%` })),
             h('div', { class: 'muted', style: 'font-size:10px;text-align:right;margin-top:3px' }, `次まで ${rk.need - rk.into} EXP`)),
           h('button', { class: 'pn', style: `--tier:${t.color};text-align:left;color:inherit;border:1px solid #2d6070`, onclick: () => this.rated() }, h('span', { class: 'hd' }, 'レート戦'),
-            h('div', { class: 'rtbox' }, h('span', { class: 'hex' }), h('div', {}, h('span', {}, t.name), h('b', {}, fmt(store.rated.rating)))),
+            h('div', { class: 'rtbox' }, h('span', { class: `rtemblem tb-${t.id}`, html: tierEmblem(t.id) }), h('div', {}, h('span', {}, t.name), h('b', {}, fmt(store.rated.rating)))),
             h('div', { class: 'muted', style: 'font-size:10px;margin-top:4px' }, `最高 ${fmt(store.rated.peak)} ・ ${store.rated.wins}勝 ${store.rated.games - store.rated.wins}敗`))),
         h('div', { class: 'pn' }, h('span', { class: 'hd' }, '戦績'),
           h('div', { class: 'stat3' },

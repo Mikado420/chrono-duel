@@ -57,6 +57,23 @@ export const foeLevel = (id: string): AiLevel => foeById(id)?.spec.level ?? 'nor
 /** How wide the choice around the player's rating is: steps further away than this are rare. */
 export const MATCH_WIDTH = 90;
 
+/**
+ * One-time rating reset when the ranks were redrawn (2026-10): 刻匠 and above go to the start of 刻匠 (1400), 刻士
+ * to the start of 刻士 (1200), everyone else to the start of 見習い (1000). Games, wins and the best rating stay.
+ * The client and the ranking server both apply it once (a record remembers the reset it has had).
+ */
+export const RATING_RESET = '2026-10-ranks';
+export function resetRating(rating: number): number {
+  return rating >= 1400 ? 1400 : rating >= 1200 ? 1200 : START_RATING;
+}
+/** Applies the reset to a record that has not had it yet; true when something changed. */
+export function applyRatingReset(r: { rating: number; reset?: string; streak?: number }): boolean {
+  if (r.reset === RATING_RESET) return false;
+  r.reset = RATING_RESET;
+  r.rating = resetRating(r.rating);
+  if (r.streak !== undefined) r.streak = 0;
+  return true;
+}
 export function tierOf(rating: number): { tier: Tier; next: Tier | null; into: number; span: number } {
   let i = 0;
   while (i + 1 < TIERS.length && rating >= TIERS[i + 1].min) i++;
@@ -138,12 +155,14 @@ export interface Rated {
   /** Rated wins in a row now, and the longest run so far. */
   streak?: number;
   bestStreak?: number;
+  /** The last one-time reset applied (RATING_RESET). */
+  reset?: string;
   /** A rated game that was started and not finished yet. If the app is closed mid-game, it counts as a loss. */
   pending: { at: number; ai: string; deck: string; foe: string; foeRating: number } | null;
   /** Results not yet accepted by the ranking server. */
   outbox: SubmitReq[];
 }
-export const NEW_RATED = (): Rated => ({ rating: START_RATING, games: 0, wins: 0, peak: START_RATING, history: [], pending: null, outbox: [] });
+export const NEW_RATED = (): Rated => ({ rating: START_RATING, games: 0, wins: 0, peak: START_RATING, history: [], pending: null, outbox: [], reset: RATING_RESET });
 
 /** What the client sends to the ranking server for one finished game. */
 export interface SubmitReq { gid: string; ai: string; opp?: number; score: 0 | 0.5 | 1; actions: number; ms: number; at: number }

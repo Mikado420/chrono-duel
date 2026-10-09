@@ -94,9 +94,57 @@ export function ribbon(titleId: string | undefined, cls = '') {
   if (!t) return null;
   return h('span', { class: `ttl t-${t.tone} ${cls}`, title: t.how }, h('b', {}, t.name));
 }
-/** Hexagonal badge in a tier's colour, with or without its name. */
-export function tierBadge(t: Tier, size: 'sm' | 'lg' = 'sm') {
-  return h('span', { class: `tier-badge ${size}`, style: `--tier:${t.color}` }, h('i', {}), h('b', {}, t.name));
+/** Hexagonal badge of a rank, with or without its name. Higher ranks wear more: frame, rivets, laurels, rays, a crown, fire. */
+export function tierBadge(t: Tier, size: 'sm' | 'lg' = 'sm', withName = true) {
+  return h('span', { class: `tier-badge ${size} tb-${t.id}`, style: `--tier:${t.color}` }, h('span', { class: 'te', html: tierEmblem(t.id) }), withName ? h('b', {}, t.name) : null);
+}
+const TIER_LOOK: Record<string, [string, string, string]> = {
+  novice: ['#d9f5bf', '#6cc04a', '#244f14'], shi: ['#dbe9ff', '#4a86e8', '#173269'], sho: ['#ffd9b5', '#b9692d', '#43200c'],
+  go: ['#ffffff', '#b7c1cb', '#46525e'], sei: ['#fff5c8', '#e4aa2a', '#5e3f05'], shin: ['#ffe0a6', '#d61c2a', '#3d040c'],
+};
+const TIER_LEVEL: Record<string, number> = { novice: 0, shi: 1, sho: 2, go: 3, sei: 4, shin: 5 };
+/** The emblem of a rank as SVG (100×100). */
+export function tierEmblem(id: string): string {
+  const L = TIER_LEVEL[id] ?? 0;
+  const [hi, mid, lo] = TIER_LOOK[id] ?? TIER_LOOK.novice;
+  const hex = (r: number, cx = 50, cy = 52) => Array.from({ length: 6 }, (_, k) => { const a = (Math.PI / 3) * k - Math.PI / 2; return `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`; }).join(' ');
+  const g = `te-${id}`;
+  const defs = `<defs><linearGradient id="${g}f" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${hi}"/><stop offset=".45" stop-color="${mid}"/><stop offset="1" stop-color="${lo}"/></linearGradient><radialGradient id="${g}c" cx="50%" cy="35%" r="70%"><stop offset="0" stop-color="${hi}"/><stop offset=".5" stop-color="${mid}"/><stop offset="1" stop-color="${lo}"/></radialGradient><clipPath id="${g}k"><polygon points="${hex(26)}"/></clipPath></defs>`;
+  const parts: string[] = [];
+  // 刻神: a turning cog ring and flames behind everything
+  if (L >= 5) {
+    parts.push(`<g class="te-spin"><circle cx="50" cy="52" r="45" fill="none" stroke="${mid}" stroke-width="5" stroke-dasharray="5 4.4" opacity=".85"/><circle cx="50" cy="52" r="41" fill="none" stroke="${hi}" stroke-width="1" opacity=".6"/></g>`);
+    parts.push(`<g class="te-pulse" fill="${hi}" opacity=".9">${[-60, -30, 0, 30, 60].map((a) => `<path d="M50 6 Q56 16 50 24 Q44 16 50 6 Z" transform="rotate(${a} 50 52)"/>`).join('')}</g>`);
+  }
+  // 刻聖 and up: rays
+  if (L >= 4) parts.push(`<g class="${L >= 5 ? 'te-rays' : ''}" fill="${hi}" opacity="${L >= 5 ? 0.55 : 0.45}">${Array.from({ length: 12 }, (_, k) => `<polygon points="50,52 48,8 52,8" transform="rotate(${k * 30 + 15} 50 52)"/>`).join('')}</g>`);
+  // 刻豪 and up: laurels
+  if (L >= 3) {
+    // two sprays climbing the sides from the bottom
+    const leaves = (side: 1 | -1) => Array.from({ length: 6 }, (_, k) => {
+      const deg = 100 + k * 19, a = (deg * Math.PI) / 180;
+      const xl = 50 + 41 * Math.cos(a), y = 52 + 41 * Math.sin(a);
+      const x = side === 1 ? xl : 100 - xl;
+      return `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="3" ry="7.5" transform="rotate(${side * deg} ${x.toFixed(1)} ${y.toFixed(1)})"/>`;
+    }).join('');
+    parts.push(`<g fill="${mid}" stroke="${lo}" stroke-width=".8">${leaves(1)}${leaves(-1)}</g>`);
+  }
+  // the hexagon: a frame from 刻士, bevelled with rivets from 刻匠
+  if (L >= 1) parts.push(`<polygon points="${hex(L >= 2 ? 36 : 33)}" fill="url(#${g}f)" stroke="${lo}" stroke-width="1.5"/>`);
+  if (L >= 2) parts.push(`<polygon points="${hex(33)}" fill="none" stroke="${hi}" stroke-width="1" opacity=".8"/><g fill="${hi}" stroke="${lo}" stroke-width=".8">${hex(31).split(' ').map((p) => { const [x, y] = p.split(','); return `<circle cx="${x}" cy="${y}" r="2"/>`; }).join('')}</g>`);
+  parts.push(`<polygon points="${hex(L >= 1 ? 26 : 30)}" fill="url(#${g}c)" stroke="${L >= 1 ? lo : mid}" stroke-width="${L >= 1 ? 1.5 : 2.5}"/>`);
+  if (L >= 1) parts.push(`<polygon points="${hex(22)}" fill="none" stroke="${hi}" stroke-width=".9" opacity=".7"/>`);
+  // the centre: a dot, then clock hands, then a cog behind them
+  if (L >= 2) parts.push(`<circle cx="50" cy="52" r="11" fill="none" stroke="${lo}" stroke-width="3.5" stroke-dasharray="2.6 2.2" opacity=".75"/><circle cx="50" cy="52" r="8" fill="none" stroke="${hi}" stroke-width="1" opacity=".7"/>`);
+  if (L >= 1) parts.push(`<g stroke="${L >= 4 ? lo : hi}" stroke-width="2.6" stroke-linecap="round"><path d="M50 52 V40"/><path d="M50 52 L58 57"/></g><circle cx="50" cy="52" r="2.6" fill="${L >= 4 ? lo : hi}"/>`);
+  else parts.push(`<circle cx="50" cy="52" r="5" fill="${hi}" opacity=".85"/>`);
+  // 刻豪 and up: a gleam across the face
+  if (L >= 3) parts.push(`<g clip-path="url(#${g}k)"><rect class="te-gleam" x="-40" y="0" width="16" height="110" fill="#fff" opacity=".55" transform="rotate(20 50 52)"/></g>`);
+  // 刻聖 and up: a crown, with gems for 刻神
+  if (L >= 4) parts.push(`<path d="M36 14 L40 4 L45 11 L50 1 L55 11 L60 4 L64 14 Z" fill="url(#${g}f)" stroke="${lo}" stroke-width="1"/><rect x="36" y="13" width="28" height="4" rx="1" fill="${mid}" stroke="${lo}" stroke-width=".8"/>${L >= 5 ? `<circle cx="50" cy="6" r="2" fill="#fff4c0"/><circle cx="43" cy="11" r="1.4" fill="#ffd27a"/><circle cx="57" cy="11" r="1.4" fill="#ffd27a"/>` : ''}`);
+  // 刻神: a star below
+  if (L >= 5) parts.push(`<path d="M50 84 L53 91 L60 92 L55 97 L56 100 L50 97 L44 100 L45 97 L40 92 L47 91 Z" fill="${hi}" stroke="${lo}" stroke-width=".8"/>`);
+  return `<svg viewBox="0 0 100 104" aria-hidden="true">${defs}${parts.join('')}</svg>`;
 }
 /** NEW tag (skewed, brass) for things the player has not looked at yet. */
 export const newTag = (cls = '') => h('span', { class: `new-tag ${cls}` }, 'NEW');

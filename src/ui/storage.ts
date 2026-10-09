@@ -65,7 +65,8 @@ export const store = {
   saveWallet() { write('cd.wallet', this.wallet); },
 
   /** Rated play against the AI. */
-  rated: { ...NEW_RATED(), ...read<Partial<Rated>>('cd.rated', {}) } as Rated,
+  // a saved record without `reset` predates the rating reset; a new player starts already reset
+  rated: ((saved) => (saved ? { ...NEW_RATED(), reset: undefined, ...saved } : NEW_RATED()) as Rated)(read<Partial<Rated> | null>('cd.rated', null)),
   saveRated() { write('cd.rated', this.rated); },
   /** Anonymous identity for the friends' ranking (created on first use, kept on this device). */
   account(): { id: string; secret: string } {

@@ -16,7 +16,7 @@ import { haptics } from './render/haptics';
 import { LOOKS, PITY, refundRetired } from './meta/economy';
 import { deckKey, deckLook, favCard, shownTitle } from './ui/profile';
 import { CARD_LIST } from './core/cards';
-import { finishRated, foeById, foeLevel, makeOpponent, startRated, type RatedGame } from './meta/rating';
+import { applyRatingReset, finishRated, foeById, foeLevel, makeOpponent, startRated, tierOf, type RatedGame } from './meta/rating';
 import { rivalById, rivalCfg, rivalDeckCards, rivalDeckName } from './meta/roster';
 import { deckBook, refreshDeckBook, reportMatch, saveLiveGame, syncRated, takeLiveGame } from './net/api';
 import { bookKey, listFor } from './meta/deckbook';
@@ -252,11 +252,19 @@ async function boot() {
     // decks that used them fall back to the standard look (deckLook ignores looks that no longer exist)
     pendingNotice = `販売を終えた着せ替え（スリーブ・文字盤・マット）の代金 ${refund} コインをお返ししました`;
   }
+  // the ranks were redrawn: ratings go back to the start of the rank (刻匠 and above to 刻匠)
+  {
+    const before = store.rated.rating;
+    if (applyRatingReset(store.rated)) {
+      store.saveRated();
+      if (store.rated.games > 0) pendingNotice = [pendingNotice, `ランクの見直しにともない、レートを ${before} から ${store.rated.rating}（${tierOf(store.rated.rating).tier.name}）に調整しました`].filter(Boolean).join('\n');
+    }
+  }
   // a rated game left unfinished last time (app closed, tab killed) counts as a loss
   if (store.rated.pending) {
     const g = finishRated(store.rated, 0, 0, Date.now(), newId());
     store.saveRated();
-    if (g) pendingNotice = `前回のレート戦は途中で終了したため敗北として記録されました（レート ${g.before} → ${g.after}）`;
+    if (g) pendingNotice = [pendingNotice, `前回のレート戦は途中で終了したため敗北として記録されました（レート ${g.before} → ${g.after}）`].filter(Boolean).join('\n');
   }
   void syncRated();
   void refreshDeckBook();

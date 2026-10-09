@@ -1,6 +1,6 @@
 /* Rated play and the friends' ranking: `npm run test:rating` */
 import assert from 'node:assert/strict';
-import { AI_RATING, NEW_RATED, RATED_FOES, START_RATING, finishRated, foeById, makeOpponent, nextRating, opponentPool, pickOpponent, rivalPool, startRated, tierOf } from '../meta/rating';
+import { AI_RATING, NEW_RATED, RATING_RESET, applyRatingReset, resetRating, RATED_FOES, START_RATING, finishRated, foeById, makeOpponent, nextRating, opponentPool, pickOpponent, rivalPool, startRated, tierOf } from '../meta/rating';
 import { ROSTER, deckAvailable, rivalById, rivalDeck, rivalId } from '../meta/roster';
 import { Leaderboard, MIN_GAME_MS, rankDay, type KV } from '../server/leaderboard';
 import { mulberry32 } from '../core/engine';
@@ -126,7 +126,7 @@ assert.ok(!JSON.stringify(res.body).includes(A.id) && !JSON.stringify(res.body).
 // titles and featured cards: only real ones are kept; places of the day before come back as `prev`
 await lb.submit({ ...A, title: 'first', fav: 'dragon', games: [] });
 await lb.submit({ ...B, title: 'fake', fav: 'not-a-card', games: [] });
-type Row = { name: string; title?: string; fav?: string; prev?: number | null };
+type Row = { name: string; rating?: number; title?: string; fav?: string; prev?: number | null };
 let rows = ((await lb.ranking({})).body as { top: Row[] }).top;
 assert.equal(rows.find((r) => r.name === 'アリス')!.title, 'first');
 assert.equal(rows.find((r) => r.name === 'アリス')!.fav, 'dragon');
@@ -141,5 +141,24 @@ assert.equal(rows[0].name, 'アリス');
 assert.equal(rows[0].prev, 2, 'アリス was 2nd the day before');
 assert.equal(rows[1].prev, 1, 'ボブ was 1st the day before');
 assert.equal(rankDay(Date.UTC(2026, 9, 8, 15, 30)), '2026-10-09', 'the ranking day is Japan time');
+// the one-time reset when the ranks were redrawn: 刻匠 and above → 1400, 刻士 → 1200, the rest → 1000
+assert.deepEqual([2150, 1400, 1399, 1200, 1199, 1000, 850].map(resetRating), [1400, 1400, 1200, 1200, 1000, 1000, 1000]);
+{
+  const old = { rating: 1720, streak: 4 } as { rating: number; streak?: number; reset?: string };
+  assert.equal(applyRatingReset(old), true);
+  assert.equal(old.rating, 1400); assert.equal(old.streak, 0);
+  assert.equal(applyRatingReset(old), false, 'only once');
+  assert.equal(NEW_RATED().reset, RATING_RESET, 'new players start already reset');
+  // the server: a record saved before the reset is shown reset in the ranking, and saved reset when the player returns
+  const D = { id: 'dddddddddddddddddddd', secret: 'vvvvvvvvvvvvvvvvvvvvvv', name: 'でぃー' };
+  await lb.submit({ ...D, games: [] });
+  const recD = mem.get(`p:${D.id}`) as { rating: number; games: number; reset?: string };
+  mem.set(`p:${D.id}`, { ...recD, rating: 1650, games: 30, reset: undefined });
+  const shown = ((await lb.ranking({})).body as { top: Row[] }).top.find((r) => r.name === 'でぃー');
+  assert.equal(shown?.rating, 1400);
+  const back = (await lb.submit({ ...D, games: [] })).body as { rating: number };
+  assert.equal(back.rating, 1400);
+  assert.equal((mem.get(`p:${D.id}`) as { reset?: string }).reset, RATING_RESET);
+}
 console.log(`rating after one hard win: ${r1}; ranking ok`);
 console.log('all rating tests passed');
