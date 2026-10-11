@@ -5,6 +5,7 @@ import type { DeckDef } from './core/decks';
 import { audio } from './render/audio';
 import { Backdrop } from './render/backdrop';
 import { preloadBacks } from './render/looks';
+import { loadCardPics } from './render/cardArt';
 import { BattleScene, type BattleConfig, type BattleResult } from './render/battle';
 import { Fx } from './render/fx';
 import { COLORS, DESIGN } from './render/theme';
@@ -40,7 +41,7 @@ async function loadFonts() {
 }
 
 async function boot() {
-  await loadFonts();
+  await Promise.all([loadFonts(), loadCardPics()]);
   void preloadBacks(); // themed card backs are pictures; get them ready while the home screen comes up
   const app = new Application();
   const stageEl = document.getElementById('stage')!;

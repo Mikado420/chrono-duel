@@ -8,7 +8,7 @@ import { CARD_LIST, KEYWORD_HELP, SET_NAMES, keywordsOf, setOf, type CardDef, ty
 import { RULES } from '../core/rules';
 import { CRAFT_COST, DAILY_BONUS, DAILY_MATCH_CAP, DUPE_SHARDS, LAST_SLOT, MATCH_REWARD, MIN_ACTIONS, PACKS, PITY } from '../meta/economy';
 import { NEWS } from '../meta/progress';
-import { cardFace } from '../render/cardArt';
+import { cardFace, loadCardPics, setCardPicBase } from '../render/cardArt';
 import { META_DECKS, META_KIND_NAME, type MetaDeck } from '../sim/metaDecks';
 import { VERSION } from '../version';
 import { DECK_NOTE, GLOSS, KW_TIPS, MEMO } from './content';
@@ -67,8 +67,11 @@ const fillValues = (root: ParentNode) => root.querySelectorAll<HTMLElement>('[da
 // ------------------------------------------------------------------ card images (the game's own card faces)
 // Faces are drawn with the web fonts, so wait for them once; then draw each face the first time it scrolls into view.
 const FONT_FACES = ['700 30px "Shippori Mincho B1"', 'italic 400 16px "Shippori Mincho B1"', '500 19px "Zen Kaku Gothic New"', '700 16px "Zen Kaku Gothic New"', '700 30px "Cinzel"'];
+setCardPicBase('../cards/');
 const fontsReady: Promise<void> = (async () => {
+  const pics = loadCardPics();
   try { await Promise.race([Promise.all(FONT_FACES.map((f) => document.fonts.load(f))), new Promise((r) => setTimeout(r, 2500))]); } catch { /* draw with fallbacks */ }
+  await pics;
 })();
 const faceUrls = new Map<string, string>();
 function faceUrl(id: string): string {

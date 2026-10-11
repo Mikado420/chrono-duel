@@ -1,5 +1,5 @@
 import { artBack, isArtBack } from './looks';
-import { RARITY_NAMES, cardDef, setOf, type CardDef } from '../core/cards';
+import { CARD_LIST, RARITY_NAMES, cardDef, setOf, type CardDef } from '../core/cards';
 import { CSS, FONTS } from './theme';
 
 /** Procedural card art and card faces drawn with Canvas2D, shared by the Pixi board and the DOM deck editor. */
@@ -110,6 +110,33 @@ function motifPath(c: Ctx, m: CardDef['motif'], cx: number, cy: number, r: numbe
   }
 }
 
+// ------------------------------------------------------------------ illustrations
+/**
+ * Painted illustrations (public/cards/<id>.webp, 640×400). A card without one (tokens, sets still being drawn)
+ * keeps its drawn emblem. The game waits for them briefly at start-up, since card faces are drawn once and kept.
+ */
+const pics = new Map<string, HTMLImageElement>();
+let picBase = './cards/';
+/** Where the pictures are, relative to the page (the wiki lives one folder down). */
+export function setCardPicBase(base: string) { picBase = base; }
+let picsLoading: Promise<void> | null = null;
+export function loadCardPics(maxMs = 6000): Promise<void> {
+  picsLoading ??= Promise.all(CARD_LIST.filter((c) => !c.token).map((c) => new Promise<void>((res) => {
+    const img = new Image();
+    img.onload = () => { pics.set(c.id, img); res(); };
+    img.onerror = () => res();
+    img.src = `${picBase}${c.id}.webp`;
+  }))).then(() => undefined);
+  return Promise.race([picsLoading, new Promise<void>((r) => setTimeout(r, maxMs))]);
+}
+/** Draws the picture over the whole canvas, cropped to fill it, centred. */
+function drawPic(c: Ctx, img: HTMLImageElement, w: number, h: number) {
+  const s = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  const dw = img.naturalWidth * s, dh = img.naturalHeight * s;
+  c.imageSmoothingQuality = 'high';
+  c.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+}
+
 const artCache = new Map<string, HTMLCanvasElement>();
 /** Square-ish illustration for a card. */
 export function cardArt(id: string, w = 300, h = 230): HTMLCanvasElement {
@@ -120,6 +147,16 @@ export function cardArt(id: string, w = 300, h = 230): HTMLCanvasElement {
   const cv = document.createElement('canvas');
   cv.width = w; cv.height = h;
   const c = cv.getContext('2d')!;
+  const pic = pics.get(id);
+  if (pic) {
+    drawPic(c, pic, w, h);
+    // a light vignette so the frame and the text around it sit well on any picture
+    const v = c.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.45, w / 2, h / 2, Math.max(w, h) * 0.8);
+    v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.35)');
+    c.fillStyle = v; c.fillRect(0, 0, w, h);
+    artCache.set(key, cv);
+    return cv;
+  }
   const R = rng(hash(id));
   const [bgA, bgB, glow] = MOTIF_HUE[d.motif];
   const cx = w / 2 + (R() - 0.5) * w * 0.12, cy = h / 2 + (R() - 0.5) * h * 0.1;
