@@ -40,7 +40,7 @@ async function download(): Promise<{ v: string; items: StoredLog[] }> {
   const items: StoredLog[] = [];
   let after: string | null = null, v = version ?? '';
   for (;;) {
-    const res = await fetch(`${base}/api/logs`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token, v: version, after, limit: 200 }) });
+    const res = await fetch(`${base}/api/logs`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://mikado420.github.io' }, body: JSON.stringify({ token, v: version, after, limit: 200 }) });
     if (res.status === 403) { console.error('トークンが違います（サーバーの ADMIN_TOKEN と同じ値を使ってください）'); proc.exit(1); }
     if (!res.ok) { console.error(`サーバーエラー ${res.status}`); proc.exit(1); }
     const page = (await res.json()) as { v: string | null; items: StoredLog[]; next: string | null };
