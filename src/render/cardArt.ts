@@ -241,6 +241,36 @@ const SWORD_PATH = 'M19 3l2 0 0 2-9.5 9.5-2-2z M6 13l5 5-1.5 1.5-1.5-1.5-3 3-1.5
 const GLASS_PATH = 'M6 2h12v2c0 4-3 6-4.5 8C15 14 18 16 18 20v2H6v-2c0-4 3-6 4.5-8C9 10 6 8 6 4z';
 const SAND_PATH = 'M9 20c0-2 2-3.5 3-4.5 1 1 3 2.5 3 4.5z';
 
+/** Bell colours (light, mid, dark, number): brass for the printed cost, green when 急襲 lowers it. */
+type BellLook = [string, string, string, string];
+const BELL_BRASS: BellLook = ['#fff3cf', '#d4a24a', '#6d4813', '#22170a'];
+const BELL_RAID: BellLook = ['#e2fff6', '#46c2a2', '#0e4a3c', '#062a22'];
+/** The cost bell at the card's top left (card pixels: x 5–80, y 3–81). */
+function drawBell(c: Ctx, cost: number, [hi, mid, lo, ink]: BellLook) {
+  c.save(); c.translate(5, 3); c.scale(1.7, 1.7);
+  c.shadowColor = 'rgba(0,0,0,0.6)'; c.shadowBlur = 4; c.shadowOffsetY = 2;
+  const bg = c.createRadialGradient(15, 14, 1, 22, 22, 33); bg.addColorStop(0, hi); bg.addColorStop(0.55, mid); bg.addColorStop(1, lo);
+  const path = new Path2D(BELL_PATH);
+  c.fillStyle = bg; c.fill(path);
+  c.shadowColor = 'transparent';
+  c.strokeStyle = lo; c.lineWidth = 1.4; c.stroke(path);
+  c.beginPath(); c.arc(22, 41.5, 3.6, 0, Math.PI * 2); c.fill(); c.lineWidth = 1.2; c.stroke();
+  c.restore();
+  c.fillStyle = ink; c.font = `700 32px ${FONTS.num}`; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(String(cost), 5 + 22 * 1.7, 3 + 23 * 1.7);
+  c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+}
+const raidCache = new Map<number, HTMLCanvasElement>();
+/** A green bell with the cost 急襲 makes it, to lay exactly over a card's own bell (a full card-sized canvas). */
+export function raidBell(cost: number): HTMLCanvasElement {
+  const hit = raidCache.get(cost);
+  if (hit) return hit;
+  const cv = document.createElement('canvas'); cv.width = 88; cv.height = 90;
+  drawBell(cv.getContext('2d')!, cost, BELL_RAID);
+  raidCache.set(cost, cv);
+  return cv;
+}
+
 export const CARD_W = 340, CARD_H = 476;
 /** The card's outline, `i` pixels in: units are rounded, spells have their corners cut (an octagon). */
 function cardShape(c: Ctx, spell: boolean, i: number) {
@@ -355,17 +385,7 @@ export function cardFace(id: string): HTMLCanvasElement {
       c.strokeStyle = '#8fa9ad'; c.lineWidth = 2; c.stroke();
     }
   }
-  // cost: a brass bell
-  c.save(); c.translate(5, 3); c.scale(1.7, 1.7);
-  c.shadowColor = 'rgba(0,0,0,0.6)'; c.shadowBlur = 4; c.shadowOffsetY = 2;
-  const bg = c.createRadialGradient(15, 14, 1, 22, 22, 33); bg.addColorStop(0, '#fff3cf'); bg.addColorStop(0.55, '#d4a24a'); bg.addColorStop(1, '#6d4813');
-  c.fillStyle = bg; c.fill(new Path2D(BELL_PATH));
-  c.shadowColor = 'transparent';
-  c.strokeStyle = '#3b2a0e'; c.lineWidth = 1.4; c.stroke(new Path2D(BELL_PATH));
-  c.beginPath(); c.arc(22, 41.5, 3.6, 0, Math.PI * 2); c.fill(); c.lineWidth = 1.2; c.stroke();
-  c.restore();
-  c.fillStyle = '#22170a'; c.font = `700 32px ${FONTS.num}`; c.textAlign = 'center'; c.textBaseline = 'middle';
-  c.fillText(String(d.cost), 5 + 22 * 1.7, 3 + 23 * 1.7);
+  drawBell(c, d.cost, BELL_BRASS);
   // kind crest: a sword for units, an hourglass for spells
   const kx = W - 44, ky = 44;
   c.save();
@@ -381,6 +401,64 @@ export function cardFace(id: string): HTMLCanvasElement {
   c.restore();
   c.textAlign = 'left'; c.textBaseline = 'alphabetic';
   faceCache.set(id, cv);
+  return cv;
+}
+
+/** A unit on the board (design 176×214, drawn at 2x): the card made small — the rarity frame, the art, the notched
+ * plate with the name and keywords, the jewels' settings and the reload dots. The numbers, the ready badge and the
+ * owner's colour are drawn over it by the board. */
+export const UNIT_FACE_W = 352, UNIT_FACE_H = 428;
+const unitCache = new Map<string, HTMLCanvasElement>();
+export function unitFace(id: string, kw: string, reload: number): HTMLCanvasElement {
+  const key = `${id}|${kw}|${reload}`;
+  const hit = unitCache.get(key);
+  if (hit) return hit;
+  const d = cardDef(id);
+  const W = UNIT_FACE_W, H = UNIT_FACE_H, F = 10, plate = KIND_LOOK.unit.plate;
+  const [r1, r2, r3] = RARITY_FRAME[d.rarity] ?? RARITY_FRAME.C;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const c = cv.getContext('2d')!;
+  const fg = c.createLinearGradient(0, 0, W, H);
+  fg.addColorStop(0, r1); fg.addColorStop(0.45, r2); fg.addColorStop(0.6, r1); fg.addColorStop(1, r3);
+  rr(c, 0, 0, W, H, 32); c.fillStyle = fg; c.fill();
+  c.save(); rr(c, F, F, W - 2 * F, H - 2 * F, 24); c.clip();
+  c.fillStyle = plate; c.fillRect(0, 0, W, H);
+  const artH = 260;
+  c.drawImage(cardArt(id, W - 2 * F, artH), F, F);
+  const fade = c.createLinearGradient(0, F + artH * 0.55, 0, F + artH);
+  fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(1, plate);
+  c.fillStyle = fade; c.fillRect(F, F + artH * 0.55, W - 2 * F, artH * 0.45 + 1);
+  const pt = F + 224, notch = 28;
+  c.beginPath(); c.moveTo(0, pt + notch); c.lineTo(W * 0.26, pt + notch); c.lineTo(W * 0.32, pt); c.lineTo(W * 0.68, pt); c.lineTo(W * 0.74, pt + notch); c.lineTo(W, pt + notch); c.lineTo(W, H); c.lineTo(0, H); c.closePath();
+  c.fillStyle = plate; c.fill();
+  c.restore();
+  rr(c, F, F, W - 2 * F, H - 2 * F, 24); c.strokeStyle = d.rarity === 'L' ? 'rgba(255,240,190,0.85)' : 'rgba(0,0,0,0.45)'; c.lineWidth = 2; c.stroke();
+  // name and keywords
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  let fs = 30; c.font = `700 ${fs}px ${FONTS.display}`;
+  while (c.measureText(d.name).width > W - 40 && fs > 20) { fs -= 1; c.font = `700 ${fs}px ${FONTS.display}`; }
+  c.fillStyle = CSS.ivory; c.shadowColor = 'rgba(0,0,0,0.8)'; c.shadowBlur = 8;
+  c.fillText(d.name, W / 2, pt + 26);
+  c.shadowBlur = 0;
+  if (kw) { c.font = `700 22px ${FONTS.body}`; c.fillStyle = CSS.brass; c.fillText(kw, W / 2, pt + 66); }
+  // jewel settings (the numbers are drawn by the board)
+  const jewel = (x: number, color: string) => {
+    c.save(); c.translate(x, H - 64);
+    c.beginPath(); c.moveTo(0, -42); c.lineTo(42, 0); c.lineTo(0, 42); c.lineTo(-42, 0); c.closePath();
+    const gg = c.createLinearGradient(-30, -30, 30, 30); gg.addColorStop(0, color); gg.addColorStop(1, '#0d1518');
+    c.fillStyle = gg; c.fill(); c.strokeStyle = 'rgba(255,255,255,0.45)'; c.lineWidth = 3; c.stroke(); c.restore();
+  };
+  jewel(F + 24 + 42 - 8, '#e9674f');
+  jewel(W - F - 24 - 42 + 8, '#5fd0b5');
+  const n = Math.max(4, reload);
+  for (let i = 0; i < n; i++) {
+    const x = W / 2 + (i - (n - 1) / 2) * 22;
+    c.beginPath(); c.arc(x, H - 64, 7, 0, Math.PI * 2);
+    if (i < reload) { c.fillStyle = '#8fa9ad'; c.fill(); }
+    c.strokeStyle = '#8fa9ad'; c.lineWidth = 3; c.stroke();
+  }
+  c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+  unitCache.set(key, cv);
   return cv;
 }
 

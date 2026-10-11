@@ -2,7 +2,7 @@ import { Container, Graphics, Sprite, Texture, type Text } from 'pixi.js';
 import { cardDef } from '../core/cards';
 import type { PlayerIndex, Unit } from '../core/engine';
 import { RULES } from '../core/rules';
-import { cardArt, cardBack, cardFace } from './cardArt';
+import { CARD_H, CARD_W, cardBack, cardFace, raidBell, unitFace } from './cardArt';
 import { artBack, isArtBack } from './looks';
 import { COLORS, FONTS } from './theme';
 import { ease, type Tweener } from './tween';
@@ -11,13 +11,9 @@ import { label } from './ui';
 const tex = new Map<string, Texture>();
 export function faceTex(id: string) { let t = tex.get('f:' + id); if (!t) { t = Texture.from(cardFace(id)); tex.set('f:' + id, t); } return t; }
 export function backTex(style = 'back:brass'): Texture { if (isArtBack(style) && !artBack(style)) return backTex('back:brass'); let t = tex.get('b:' + style); if (!t) { t = Texture.from(cardBack(style)); tex.set('b:' + style, t); } return t; }
-function artTex(id: string) { let t = tex.get('a:' + id); if (!t) { t = Texture.from(cardArt(id, 300, 220)); tex.set('a:' + id, t); } return t; }
 
 export const UNIT_W = 176, UNIT_H = 214;
 
-function gem(color: number) {
-  return new Graphics().poly([0, -22, 22, 0, 0, 22, -22, 0]).fill(color).poly([0, -22, 22, 0, 0, 22, -22, 0]).stroke({ color: 0xffffff, width: 2, alpha: 0.55 }).poly([0, -22, 22, 0, 0, 0, -22, 0]).fill({ color: 0xffffff, alpha: 0.12 });
-}
 
 /** A unit standing in a lane. */
 export class UnitView extends Container {
@@ -42,39 +38,28 @@ export class UnitView extends Container {
     super();
     this.uid = u.uid; this.card = u.card; this.owner = owner;
     this.atk = u.atk; this.hp = u.hp; this.maxHp = u.maxHp;
-    const d = cardDef(u.card);
     const W = UNIT_W, H = UNIT_H;
     const col = owner === 0 ? COLORS.you : COLORS.foe;
+    const d = cardDef(u.card);
     const shadow = new Graphics().roundRect(-W / 2 + 6, -H / 2 + 10, W, H, 16).fill({ color: 0x000000, alpha: 0.45 });
-    this.frame.roundRect(-W / 2, -H / 2, W, H, 16).fill(COLORS.ink2);
-    if (u.taunt) this.frame.roundRect(-W / 2 - 7, -H / 2 - 7, W + 14, H + 14, 20).stroke({ color: COLORS.brass, width: 5 });
-    this.frame.roundRect(-W / 2, -H / 2, W, H, 16).stroke({ color: col, width: 3 });
-    const art = new Sprite(artTex(u.card));
-    art.anchor.set(0.5, 0);
-    art.width = W - 12; art.height = 124;
-    art.y = -H / 2 + 6;
-    const artMask = new Graphics().roundRect(-W / 2 + 6, -H / 2 + 6, W - 12, 124, 11).fill(0xffffff);
-    art.mask = artMask;
-    const name = label(d.name, 18, COLORS.ivory, { font: FONTS.display, weight: '700', align: 'center' });
-    name.anchor.set(0.5); name.y = H / 2 - 70;
-    if (name.width > W - 16) name.scale.set((W - 16) / name.width);
+    // taunt: a brass ring around the card
+    if (u.taunt) this.frame.roundRect(-W / 2 - 8, -H / 2 - 8, W + 16, H + 16, 22).stroke({ color: COLORS.brass, width: 4 });
+    // whose unit: a glowing line under the card (green for you, red for the opponent)
+    const base = new Graphics()
+      .roundRect(-W / 2 + 8, H / 2 + 5, W - 16, 6, 3).fill({ color: col, alpha: 0.35 })
+      .roundRect(-W / 2 + 10, H / 2 + 6, W - 20, 4, 2).fill(col);
     const kw = [u.taunt ? '挑発' : '', u.pierce ? '貫通' : '', d.hook?.startsWith('resonate') ? '共鳴' : ''].filter(Boolean).join('・');
-    const kwTxt = label(kw, 13, COLORS.brass, { weight: '700', align: 'center' });
-    kwTxt.anchor.set(0.5); kwTxt.y = H / 2 - 48;
-    const ag = gem(COLORS.atk); ag.x = -W / 2 + 26; ag.y = H / 2 - 22;
-    const hg = gem(COLORS.youDeep); hg.x = W / 2 - 26; hg.y = H / 2 - 22;
-    hg.clear().poly([0, -22, 22, 0, 0, 22, -22, 0]).fill(0x2f8f5f).poly([0, -22, 22, 0, 0, 22, -22, 0]).stroke({ color: 0xffffff, width: 2, alpha: 0.55 });
-    this.atkTxt = label(String(u.atk), 26, 0xffffff, { font: FONTS.num, weight: '700', align: 'center' });
-    this.hpTxt = label(String(u.hp), 26, 0xffffff, { font: FONTS.num, weight: '700', align: 'center' });
-    for (const [t, g] of [[this.atkTxt, ag], [this.hpTxt, hg]] as const) { t.anchor.set(0.5); t.x = g.x; t.y = g.y + 1; }
-    // reload dial sits between the gems
-    const rl = label(`間隔${u.reload}`, 13, COLORS.mute, { align: 'center' });
-    rl.anchor.set(0.5); rl.y = H / 2 - 22;
+    const face = new Sprite(Texture.from(unitFace(u.card, kw, u.reload)));
+    face.anchor.set(0.5); face.scale.set(0.5);
+    this.atkTxt = label(String(u.atk), 24, 0xffffff, { font: FONTS.num, weight: '700', align: 'center' });
+    this.hpTxt = label(String(u.hp), 24, 0xffffff, { font: FONTS.num, weight: '700', align: 'center' });
+    this.atkTxt.anchor.set(0.5); this.atkTxt.x = -54; this.atkTxt.y = 76;
+    this.hpTxt.anchor.set(0.5); this.hpTxt.x = 54; this.hpTxt.y = 76;
     this.readyTxt = label('', 15, COLORS.ivory, { font: FONTS.num, weight: '700', align: 'center' });
     this.readyTxt.anchor.set(0.5);
-    this.readyG.x = W / 2 - 24; this.readyG.y = -H / 2 + 24;
+    this.readyG.x = W / 2 - 25; this.readyG.y = -H / 2 + 25;
     this.readyTxt.x = this.readyG.x; this.readyTxt.y = this.readyG.y + 1;
-    this.addChild(shadow, this.sel, this.frame, artMask, art, this.stunG, name, kwTxt, ag, hg, this.atkTxt, this.hpTxt, rl, this.readyG, this.readyTxt, this.flashG);
+    this.addChild(shadow, this.sel, this.frame, base, face, this.stunG, this.atkTxt, this.hpTxt, this.readyG, this.readyTxt, this.flashG);
     this.eventMode = 'static';
     this.cursor = 'pointer';
   }
@@ -106,8 +91,8 @@ export class UnitView extends Container {
     }
     this.stunG.clear();
     if (left > reload + 1) {
-      this.stunG.roundRect(-UNIT_W / 2 + 6, -UNIT_H / 2 + 6, UNIT_W - 12, 124, 11).fill({ color: 0x6fb6ff, alpha: 0.28 });
-      for (let i = -3; i <= 3; i++) this.stunG.moveTo(i * 26 - 20, -UNIT_H / 2 + 8).lineTo(i * 26 + 20, -UNIT_H / 2 + 128).stroke({ color: 0xbfe3ff, width: 2, alpha: 0.5 });
+      this.stunG.roundRect(-UNIT_W / 2 + 5, -UNIT_H / 2 + 5, UNIT_W - 10, 130, 12).fill({ color: 0x6fb6ff, alpha: 0.28 });
+      for (let i = -3; i <= 3; i++) this.stunG.moveTo(i * 26 - 20, -UNIT_H / 2 + 8).lineTo(i * 26 + 20, -UNIT_H / 2 + 132).stroke({ color: 0xbfe3ff, width: 2, alpha: 0.5 });
     }
   }
   get ready() { return this.isReady; }
@@ -153,13 +138,13 @@ export class HandCardView extends Container {
   setCost(cost: number | null) {
     this.costBadge.removeChildren().forEach((c) => c.destroy());
     if (cost === null) return;
-    const g = new Graphics().circle(0, 0, 34).fill(0x0f3a31).circle(0, 0, 34).stroke({ color: COLORS.you, width: 4 });
-    const t = label(String(cost), 38, 0xffffff, { font: FONTS.num, weight: '700', align: 'center' });
-    t.anchor.set(0.5); t.y = 1;
+    // a green bell over the card's own, with what is paid now
+    const bell = new Sprite(Texture.from(raidBell(cost)));
+    bell.x = -CARD_W / 2; bell.y = -CARD_H / 2;
     const tag = label('急襲', 16, COLORS.you, { weight: '700', align: 'center' });
-    tag.anchor.set(0.5); tag.y = 50;
-    this.costBadge.addChild(g, t, tag);
-    this.costBadge.x = -120; this.costBadge.y = -200;
+    tag.anchor.set(0.5); tag.x = -CARD_W / 2 + 42; tag.y = -CARD_H / 2 + 98;
+    const back = new Graphics().roundRect(tag.x - 26, tag.y - 12, 52, 24, 12).fill({ color: 0x062a22, alpha: 0.85 }).roundRect(tag.x - 26, tag.y - 12, 52, 24, 12).stroke({ color: COLORS.you, width: 2 });
+    this.costBadge.addChild(bell, back, tag);
   }
 }
 
