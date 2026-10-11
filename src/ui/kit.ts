@@ -2,7 +2,7 @@
 import { cardDef } from '../core/cards';
 import { audio } from '../render/audio';
 import { cardBack, cardFace, packArt } from '../render/cardArt';
-import { backSvg } from '../render/lookArt';
+import { artLoaded, artReady, backSvg } from '../render/lookArt';
 import { artBack, isArtBack } from '../render/looks';
 import type { Tier } from '../meta/rating';
 import { titleById } from '../meta/titles';
@@ -29,6 +29,13 @@ const memo = (key: string, make: () => HTMLCanvasElement, type = 'image/webp', q
   return u;
 };
 export const cardImg = (id: string) => memo('f:' + id, () => cardFace(id));
+/** An <img> whose picture may need the theme art first: shown now if it is loaded, else as soon as it is. */
+export function artImg(attrs: Record<string, unknown>, src: () => string): HTMLImageElement {
+  const img = h('img', { alt: '', ...attrs });
+  if (artLoaded()) img.src = src();
+  else void artReady.then(() => { img.src = src(); });
+  return img;
+}
 export const backImg = (style: string) => (isArtBack(style) && !artBack(style) ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(backSvg(style, 340, 476, true))}` : memo('b:' + style, () => cardBack(style)));
 /** Themed pictures straight from their SVG (previews in menus). */
 export const svgImg = (svgText: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText)}`;

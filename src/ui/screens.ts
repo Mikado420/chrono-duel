@@ -25,7 +25,7 @@ import { AI_LV_MAX, LV_OF_LEVEL, levelOfLv } from '../core/ai';
 import { PLACEMENT_GAMES, SEASON_REWARDS, TIERS, seasonAt, tierOf, type Opponent, type RatedGame } from '../meta/rating';
 import { seasonById } from '../meta/ranks';
 import { fetchRanking, issueTransfer, rankingAvailable, redeemTransfer, syncRated } from '../net/api';
-import { ICON, artStyle, backImg, svgImg, cardImg, cardName, countBadge, countUp, h, newTag, packImg, pressable, purse, resetZoom, ribbon, svg, tierBadge, tierEmblem, topBar } from './kit';
+import { ICON, artImg, artStyle, backImg, svgImg, cardImg, cardName, countBadge, countUp, h, newTag, packImg, pressable, purse, resetZoom, ribbon, svg, tierBadge, tierEmblem, topBar } from './kit';
 import { deckKey, deckLook, favCard, myTitles, newTitles, shownTitle } from './profile';
 
 export { h } from './kit';
@@ -55,15 +55,15 @@ const hasTokens = (d: { cards: string[] }) => d.cards.filter((c) => CARDS[c] && 
 /** A playmat as a picture (shop, deck slot); 'mat:none' is the plain board. */
 function matPreview(id: string, lanes = true): HTMLElement {
   if (!MAT_ART[id]) return h('div', { class: 'matpv none' }, h('span', {}, 'いつもの盤面'));
-  return h('img', { class: 'matpv', src: svgImg(matFlatSvg(id, 390, 414, lanes)), alt: '' });
+  return artImg({ class: 'matpv' }, () => svgImg(matFlatSvg(id, 390, 414, lanes)));
 }
 /** What a look looks like, whatever its kind. */
-const lookPreview = (kind: LookKind, id: string) => (kind === 'back' ? h('img', { src: backImg(id), alt: '' }) : kind === 'dial' ? dialPreview(id) : matPreview(id));
+const lookPreview = (kind: LookKind, id: string) => (kind === 'back' ? artImg({}, () => backImg(id)) : kind === 'dial' ? dialPreview(id) : matPreview(id));
 const LOOK_TITLE: Record<LookKind, string> = { back: 'スリーブ', dial: '盤面の文字盤', mat: 'プレイマット' };
 
 /** Clock-face colours as a small canvas (shop preview and deck slot). */
 function dialPreview(id: string, w = 160, h2 = 90): HTMLElement {
-  if (DIAL_ART[id]) return h('img', { class: 'dialpv', src: svgImg(dialPreviewSvg(id, w * 2)), alt: '', style: 'object-fit:contain' });
+  if (DIAL_ART[id]) return artImg({ class: 'dialpv', style: 'object-fit:contain' }, () => svgImg(dialPreviewSvg(id, w * 2)));
   const k = DIAL_SKINS[id] ?? DIAL_SKINS['dial:brass'];
   const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;
   const cv = document.createElement('canvas'); cv.width = w * 2; cv.height = h2 * 2;
@@ -1025,7 +1025,7 @@ export class Screens {
             h('div', {}, h('span', {}, '術'), h('b', { class: 'num' }, String(pick.cards.length - units))),
             h('div', { class: `tot${pick.valid ? '' : ' bad'}` }, h('b', {}, String(pick.cards.length)), h('span', { class: 'num muted' }, `/${RULES.DECK_SIZE}`)))),
         h('div', { class: 'slots' },
-          h('button', { class: 'slot', onclick: () => this.lookPicker(pick.id, 'back', () => this.decks()) }, h('img', { src: backImg(back), alt: '' }), h('span', {}, 'スリーブ', h('br', {}), h('small', {}, lookById(back)?.name ?? ''))),
+          h('button', { class: 'slot', onclick: () => this.lookPicker(pick.id, 'back', () => this.decks()) }, artImg({}, () => backImg(back)), h('span', {}, 'スリーブ', h('br', {}), h('small', {}, lookById(back)?.name ?? ''))),
           h('button', { class: 'slot', onclick: () => this.lookPicker(pick.id, 'dial', () => this.decks()) }, h('i', { class: 'dialmini', style: `--c:${hex(dk.rim)};--f:${hex(dk.face)}` }), h('span', {}, '文字盤', h('br', {}), h('small', {}, lookById(dial)?.name ?? ''))),
           h('button', { class: 'slot', onclick: () => this.lookPicker(pick.id, 'mat', () => this.decks()) }, h('span', { class: 'matmini' }, matPreview(mat, false)), h('span', {}, 'マット', h('br', {}), h('small', {}, lookById(mat)?.name ?? ''))))),
       h('div', { class: 'btn-row' },
@@ -1865,7 +1865,7 @@ export class Screens {
             h('div', { class: 'theme-hd' }, h('b', {}, t.name), h('small', {}, t.blurb)),
             h('div', { class: 'theme-pv' },
               h('div', { class: 'tp dial' }, dialPreview(`dial:${t.id}`)),
-              h('div', { class: 'tp back' }, h('img', { src: backImg(`back:${t.id}`), alt: '' })),
+              h('div', { class: 'tp back' }, artImg({}, () => backImg(`back:${t.id}`))),
               h('div', { class: 'tp mat' }, matPreview(`mat:${t.id}`))),
             h('div', { class: 'theme-own' }, ...parts.map((l) => h('span', { class: ownsLook(w, l.id) ? 'ok' : '' }, `${LOOK_TITLE[l.kind].replace('盤面の', '')}「${l.name}」${ownsLook(w, l.id) ? ' ✓' : ` ${fmt(l.price)}`}`))),
             all

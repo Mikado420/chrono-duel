@@ -16,6 +16,8 @@ import { Dial } from './dial';
 import { MAT_ART, MAT_VIEW } from './lookArt';
 import { Embers, Ripple, Steam } from './lookFx';
 import { isArtMat, loadFlatMat, loadMat } from './looks';
+import { MatFx } from './themeFx';
+import { themeOf } from './lookArt';
 import type { Fx } from './fx';
 import { COLORS, FONTS } from './theme';
 import { ease, type Tweener } from './tween';
@@ -122,6 +124,8 @@ export class BattleScene extends Container {
   private foeMat = new Container();
   private foeMatMask = new Graphics();
   private matTicks: ((ms: number) => void)[] = [];
+  /** The playmat's theme effects (null without a themed mat, or until it is in). */
+  private matFx: MatFx | null = null;
   private matT = 0;
   // ---- online play
   private inbox: ServerMsg[] = [];
@@ -327,6 +331,10 @@ export class BattleScene extends Container {
       if (m.fx.steam) add(new Steam(m.fx.steam, 24));
     }
     C.addChild(full(cv.over));
+    const tfx = new MatFx(themeOf(id), !still);
+    if (this.s) tfx.setLevel(this.s.doom);
+    C.addChild(tfx); this.matFx = tfx;
+    this.matTicks.push((ms) => tfx.tick(ms));
     C.alpha = 0;
     void this.tw.run(400, (k) => { C.alpha = k; });
   }
@@ -770,6 +778,7 @@ export class BattleScene extends Container {
     this.deckPile.visible = s.players[0].deck.length > 0;
     this.deckPileTxt.text = String(s.players[0].deck.length);
     this.dial.setDoom(s.doom);
+    this.matFx?.setLevel(s.doom);
     this.drawVignette();
     this.refreshControls();
   }
@@ -1445,6 +1454,7 @@ export class BattleScene extends Container {
       }
       case 'clock': {
         audio.play('clock');
+        this.dial.tfx?.clock(e.to - e.delta, e.to); this.matFx?.clock();
         const tip = this.dial.handTip(e.pi);
         void fx.ring(tip.x, tip.y, 0x9fd4ff, 10, 80, 500, 5);
         await this.dial.setHand(e.pi, e.to, true);
@@ -1455,6 +1465,7 @@ export class BattleScene extends Container {
       case 'bell': {
         audio.play('bell');
         const p = this.dial.point(e.at, this.dial.R - 40);
+        this.dial.tfx?.bell(e.at); this.matFx?.bell();
         void fx.ring(p.x, p.y, COLORS.brass, 8, 120, 700, 6);
         void fx.floatText(p.x, p.y - 20, '鐘', COLORS.brass, 30, 40, 800);
         await tw.wait(200);
@@ -1559,6 +1570,7 @@ export class BattleScene extends Container {
         if (e.echo) {
           // echoes are frequent and public: a quick ripple instead of the full reservation reveal
           audio.play('echo');
+          this.dial.tfx?.echo(at); this.matFx?.echo();
           void this.dial.removePin(e.uid, 'fire');
           for (let i = 0; i < 3; i++) void fx.ring(at.x, at.y, 0x8ff0e0, 6, 70 + i * 40, 520 + i * 120, 4);
           const s = makeFace(e.card); s.alpha = 0.85;
@@ -1570,6 +1582,7 @@ export class BattleScene extends Container {
           break;
         }
         audio.play('reveal');
+        this.dial.tfx?.trigger(at); this.matFx?.trigger();
         void fx.ring(at.x, at.y, COLORS.brass, 6, 110, 600, 8);
         void this.dial.removePin(e.uid, 'fire');
         await fx.banner('予約発動', `${e.pi === 0 ? this.me : this.foe}の予約 ・ ${e.T}刻`, e.pi === 0 ? COLORS.you : COLORS.foe, 360, 640);
@@ -1619,6 +1632,7 @@ export class BattleScene extends Container {
         audio.play(e.amount >= 4 ? 'heavyHit' : 'base');
         if (!this.watching && (e.amount >= 4 || e.hp <= 0)) haptics.big('hit');
         const c = h.center;
+        if (e.amount >= 5) { this.dial.tfx?.hit(); if (e.pi === 0) this.matFx?.hit(); }
         void fx.floatText(c.x + 60, c.y + (e.pi === 1 ? 40 : -30), `-${e.amount}`, e.doom ? COLORS.doom : 0xff8f6b, 56, 60);
         if (e.doom) void fx.floatText(c.x + 150, c.y + (e.pi === 1 ? 60 : -10), `終焉+${this.s.doom}`, COLORS.doom, 22, 40, 900);
         fx.burst(c.x, c.y, e.pi === 0 ? COLORS.you : COLORS.foe, 26, 300, { shape: 'shard', life: 0.7 });
@@ -1744,6 +1758,7 @@ export class BattleScene extends Container {
       case 'doom': {
         audio.play('doom');
         this.dial.setDoom(e.level);
+        this.dial.tfx?.doom(e.level); this.matFx?.doom(e.level);
         void fx.flash(COLORS.doom, 0.3, 700);
         await fx.banner(e.level === 1 ? '終焉の刻' : `終焉 ${e.level}段階`, `ユニットが拠点に与えるダメージ +${e.level}`, COLORS.doom, 360, 640);
         break;

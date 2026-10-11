@@ -3,7 +3,7 @@
  * SVG pictures load asynchronously, so card backs are prepared when the game starts and faces and mats before a
  * battle; anything not ready yet falls back to the plain brass look and swaps in when it arrives.
  */
-import { BACK_ART, DIAL_ART, DIAL_S, DIAL_VIEW, MAT_ART, MAT_VIEW, backSvg, dialPartSvg, matFlatSvg, matPartSvg, spinSvg } from './lookArt';
+import { BACK_ART, BACK_TEXT, DIAL_ART, DIAL_S, DIAL_VIEW, MAT_ART, MAT_VIEW, artReady, backSvg, dialPartSvg, matFlatSvg, matPartSvg, spinSvg } from './lookArt';
 import { FONTS } from './theme';
 
 /** Card size (cardArt.ts CARD_W/CARD_H; repeated here so the two modules do not import each other). */
@@ -46,11 +46,17 @@ export function raster(key: string, svg: string, w: number, h: number, after?: (
 export const isArtBack = (id: string) => id in BACK_ART;
 /** The finished back (with the CHRONO DUEL line), or undefined while it is still loading. */
 export const artBack = (id: string) => done.get('back:' + id);
-export function loadBack(id: string): Promise<HTMLCanvasElement> {
+export async function loadBack(id: string): Promise<HTMLCanvasElement> {
+  const hit = done.get('back:' + id);
+  if (hit) return hit;
+  await artReady;
   const b = BACK_ART[id];
+  const k = CARD_W / 240;
   return raster('back:' + id, backSvg(id, CARD_W, CARD_H), CARD_W, CARD_H, (c) => {
-    c.fillStyle = b.ink; c.font = `700 24px ${FONTS.display}`; c.textAlign = 'center';
-    c.fillText('CHRONO DUEL', CARD_W / 2, (b.textY * CARD_H) / 336);
+    c.fillStyle = b.ink; c.font = `700 ${Math.round(BACK_TEXT.size * k)}px ${FONTS.num}`; c.textAlign = 'center';
+    (c as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${(BACK_TEXT.spacing * k).toFixed(1)}px`;
+    c.shadowColor = b.ink; c.shadowBlur = 6;
+    c.fillText('CHRONO DUEL', CARD_W / 2 + (BACK_TEXT.spacing * k) / 2, (b.textY * CARD_H) / 336);
   });
 }
 /** Every themed back, so decks and opponents can show them right away. */
@@ -65,6 +71,7 @@ export interface DialCanvases { under: HTMLCanvasElement; over: HTMLCanvasElemen
 /** Pixels per design unit (twice the board scale, so faces stay sharp on phones). */
 const DIAL_PX = DIAL_S * 2;
 export async function loadDial(id: string): Promise<DialCanvases> {
+  await artReady;
   const a = DIAL_ART[id].art;
   const W = DIAL_VIEW.w * DIAL_PX, H = DIAL_VIEW.h * DIAL_PX;
   const [under, over, pulse, ...spins] = await Promise.all([
@@ -82,6 +89,7 @@ export interface MatCanvases { under: HTMLCanvasElement; over: HTMLCanvasElement
 /** Pixels per design unit: the 390-wide mat on a 720-wide board, with headroom for tall screens and sharp phones. */
 const MAT_PX = 2.6;
 export async function loadMat(id: string): Promise<MatCanvases> {
+  await artReady;
   const m = MAT_ART[id];
   const W = MAT_VIEW.w * MAT_PX, H = MAT_VIEW.h * MAT_PX;
   const [under, over, glow, drift, ...spins] = await Promise.all([
@@ -94,7 +102,7 @@ export async function loadMat(id: string): Promise<MatCanvases> {
   return { under, over, glow, drift, spins: spins as HTMLCanvasElement[] };
 }
 /** The opponent's mat: one still picture. */
-export const loadFlatMat = (id: string) => raster(`mat:${id}:flat`, matFlatSvg(id, MAT_VIEW.w * 2), MAT_VIEW.w * 2, MAT_VIEW.h * 2);
+export const loadFlatMat = async (id: string) => artReady.then(() => raster(`mat:${id}:flat`, matFlatSvg(id, MAT_VIEW.w * 2), MAT_VIEW.w * 2, MAT_VIEW.h * 2));
 
 /** Everything a battle with these looks needs (waits at most `ms`, then the battle starts and the rest pops in). */
 export async function prepareLooks(l: { back?: string; foeBack?: string; dial?: string; mat?: string; foeMat?: string } | undefined, ms = 1500) {

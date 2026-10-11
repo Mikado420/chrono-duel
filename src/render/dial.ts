@@ -1,5 +1,6 @@
 import { Container, Graphics, Sprite, Texture, type Text } from 'pixi.js';
-import { DIAL_ART, DIAL_S, DIAL_VIEW, type DialLook } from './lookArt';
+import { DIAL_ART, DIAL_S, DIAL_VIEW, themeOf, type DialLook } from './lookArt';
+import { DialFx } from './themeFx';
 import { Embers } from './lookFx';
 import { isArtDial, loadDial } from './looks';
 import { cardDef } from '../core/cards';
@@ -63,10 +64,13 @@ export class Dial extends Container {
   private pulse: { s: Sprite; min: number; max: number; period: number } | null = null;
   private embers: Embers | null = null;
   private kick = 0;
+  /** The theme's own effects (bells, doom and the rest), under the ticks and hands; null on plain faces. */
+  readonly tfx: DialFx | null = null;
   constructor(private tw: Tweener, skin = 'dial:brass', private motion = true) {
     super();
     this.skin = DIAL_SKINS[skin] ?? DIAL_SKINS['dial:brass'];
-    this.addChild(this.artC, this.band, this.doomBand, this.ticks);
+    if (isArtDial(skin)) this.tfx = new DialFx(themeOf(skin), this, motion);
+    this.addChild(this.artC, ...(this.tfx ? [this.tfx] : []), this.band, this.doomBand, this.ticks);
     if (isArtDial(skin)) void this.loadArt(skin);
     this.drawStatic();
     const mk = (pi: PlayerIndex) => {
@@ -195,6 +199,7 @@ export class Dial extends Container {
   /** Where doom begins this game (イベント「終焉開幕」 starts it at 0). */
   setDoomFrom(t: number) {
     this.doomFrom = t;
+    this.tfx?.setDoomFrom(t);
     if (this.doomLabel) { const p = this.point(Math.max(t, 1.2), this.R + 44); this.doomLabel.x = p.x; this.doomLabel.y = p.y; }
     this.drawDoom();
   }
@@ -246,10 +251,11 @@ export class Dial extends Container {
     }
     if (this.pulse) { const k = this.motion ? 0.5 + 0.5 * Math.sin((this.glowT / this.pulse.period) * TAU) : 1; this.pulse.s.alpha = this.pulse.min + (this.pulse.max - this.pulse.min) * k; }
     this.embers?.tick(ms);
+    this.tfx?.tick(ms);
     if (this.doomLevel) this.drawDoom();
     for (const p of this.pins.values()) if (p.pi === 1 && !p.card) p.face.rotation = Math.sin(this.glowT * 2 + p.T) * 0.12;
   }
-  setDoom(level: number) { this.doomLevel = level; this.drawDoom(); }
+  setDoom(level: number) { this.doomLevel = level; this.tfx?.setLevel(level); this.drawDoom(); }
 
   /** Rotate a hand to `t`, ticking through each step for the clockwork feel. */
   async setHand(pi: PlayerIndex, t: number, animate = true, onStep?: () => void) {
