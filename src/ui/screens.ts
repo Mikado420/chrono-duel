@@ -25,7 +25,7 @@ import { AI_LV_MAX, LV_OF_LEVEL, levelOfLv } from '../core/ai';
 import { PLACEMENT_GAMES, SEASON_REWARDS, TIERS, seasonAt, tierOf, type Opponent, type RatedGame } from '../meta/rating';
 import { seasonById } from '../meta/ranks';
 import { fetchRanking, issueTransfer, rankingAvailable, redeemTransfer, syncRated } from '../net/api';
-import { ICON, artStyle, backImg, svgImg, cardImg, cardName, countBadge, countUp, h, newTag, packImg, pressable, purse, ribbon, svg, tierBadge, tierEmblem, topBar } from './kit';
+import { ICON, artStyle, backImg, svgImg, cardImg, cardName, countBadge, countUp, h, newTag, packImg, pressable, purse, resetZoom, ribbon, svg, tierBadge, tierEmblem, topBar } from './kit';
 import { deckKey, deckLook, favCard, myTitles, newTitles, shownTitle } from './profile';
 
 export { h } from './kit';
@@ -1405,6 +1405,7 @@ export class Screens {
    * coin cap, then「もう一戦」as the largest button.
    */
   private resultView(r: BattleResult, foeLabel: string, buttons: { main: HTMLElement[]; chips?: (HTMLElement | null)[]; foot?: string }, extra: { note?: string; rw?: Reward; xp?: XpGain; rated?: RatedGame | null; missions?: MissionDelta[]; card?: string; watch?: [string, string] } = {}) {
+    resetZoom();
     const kind = r.winner === 0 ? 'win' : r.winner === 1 ? 'lose' : 'draw';
     const win = kind === 'win';
     const watch = extra.watch;

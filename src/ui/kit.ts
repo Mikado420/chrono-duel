@@ -209,3 +209,17 @@ export function countUp(el: HTMLElement, to: number, opts: { from?: number; ms?:
 
 /** Display name of a card id ('' for unknown ids). */
 export const cardName = (id: string) => { try { return cardDef(id).name; } catch { return ''; } };
+
+/**
+ * Puts the page back to its normal size if the browser was zoomed (a pinch, or a double tap iOS let through):
+ * rewriting the viewport tag makes Safari fit the page to the screen again.
+ */
+export function resetZoom() {
+  const vv = window.visualViewport;
+  if (!vv || Math.abs(vv.scale - 1) < 0.01) return;
+  const m = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+  if (!m) return;
+  const c = m.content;
+  m.content = c.replace(/maximum-scale=[^,]*/, 'maximum-scale=1.01');
+  requestAnimationFrame(() => { m.content = c; });
+}

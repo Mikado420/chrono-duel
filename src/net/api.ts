@@ -78,19 +78,39 @@ export const replayLink = (id: string) => `${location.origin}${location.pathname
 /** A replay id from a link (#/replay/xxxxxxxxxx), or null. */
 export const replayFromHash = (hash: string) => { const m = hash.match(/^#\/replay\/([a-z2-9]{10})$/); return m ? m[1] : null; };
 
-interface SubmitRes { rating: number; games: number; wins: number; peak: number; accepted: string[]; refused: string[] }
-/** Sends finished rated games; on success the server's numbers replace the local ones. Returns true if in sync. */
-export async function syncRated(): Promise<boolean> {
+interface SubmitRes { rating: number; games: number; wins: number; peak: number; season?: number; sPeak?: number; sGames?: number; sWins?: number; accepted: string[]; refused: string[] }
+/**
+ * Sends finished rated games; on success the server's numbers replace the local ones. Returns true if in sync.
+ * Only one send runs at a time: a call made while one is on its way waits for it and then sends again, so two sends
+ * never carry the same games at once (the server could count one of them on an older copy of the record).
+ */
+let syncing: Promise<boolean> | null = null;
+let again = false;
+export function syncRated(): Promise<boolean> {
+  if (syncing) { again = true; return syncing; }
+  syncing = (async () => {
+    let ok = false;
+    try {
+      do { again = false; ok = await syncOnce(); } while (again);
+    } finally { syncing = null; }
+    return ok;
+  })();
+  return syncing;
+}
+async function syncOnce(): Promise<boolean> {
   const r = store.rated, acc = store.account();
   const games = r.outbox.slice(0, 20);
   const res = await post<SubmitRes>('/api/rated', { id: acc.id, secret: acc.secret, name: store.settings.name, title: shownTitle()?.id ?? '', fav: favCard(), games });
   if (!res) return false;
-  // a server that does not know the roster yet refuses rivals ('rv:'): keep those until it is updated
-  const keep = new Set(r.outbox.filter((g) => g.ai.startsWith('rv:') && res.refused.includes(g.gid)).map((g) => g.gid));
-  const done = new Set([...res.accepted, ...res.refused.filter((id) => !keep.has(id))]);
+  // every game the server answered for is done: accepted, or refused for good (too short, already counted…).
+  // Keeping a refused game would block the outbox forever and the local rating would never be corrected again.
+  const done = new Set([...res.accepted, ...res.refused]);
   r.outbox = r.outbox.filter((g) => !done.has(g.gid));
   // the server is authoritative once everything has been delivered
-  if (!r.outbox.length) { r.rating = res.rating; r.games = res.games; r.wins = res.wins; r.peak = Math.max(r.peak, res.peak); }
+  if (!r.outbox.length) {
+    r.rating = res.rating; r.games = res.games; r.wins = res.wins; r.peak = Math.max(r.peak, res.peak);
+    if (res.season !== undefined && res.season === r.season) { r.sPeak = res.sPeak; r.sGames = res.sGames; r.sWins = res.sWins; }
+  }
   store.saveRated();
   return r.outbox.length === 0;
 }

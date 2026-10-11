@@ -98,6 +98,9 @@ async function boot() {
     else if (!phoneLandscape && pausedForRotate) { pausedForRotate = false; tw.speed = store.settings.speed || 1; }
   };
   const settle = () => { relayout(); for (const ms of [120, 350, 800, 1500]) setTimeout(relayout, ms); };
+  // no pinch zoom (iOS Safari ignores user-scalable=no): a zoomed page stays zoomed on the next screen
+  for (const ev of ['gesturestart', 'gesturechange']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+  document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
   window.addEventListener('resize', () => requestAnimationFrame(relayout));
   window.addEventListener('orientationchange', settle);
   window.visualViewport?.addEventListener('resize', () => requestAnimationFrame(relayout));

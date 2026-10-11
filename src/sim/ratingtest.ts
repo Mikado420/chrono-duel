@@ -182,4 +182,16 @@ assert.deepEqual([1000, 1199, 1250, 1450, 1700, 1900, 2100].map(seasonStartRatin
   } finally { SEASONS.pop(); }
 }
 console.log(`rating after one hard win: ${r1}; ranking ok`);
+// two sends at once (a slow store between the reads): the second must not count its games on an older copy
+{
+  const slow: KV = { ...kv, get: async (k) => { await new Promise((r) => setTimeout(r, 5)); return structuredClone(mem.get(k)) as never; } };
+  const lb3 = new Leaderboard(slow, () => now);
+  const D = { id: 'race0000000000000000', secret: 'race1111111111111111', name: 'race' };
+  const [x, y] = await Promise.all([lb3.submit({ ...D, games: [game('d1', 1, now)] }), lb3.submit({ ...D, games: [game('d1', 1, now), game('d2', 0, now)] })]);
+  const end = (await kv.get<{ games: number; sGames: number }>(`p:${D.id}`))!;
+  assert.equal(end.games, 2, 'both games are counted once each');
+  assert.equal((y.body as { games: number }).games, 2);
+  assert.deepEqual((y.body as { refused: string[] }).refused, ['d1'], 'the game already counted is refused, not counted again');
+  assert.equal((x.body as { sGames: number }).sGames, 1, 'the season numbers come back too');
+}
 console.log('all rating tests passed');

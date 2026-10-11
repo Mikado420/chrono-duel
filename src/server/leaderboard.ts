@@ -45,6 +45,8 @@ const validId = (s: unknown): s is string => typeof s === 'string' && /^[A-Za-z0
 
 export class Leaderboard {
   constructor(private kv: KV, private now: () => number) {}
+  /** Submissions run one after another: two at once could both read the same record and one would undo the other. */
+  private queue: Promise<unknown> = Promise.resolve();
 
   private async auth(id: unknown, secret: unknown, name?: unknown): Promise<PlayerRec | ApiResult> {
     if (!validId(id) || !validId(secret)) return bad(400, 'bad id');
@@ -64,7 +66,12 @@ export class Leaderboard {
   }
 
   /** POST /api/rated: { id, secret, name, games: SubmitReq[] } → the authoritative record. */
-  async submit(body: { id?: unknown; secret?: unknown; name?: unknown; games?: unknown; title?: unknown; fav?: unknown }): Promise<ApiResult> {
+  submit(body: { id?: unknown; secret?: unknown; name?: unknown; games?: unknown; title?: unknown; fav?: unknown }): Promise<ApiResult> {
+    const run = this.queue.then(() => this.submitNow(body));
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+  private async submitNow(body: { id?: unknown; secret?: unknown; name?: unknown; games?: unknown; title?: unknown; fav?: unknown }): Promise<ApiResult> {
     const rec = await this.auth(body.id, body.secret, body.name);
     if ('status' in rec) return rec;
     if (body.name !== undefined) rec.name = cleanName(body.name);
@@ -94,7 +101,7 @@ export class Leaderboard {
       accepted.push(g.gid);
     }
     await this.kv.put(`p:${rec.id}`, rec);
-    return { status: 200, body: { rating: rec.rating, games: rec.games, wins: rec.wins, peak: rec.peak, name: rec.name, season: rec.season, accepted, refused } };
+    return { status: 200, body: { rating: rec.rating, games: rec.games, wins: rec.wins, peak: rec.peak, name: rec.name, season: rec.season, sPeak: rec.sPeak, sGames: rec.sGames, sWins: rec.sWins, accepted, refused } };
   }
 
   /** POST /api/ranking: { id?, secret? } → top players and the caller's place. */

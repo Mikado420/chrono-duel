@@ -191,6 +191,8 @@ label.line { display: grid; gap: 6px; font-weight: 700; }
 
 /* battle log: beside the board when there is room, otherwise a panel that slides in from the log button */
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+/* no double-tap zoom anywhere (iOS ignores user-scalable=no): a quick second tap as a game ends must not enlarge the result screen */
+html, body { touch-action: manipulation; }
 /* pinned so iOS cannot leave the page scrolled after a rotation */
 body { position: fixed; inset: 0; }
 #log { position: fixed; right: 20px; top: 20px; bottom: 20px; width: 280px; display: none; flex-direction: column; gap: 6px; padding: 16px; background: rgba(8, 20, 28, .72); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; z-index: 5; pointer-events: none; }
