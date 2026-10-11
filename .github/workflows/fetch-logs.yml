@@ -1,0 +1,65 @@
+# 対戦記録を暗号化して取り出す（分析用）: Actions → Fetch game logs → Run workflow
+#   Downloads every game record of a version from the online server (needs Variables > ONLINE_URL and
+#   Secrets > ADMIN_TOKEN), encrypts it with the public key below and pushes it to the `logs-enc` branch.
+#   The repository is public, so the records are never stored in the clear; only the holder of the private key
+#   (the analysis session that made it) can read them. Replace the key when a new session needs the records.
+name: Fetch game logs
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'バージョン（空なら最新）'
+        default: '0.22.0'
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Download records
+        env:
+          SERVER: ${{ vars.ONLINE_URL }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          VER: ${{ inputs.version }}
+        run: npx tsx src/sim/logs.ts "$SERVER" "$ADMIN_TOKEN" $VER > /dev/null
+      - name: Encrypt and push
+        run: |
+          set -e
+          cat > /tmp/pub.pem <<'EOF'
+          -----BEGIN PUBLIC KEY-----
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAwC0fuESdXa+LCO1C3/x5
+          1Goyq3lpE1iO2JFSADuxzpVzJ09a17OAJcuZwUBNbgQna/5uG4W4RQogAjbX40Th
+          yVKG+PdVEve852hX1yqaXcppcB3er1xixH7QVda2LS92qfRBDwK+781Utwra0b24
+          1AWQxFgoP4xvjaQtolUnNPmBPdTYvfnTo6YTAy7q3Emop5IMtWz4znmvg3XTPeqO
+          u9841OMxk7yBzvERC04cb+J7ZOQQUfsmsfueOra5/crKGPttQPSi06ixZhKdsQuz
+          1pn7lclgYQEQYMb7a7BG227FP6yEXtbbf1IO7E1d+qydovkxrHN9DCUIhar93qX2
+          swVvsMqifV2YHDhUOHbwLdOB1VdOwz93LJEXxZbAAqv9vIErrA2c8vJbJS6CFFxV
+          SBcmBG6atZVze39YgPqjVc4UmEe6vo0jZ+gtbsVSYlheD4a0NrJsSHUSSitu9gzZ
+          eWFq6eNzHr9ulC8VgXfplb54IOGKRIbXsw6K2jqxcITpAgMBAAE=
+          -----END PUBLIC KEY-----
+          EOF
+          sed -i 's/^ *//' /tmp/pub.pem
+          mkdir -p /tmp/enc
+          for f in logs/*.jsonl; do
+            b=$(basename "$f" .jsonl)
+            openssl rand -out /tmp/k 32
+            gzip -9c "$f" | openssl enc -aes-256-cbc -pbkdf2 -salt -pass file:/tmp/k -out "/tmp/enc/$b.jsonl.gz.enc"
+            openssl pkeyutl -encrypt -pubin -inkey /tmp/pub.pem -pkeyopt rsa_padding_mode:oaep -in /tmp/k -out "/tmp/enc/$b.key.enc"
+            echo "$b: $(wc -l < "$f") games"
+          done
+          rm -f /tmp/k
+          cd /tmp/enc
+          git init -q -b logs-enc
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A && git commit -qm "encrypted game logs ($(date -u +%F))"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" logs-enc
