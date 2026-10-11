@@ -12,7 +12,7 @@ import { COLORS, DESIGN } from './render/theme';
 import { Tweener } from './render/tween';
 import { PackOpenScene } from './render/packOpen';
 import { MIN_ACTIONS, applyReward, canOpen, localDate, openPack, packById, reward, type Reward } from './meta/economy';
-import { bump, dailyView, grantEventPrize, grantSeasonReward, recordBattle, recordMatch, track } from './meta/progress';
+import { bump, dailyView, grantEventPrize, grantPersonalGift, grantSeasonReward, recordBattle, recordMatch, track } from './meta/progress';
 import { haptics } from './render/haptics';
 import { LOOKS, PITY, refundRetired } from './meta/economy';
 import { deckKey, deckLook, favCard, shownTitle } from './ui/profile';
@@ -23,7 +23,7 @@ import { eventOf, eventProgress, recordEventGame } from './meta/events';
 import { levelOfLv } from './core/ai';
 import { quirksOf, type RivalCfg } from './core/rival';
 import { rivalById, rivalCfg, rivalDeckCards, rivalDeckName } from './meta/roster';
-import { deckBook, loadReplay, refreshDeckBook, replayFromHash, replayLink, reportMatch, saveLiveGame, shareReplay, syncRated, takeLiveGame } from './net/api';
+import { deckBook, fetchGifts, loadReplay, refreshDeckBook, replayFromHash, replayLink, reportMatch, saveLiveGame, shareReplay, syncRated, takeLiveGame } from './net/api';
 import type { GameLog } from './core/gamelog';
 import type { SharedReplay } from './server/replays';
 import { bookKey, listFor } from './meta/deckbook';
@@ -307,7 +307,12 @@ async function boot() {
     store.saveRated();
     if (g) pendingNotice = [pendingNotice, `前回のレート戦は途中で終了したため敗北として記録されました（レート ${g.before} → ${g.after}）`].filter(Boolean).join('\n');
   }
-  void syncRated();
+  // gifts the server holds for this player alone (after the rated record exists there)
+  void syncRated().then(() => fetchGifts()).then((gs) => {
+    let n = 0;
+    for (const g of gs) if (grantPersonalGift(store.meta, g, localDate())) n++;
+    if (n) { store.saveMeta(); screens.presentsChanged(); }
+  });
   void refreshDeckBook();
   // a game against the AI left unfinished last time (app closed) is still recorded, as abandoned
   const leftOver = takeLiveGame();

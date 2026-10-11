@@ -34,6 +34,15 @@ export const rankDay = (ms: number) => new Date(ms + 9 * 3600_000).toISOString()
 export const MIN_GAME_MS = 60_000;
 export const MIN_ACTIONS = 5;
 
+/**
+ * Gifts for one player. `name` is the player name the gift is for; only the oldest record with that name gets it
+ * (someone who renames themselves later does not). The client puts it in the present box once (by `id`).
+ */
+export interface PersonalGift { id: string; name: string; from: string; text: string; prize: { coins?: number; tickets?: number; looks?: string[] } }
+export const PERSONAL_GIFTS: PersonalGift[] = [
+  { id: 'pg-archive-sakaphone', name: 'sakaphone', from: '運営', text: 'テーマ「記憶の書庫」一式', prize: { looks: ['dial:archive', 'back:archive', 'mat:archive'] } },
+];
+
 export type ApiResult = { status: number; body: unknown };
 const bad = (status: number, error: string): ApiResult => ({ status, body: { error } });
 
@@ -104,6 +113,20 @@ export class Leaderboard {
     return { status: 200, body: { rating: rec.rating, games: rec.games, wins: rec.wins, peak: rec.peak, name: rec.name, season: rec.season, sPeak: rec.sPeak, sGames: rec.sGames, sWins: rec.sWins, accepted, refused } };
   }
 
+  /** POST /api/gifts: { id, secret } → the gifts meant for this player. */
+  async gifts(body: { id?: unknown; secret?: unknown }): Promise<ApiResult> {
+    if (!validId(body.id) || !validId(body.secret)) return bad(400, 'bad id');
+    const rec = await this.kv.get<PlayerRec>(`p:${body.id}`);
+    if (!rec || rec.key !== (await sha(`${body.id}:${body.secret}`))) return { status: 200, body: { gifts: [] } };
+    const mine = PERSONAL_GIFTS.filter((g) => g.name.toLowerCase() === rec.name.toLowerCase());
+    if (!mine.length) return { status: 200, body: { gifts: [] } };
+    // the gift goes to the first player who took the name, not to whoever uses it now
+    const same = (await this.kv.list<PlayerRec>('p:')).filter((p) => p.name.toLowerCase() === rec.name.toLowerCase());
+    const first = same.sort((a, b) => a.created - b.created)[0];
+    const gifts = first?.id === rec.id ? mine.map(({ id, from, text, prize }) => ({ id, from, text, prize })) : [];
+    return { status: 200, body: { gifts } };
+  }
+
   /** POST /api/ranking: { id?, secret? } → top players and the caller's place. */
   async ranking(body: { id?: unknown; secret?: unknown }, limit = 50): Promise<ApiResult> {
     // the ranking is per season: players who have not been back since the ranks were redrawn or a season turned are
@@ -142,6 +165,7 @@ export async function handleApi(lb: Leaderboard, path: string, method: string, b
   if (method !== 'POST') return bad(405, 'use POST');
   if (path === '/api/rated') return lb.submit(b);
   if (path === '/api/ranking') return lb.ranking(b);
+  if (path === '/api/gifts') return lb.gifts(b);
   if (more.transfer && path === '/api/transfer/issue') return more.transfer.issue(b);
   if (more.transfer && path === '/api/transfer/redeem') return more.transfer.redeem(b);
   if (more.replays && path === '/api/replay/save') return more.replays.save(b);

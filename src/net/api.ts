@@ -115,6 +115,14 @@ async function syncOnce(): Promise<boolean> {
   return r.outbox.length === 0;
 }
 
+/** Gifts the server holds for this player (into the present box once each). */
+export interface PersonalGiftRes { gifts: { id: string; from: string; text: string; prize: { coins?: number; tickets?: number; looks?: string[] } }[] }
+export async function fetchGifts(): Promise<PersonalGiftRes['gifts']> {
+  const acc = store.account();
+  const r = await post<PersonalGiftRes>('/api/gifts', { id: acc.id, secret: acc.secret });
+  return Array.isArray(r?.gifts) ? r.gifts : [];
+}
+
 // ------------------------------------------------------------------ play statistics
 const OUTBOX = 'cd.matchOutbox';
 function readOutbox(): MatchReport[] { try { return JSON.parse(localStorage.getItem(OUTBOX) ?? '[]') as MatchReport[]; } catch { return []; } }

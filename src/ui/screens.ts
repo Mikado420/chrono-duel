@@ -594,10 +594,13 @@ export class Screens {
     this.host.root.append(wrap);
     return { wrap, close, body: bodyEl, foot: footEl };
   }
+  /** Something arrived in the present box from outside a screen (a gift from the server): redraw the badge. */
+  presentsChanged() { this.refreshHub(); }
   private refreshHub() { if (this.host.root.querySelector('.hub')) this.openTab(this.tab); }
   private grant(p: Prize, from: string) {
     if (p.coins) store.wallet.coins += p.coins;
     if (p.tickets) store.wallet.tickets += p.tickets;
+    if (p.looks?.length) store.wallet.looks = [...new Set([...(store.wallet.looks ?? []), ...p.looks])];
     store.saveWallet(); store.saveMeta();
     audio.play('coin');
     this.toast(`${from}：${prizeText(p)}を受け取りました`);
@@ -695,7 +698,9 @@ export class Screens {
     const seen = m.presentsSeen ?? 0;
     m.presentsSeen = m.seq; store.saveMeta();
     let cur: 'box' | 'log' = 'box';
-    const icon = (p: Prize) => h('span', { class: 'ic' }, h('span', { class: p.tickets ? 'ic-ticket' : 'ic-coin' }), h('span', { class: 'q' }, p.tickets ? `×${p.tickets}` : `×${p.coins}`));
+    const icon = (p: Prize) => p.looks?.length && !p.coins && !p.tickets
+      ? h('span', { class: 'ic' }, h('span', { style: 'display:inline-grid;width:26px;height:26px;color:var(--gold-hi)', html: ICON.gift }), h('span', { class: 'q' }, `×${p.looks.length}`))
+      : h('span', { class: 'ic' }, h('span', { class: p.tickets ? 'ic-ticket' : 'ic-coin' }), h('span', { class: 'q' }, p.tickets ? `×${p.tickets}` : `×${p.coins}`));
     const ref = this.sheet('プレゼント', ICON.gift, [], [], () => this.refreshHub());
     const render = () => {
       const tabs = h('div', { class: 'seg2' },

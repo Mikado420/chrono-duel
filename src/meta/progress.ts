@@ -1,10 +1,21 @@
 import type { EventProgress } from './events';
+import { THEMES, lookById } from './economy';
 /**
  * Long-term progression shown on the home screen: player rank, login bonus, daily and beginner missions,
  * the present box and news. Pure logic over a serializable `Meta` object (the UI stores it).
  */
-export type Prize = { coins?: number; tickets?: number };
-export const prizeText = (p: Prize) => [p.coins ? `コイン ${p.coins}` : '', p.tickets ? `パックチケット ${p.tickets}枚` : ''].filter(Boolean).join('・');
+/** `looks`: clock faces, sleeves and playmats (ids from LOOKS). */
+export type Prize = { coins?: number; tickets?: number; looks?: string[] };
+/** The looks of a prize in words: a whole theme by its name, single looks by theirs. */
+function looksText(ids: string[]): string {
+  const left = [...ids], out: string[] = [];
+  for (const t of THEMES) {
+    const set = [`dial:${t.id}`, `back:${t.id}`, `mat:${t.id}`];
+    if (set.every((x) => left.includes(x))) { out.push(`テーマ「${t.name}」一式`); set.forEach((x) => left.splice(left.indexOf(x), 1)); }
+  }
+  return [...out, ...left.map((x) => `「${lookById(x)?.name ?? x}」`)].join('・');
+}
+export const prizeText = (p: Prize) => [p.coins ? `コイン ${p.coins}` : '', p.tickets ? `パックチケット ${p.tickets}枚` : '', p.looks?.length ? looksText(p.looks) : ''].filter(Boolean).join('・');
 
 export interface Present { id: string; from: string; text: string; prize: Prize; at: string }
 export interface Meta {
@@ -78,7 +89,7 @@ export function claimPresents(m: Meta, ids?: string[], today = ''): Prize {
   const take = m.presents.filter((p) => !ids || ids.includes(p.id));
   m.presents = m.presents.filter((p) => !take.includes(p));
   m.presentLog = [...take.map((p) => ({ from: p.from, text: p.text, prize: p.prize, at: p.at, got: today })), ...(m.presentLog ?? [])].slice(0, 50);
-  return take.reduce<Prize>((a, p) => ({ coins: (a.coins ?? 0) + (p.prize.coins ?? 0), tickets: (a.tickets ?? 0) + (p.prize.tickets ?? 0) }), {});
+  return take.reduce<Prize>((a, p) => ({ coins: (a.coins ?? 0) + (p.prize.coins ?? 0), tickets: (a.tickets ?? 0) + (p.prize.tickets ?? 0), looks: [...new Set([...(a.looks ?? []), ...(p.prize.looks ?? [])])] }), {});
 }
 
 // ------------------------------------------------------------------ login bonus
@@ -98,6 +109,14 @@ export function grantGifts(m: Meta, today: string): number {
     n++;
   }
   return n;
+}
+/** A gift for this player alone (from the server); given once into the present box. True if it is new. */
+export function grantPersonalGift(m: Meta, g: { id: string; from: string; text: string; prize: Prize }, today: string): boolean {
+  m.giftsGot ??= [];
+  if (m.giftsGot.includes(g.id)) return false;
+  m.giftsGot.push(g.id);
+  give(m, g.from, g.text, g.prize, today);
+  return true;
 }
 export function checkLogin(m: Meta, today: string): number | null {
   rollDay(m, today);

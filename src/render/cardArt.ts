@@ -1,5 +1,5 @@
 import { artBack, isArtBack } from './looks';
-import { CARD_LIST, RARITY_NAMES, cardDef, setOf, type CardDef } from '../core/cards';
+import { CARD_LIST, cardDef, setOf, type CardDef } from '../core/cards';
 import { CSS, FONTS } from './theme';
 
 /** Procedural card art and card faces drawn with Canvas2D, shared by the Pixi board and the DOM deck editor. */
@@ -121,7 +121,7 @@ let picBase = './cards/';
 export function setCardPicBase(base: string) { picBase = base; }
 let picsLoading: Promise<void> | null = null;
 export function loadCardPics(maxMs = 6000): Promise<void> {
-  picsLoading ??= Promise.all(CARD_LIST.filter((c) => !c.token).map((c) => new Promise<void>((res) => {
+  picsLoading ??= Promise.all(CARD_LIST.filter((c) => !c.token && setOf(c) !== 'gear').map((c) => new Promise<void>((res) => {
     const img = new Image();
     img.onload = () => { pics.set(c.id, img); res(); };
     img.onerror = () => res();
@@ -226,103 +226,160 @@ function wrapText(c: Ctx, text: string, maxW: number): string[] {
   return lines;
 }
 
-const RARITY_EDGE: Record<string, [string, string]> = { C: ['#7d8b8f', '#3b4549'], R: ['#8fd9c8', '#2b6f63'], E: ['#d9b8ff', '#5a2f94'], L: ['#ffe29a', '#a8741f'] };
+/** Frame metal by rarity (light, mid, dark): steel, teal, violet, gold. The rarity is shown by this alone. */
+const RARITY_FRAME: Record<string, [string, string, string]> = {
+  C: ['#d5dde0', '#5b666b', '#2e3538'], R: ['#c4f5e8', '#2b8f7c', '#14463d'],
+  E: ['#ead8ff', '#7444c0', '#331a5c'], L: ['#fff3c2', '#c08a22', '#5e3f05'],
+};
+/** Units and spells: the plate under the art, and the crest (top right) that names the kind. */
+const KIND_LOOK = {
+  unit: { plate: '#13232a', crest: '#3a2414', ring: '#e9a061' },
+  spell: { plate: '#1b1730', crest: '#241a46', ring: '#c9a8ff' },
+};
+const BELL_PATH = 'M22 2c2.2 0 3 1.6 3 3.2 7.5 1.6 11 8 11 17 0 6 2 9 6 12v3H2v-3c4-3 6-6 6-12 0-9 3.5-15.4 11-17C19 3.6 19.8 2 22 2z';
+const SWORD_PATH = 'M19 3l2 0 0 2-9.5 9.5-2-2z M6 13l5 5-1.5 1.5-1.5-1.5-3 3-1.5-1.5 3-3-1.5-1.5z';
+const GLASS_PATH = 'M6 2h12v2c0 4-3 6-4.5 8C15 14 18 16 18 20v2H6v-2c0-4 3-6 4.5-8C9 10 6 8 6 4z';
+const SAND_PATH = 'M9 20c0-2 2-3.5 3-4.5 1 1 3 2.5 3 4.5z';
 
 export const CARD_W = 340, CARD_H = 476;
+/** The card's outline, `i` pixels in: units are rounded, spells have their corners cut (an octagon). */
+function cardShape(c: Ctx, spell: boolean, i: number) {
+  const x0 = i, y0 = i, x1 = CARD_W - i, y1 = CARD_H - i;
+  if (!spell) { rr(c, x0, y0, x1 - x0, y1 - y0, Math.max(4, 24 - i)); return; }
+  const k = 30 - i * 0.414; // keeps the cut edges parallel
+  c.beginPath();
+  c.moveTo(x0 + k, y0); c.lineTo(x1 - k, y0); c.lineTo(x1, y0 + k); c.lineTo(x1, y1 - k);
+  c.lineTo(x1 - k, y1); c.lineTo(x0 + k, y1); c.lineTo(x0, y1 - k); c.lineTo(x0, y0 + k); c.closePath();
+}
 const faceCache = new Map<string, HTMLCanvasElement>();
-/** Full card face at 2x (logical 170x238). */
+/**
+ * Full card face at 2x (logical 170x238), in the 透かし機構 style: a metal frame whose colour is the rarity, the
+ * art over the top half fading into a notched plate, the cost in a brass bell, and the kind told twice — by the
+ * outline (units rounded, spells octagonal) and by the crest (a sword or an hourglass).
+ */
 export function cardFace(id: string): HTMLCanvasElement {
   const hit = faceCache.get(id);
   if (hit) return hit;
   const d = cardDef(id);
-  const W = CARD_W, H = CARD_H;
+  const W = CARD_W, H = CARD_H, F = 9;
+  const spell = d.kind === 'spell';
+  const look = KIND_LOOK[d.kind];
+  const [r1, r2, r3] = RARITY_FRAME[d.rarity] ?? RARITY_FRAME.C;
   const cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
   const c = cv.getContext('2d')!;
-  const [e1, e2] = RARITY_EDGE[d.rarity];
-  // outer frame
-  const fg = c.createLinearGradient(0, 0, W, H); fg.addColorStop(0, e1); fg.addColorStop(0.5, e2); fg.addColorStop(1, e1);
-  rr(c, 0, 0, W, H, 22); c.fillStyle = fg; c.fill();
-  rr(c, 6, 6, W - 12, H - 12, 17);
-  const bg = c.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, d.kind === 'unit' ? '#132a33' : '#1d1a33'); bg.addColorStop(1, '#070e12');
-  c.fillStyle = bg; c.fill();
-  // art window
-  const ax = 18, ay = 64, aw = W - 36, ah = 190;
-  c.save(); rr(c, ax, ay, aw, ah, 10); c.clip(); c.drawImage(cardArt(id, aw, ah), ax, ay);
+  // frame
+  const fg = c.createLinearGradient(0, 0, W, H);
+  fg.addColorStop(0, r1); fg.addColorStop(0.45, r2); fg.addColorStop(0.6, r1); fg.addColorStop(1, r3);
+  cardShape(c, spell, 0); c.fillStyle = fg; c.fill();
+  // inside: art, then the plate
+  c.save(); cardShape(c, spell, F); c.clip();
+  c.fillStyle = look.plate; c.fillRect(0, 0, W, H);
+  const artH = 292;
+  c.drawImage(cardArt(id, W - 2 * F, artH), F, F);
   if (d.rarity === 'L' || d.rarity === 'E') {
     // foil: a soft prismatic sheen across the art
-    const fo = c.createLinearGradient(ax, ay, ax + aw, ay + ah);
+    const fo = c.createLinearGradient(F, F, W - F, F + artH);
     const hues = d.rarity === 'L' ? ['255,120,120', '255,220,120', '140,255,190', '120,190,255', '220,140,255'] : ['190,140,255', '140,200,255', '230,160,255'];
-    hues.forEach((hu, i) => fo.addColorStop(i / (hues.length - 1), `rgba(${hu},0.16)`));
-    c.globalCompositeOperation = 'overlay'; c.fillStyle = fo; c.fillRect(ax, ay, aw, ah); c.globalCompositeOperation = 'source-over';
+    hues.forEach((hu, i) => fo.addColorStop(i / (hues.length - 1), `rgba(${hu},0.14)`));
+    c.globalCompositeOperation = 'overlay'; c.fillStyle = fo; c.fillRect(F, F, W - 2 * F, artH); c.globalCompositeOperation = 'source-over';
   }
+  const fade = c.createLinearGradient(0, F + artH * 0.58, 0, F + artH);
+  fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(1, look.plate);
+  c.fillStyle = fade; c.fillRect(F, F + artH * 0.58, W - 2 * F, artH * 0.42 + 1);
+  const pt = F + 255, notch = 27;
+  c.beginPath();
+  c.moveTo(0, pt + notch); c.lineTo(W * 0.28, pt + notch); c.lineTo(W * 0.34, pt); c.lineTo(W * 0.66, pt); c.lineTo(W * 0.72, pt + notch); c.lineTo(W, pt + notch); c.lineTo(W, H); c.lineTo(0, H); c.closePath();
+  c.fillStyle = look.plate; c.fill();
   c.restore();
-  rr(c, ax, ay, aw, ah, 10); c.strokeStyle = e1; c.globalAlpha = 0.7; c.lineWidth = 2; c.stroke(); c.globalAlpha = 1;
+  if (d.rarity === 'L') {
+    // a legend's frame glows a little on its inner edge
+    c.save(); cardShape(c, spell, F); c.shadowColor = 'rgba(255,214,110,0.9)'; c.shadowBlur = 10; c.strokeStyle = 'rgba(255,240,190,0.85)'; c.lineWidth = 1.5; c.stroke(); c.restore();
+  } else {
+    c.save(); cardShape(c, spell, F); c.strokeStyle = 'rgba(0,0,0,0.45)'; c.lineWidth = 1.5; c.stroke(); c.restore();
+  }
   // name
-  c.fillStyle = CSS.ivory; c.font = `700 30px ${FONTS.display}`; c.textBaseline = 'middle';
-  let fs = 30; while (c.measureText(d.name).width > W - 130 && fs > 20) { fs -= 1; c.font = `700 ${fs}px ${FONTS.display}`; }
-  c.fillText(d.name, 96, 36);
-  // cost medallion (a tiny clock)
-  const mx = 50, my = 38;
-  c.beginPath(); c.arc(mx, my, 30, 0, Math.PI * 2); const mg = c.createRadialGradient(mx - 8, my - 8, 2, mx, my, 30); mg.addColorStop(0, '#fff1c9'); mg.addColorStop(1, '#b8862f'); c.fillStyle = mg; c.fill();
-  c.strokeStyle = '#3b2a0e'; c.lineWidth = 2; c.stroke();
-  c.strokeStyle = 'rgba(59,42,14,0.7)'; c.lineWidth = 1.5;
-  for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; c.beginPath(); c.moveTo(mx + Math.cos(a) * 24, my + Math.sin(a) * 24); c.lineTo(mx + Math.cos(a) * 28, my + Math.sin(a) * 28); c.stroke(); }
-  c.fillStyle = '#23180a'; c.font = `700 32px ${FONTS.num}`; c.textAlign = 'center'; c.fillText(String(d.cost), mx, my + 2); c.textAlign = 'left';
-  // kind + rarity strip
-  const kind = d.kind === 'unit' ? 'ユニット' : '術';
+  c.fillStyle = CSS.ivory; c.textAlign = 'center'; c.textBaseline = 'middle';
+  let fs = 24; c.font = `700 ${fs}px ${FONTS.display}`;
+  while (c.measureText(d.name).width > W - 60 && fs > 16) { fs -= 1; c.font = `700 ${fs}px ${FONTS.display}`; }
+  c.shadowColor = 'rgba(0,0,0,0.8)'; c.shadowBlur = 6;
+  c.fillText(d.name, W / 2, pt + 21);
+  c.shadowBlur = 0; c.textAlign = 'left';
+  // rules text: as large as fits above the stats (units) or the bottom edge (spells)
+  const tx = 26, tw = W - 52, top = pt + 50, bottom = spell ? H - 22 : H - 78;
   const kw = (d.keywords ?? []).map((k) => ({ taunt: '挑発', pierce: '貫通', swift: '速攻', shift: '転移' })[k]).join('・');
-  c.font = `500 17px ${FONTS.body}`; c.fillStyle = e1;
-  c.fillText(`${kind}${d.rarity !== 'C' ? ` ・ ${RARITY_NAMES[d.rarity]}` : ''}`, 22, 274);
-  if (setOf(d) !== 'base') {
-    // set mark: a small ripple and the set's number
-    c.save(); c.translate(W - 34, 268); c.strokeStyle = e1; c.lineWidth = 1.6; c.globalAlpha = 0.9;
-    c.beginPath(); c.arc(-8, 0, 3, 0, Math.PI * 2); c.stroke();
-    for (const rr2 of [7, 11]) { c.beginPath(); c.arc(-8, 0, rr2, -0.8, 0.8); c.stroke(); }
-    c.font = `700 14px ${FONTS.num}`; c.fillStyle = e1; c.textAlign = 'right'; c.fillText('I', 14, 1);
-    c.restore();
+  const kwOnly = !spell && !!kw && d.text === kw;
+  let size = 18;
+  type Block = { lines: string[]; lh: number; font: string; color: string; label?: boolean };
+  let blocks: Block[] = [];
+  for (; size >= 13; size--) {
+    const lh = Math.round(size * 1.42);
+    blocks = [];
+    c.font = `500 ${size}px ${FONTS.body}`;
+    if (d.text) blocks.push({ lines: kwOnly ? [kw] : wrapText(c, d.text, tw), lh, font: kwOnly ? `700 ${size}px ${FONTS.body}` : `500 ${size}px ${FONTS.body}`, color: kwOnly ? CSS.brass : CSS.ivory });
+    if (spell && d.resvText) blocks.push({ lines: wrapText(c, d.resvText, tw - size * 3.4), lh, font: `500 ${size}px ${FONTS.body}`, color: '#e9d9ae', label: true });
+    const used = blocks.reduce((n, b) => n + b.lines.length * b.lh, 0) + (blocks.length > 1 ? 4 : 0);
+    if (top + used <= bottom) break;
   }
-  // rules text
-  const tx = 22, tw = W - 44;
-  let y = 304;
-  c.font = `500 19px ${FONTS.body}`; c.fillStyle = CSS.ivory;
-  const body = d.kind === 'unit' ? d.text : d.text;
-  const lines = body ? wrapText(c, body, tw) : [];
-  if (kw && d.kind === 'unit' && d.text === kw) lines.splice(0, lines.length, kw);
-  for (const l of lines) { c.fillText(l, tx, y); y += 25; }
-  if (d.kind === 'spell' && d.resvText) {
-    y += 4;
-    c.font = `700 16px ${FONTS.body}`; c.fillStyle = CSS.brass; c.fillText('予約時', tx, y);
-    c.font = `500 18px ${FONTS.body}`; c.fillStyle = '#e9d9ae';
-    const rl = wrapText(c, d.resvText, tw - 58);
-    rl.forEach((l, i) => c.fillText(l, tx + 58, y + i * 23));
-    y += rl.length * 23;
-  }
-  // flavor
-  if (y < 390) {
-    c.font = `italic 400 16px ${FONTS.display}`; c.fillStyle = 'rgba(241,231,208,0.55)';
-    wrapText(c, d.flavor, tw).slice(0, 2).forEach((l, i) => c.fillText(l, tx, Math.max(y + 8, 372) + i * 21));
-  }
-  // stats
-  if (d.kind === 'unit') {
-    const gem = (x: number, color: string, label: string, v: number) => {
-      c.save(); c.translate(x, H - 44);
-      c.beginPath(); c.moveTo(0, -28); c.lineTo(28, 0); c.lineTo(0, 28); c.lineTo(-28, 0); c.closePath();
-      const gg = c.createLinearGradient(0, -28, 0, 28); gg.addColorStop(0, color); gg.addColorStop(1, '#10181b');
-      c.fillStyle = gg; c.fill(); c.strokeStyle = 'rgba(255,255,255,0.5)'; c.lineWidth = 1.5; c.stroke();
-      c.fillStyle = '#fff'; c.font = `700 30px ${FONTS.num}`; c.textAlign = 'center'; c.fillText(String(v), 0, 2);
-      c.font = `500 13px ${FONTS.body}`; c.fillStyle = color; c.fillText(label, 0, -36); c.restore();
+  let y = top;
+  c.textBaseline = 'middle';
+  blocks.forEach((b, bi) => {
+    if (bi) y += 4;
+    if (b.label) { c.font = `700 ${size}px ${FONTS.body}`; c.fillStyle = CSS.brass; c.fillText('予約時', tx, y); }
+    c.font = b.font; c.fillStyle = b.color;
+    b.lines.forEach((l, i) => c.fillText(l, b.label ? tx + size * 3.4 : tx, y + i * b.lh));
+    y += b.lines.length * b.lh;
+  });
+  // flavor, when there is room
+  c.font = `italic 400 15px ${FONTS.display}`;
+  const fl = wrapText(c, d.flavor, tw).slice(0, 2);
+  if (y + 6 + fl.length * 20 <= bottom + 4) { c.fillStyle = 'rgba(241,231,208,0.5)'; fl.forEach((l, i) => c.fillText(l, tx, y + 8 + i * 20)); }
+  // stats: attack and health jewels, the reload as dots between them
+  if (!spell) {
+    const sy = H - 46;
+    const jewel = (x: number, color: string, v: number) => {
+      c.save(); c.translate(x, sy);
+      c.beginPath(); c.moveTo(0, -31); c.lineTo(31, 0); c.lineTo(0, 31); c.lineTo(-31, 0); c.closePath();
+      const gg = c.createLinearGradient(-22, -22, 22, 22); gg.addColorStop(0, color); gg.addColorStop(1, '#0d1518');
+      c.fillStyle = gg; c.fill(); c.strokeStyle = 'rgba(255,255,255,0.45)'; c.lineWidth = 2; c.stroke();
+      c.fillStyle = '#fff'; c.font = `700 26px ${FONTS.num}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(String(v), 0, 2);
+      c.restore();
     };
-    gem(52, CSS.atk, '攻撃', d.atk!);
-    gem(W - 52, CSS.hp, '体力', d.hp!);
-    // reload: small dial
-    c.save(); c.translate(W / 2, H - 44);
-    c.beginPath(); c.arc(0, 0, 22, 0, Math.PI * 2); c.fillStyle = '#0b1519'; c.fill(); c.strokeStyle = CSS.mute; c.lineWidth = 1.5; c.stroke();
-    c.beginPath(); c.moveTo(0, 0); c.arc(0, 0, 22, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * d.reload!) / 4); c.closePath(); c.fillStyle = 'rgba(143,169,173,0.35)'; c.fill();
-    c.fillStyle = CSS.ivory; c.font = `700 22px ${FONTS.num}`; c.textAlign = 'center'; c.fillText(String(d.reload), 0, 2);
-    c.font = `500 13px ${FONTS.body}`; c.fillStyle = CSS.mute; c.fillText('間隔', 0, -30);
-    c.restore();
+    jewel(52, '#e9674f', d.atk!);
+    jewel(W - 52, '#5fd0b5', d.hp!);
+    const n = Math.max(4, d.reload ?? 0);
+    for (let i = 0; i < n; i++) {
+      const x = W / 2 + (i - (n - 1) / 2) * 17;
+      c.beginPath(); c.arc(x, sy, 5.5, 0, Math.PI * 2);
+      if (i < (d.reload ?? 0)) { c.fillStyle = '#8fa9ad'; c.fill(); }
+      c.strokeStyle = '#8fa9ad'; c.lineWidth = 2; c.stroke();
+    }
   }
+  // cost: a brass bell
+  c.save(); c.translate(5, 3); c.scale(1.7, 1.7);
+  c.shadowColor = 'rgba(0,0,0,0.6)'; c.shadowBlur = 4; c.shadowOffsetY = 2;
+  const bg = c.createRadialGradient(15, 14, 1, 22, 22, 33); bg.addColorStop(0, '#fff3cf'); bg.addColorStop(0.55, '#d4a24a'); bg.addColorStop(1, '#6d4813');
+  c.fillStyle = bg; c.fill(new Path2D(BELL_PATH));
+  c.shadowColor = 'transparent';
+  c.strokeStyle = '#3b2a0e'; c.lineWidth = 1.4; c.stroke(new Path2D(BELL_PATH));
+  c.beginPath(); c.arc(22, 41.5, 3.6, 0, Math.PI * 2); c.fill(); c.lineWidth = 1.2; c.stroke();
+  c.restore();
+  c.fillStyle = '#22170a'; c.font = `700 32px ${FONTS.num}`; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(String(d.cost), 5 + 22 * 1.7, 3 + 23 * 1.7);
+  // kind crest: a sword for units, an hourglass for spells
+  const kx = W - 44, ky = 44;
+  c.save();
+  c.beginPath(); c.arc(kx, ky, 25, 0, Math.PI * 2);
+  c.shadowColor = 'rgba(0,0,0,0.5)'; c.shadowBlur = 6; c.shadowOffsetY = 2;
+  c.fillStyle = look.crest; c.fill();
+  c.shadowColor = 'transparent'; c.strokeStyle = look.ring; c.lineWidth = 2.5; c.stroke();
+  c.translate(kx - 17, ky - 17); c.scale(34 / 24, 34 / 24);
+  if (spell) {
+    c.strokeStyle = '#e5d6ff'; c.lineWidth = 1.8; c.lineJoin = 'round'; c.stroke(new Path2D(GLASS_PATH));
+    c.fillStyle = '#e5d6ff'; c.fill(new Path2D(SAND_PATH));
+  } else { c.fillStyle = '#ffd2a8'; c.fill(new Path2D(SWORD_PATH)); }
+  c.restore();
+  c.textAlign = 'left'; c.textBaseline = 'alphabetic';
   faceCache.set(id, cv);
   return cv;
 }

@@ -194,4 +194,19 @@ console.log(`rating after one hard win: ${r1}; ranking ok`);
   assert.deepEqual((y.body as { refused: string[] }).refused, ['d1'], 'the game already counted is refused, not counted again');
   assert.equal((x.body as { sGames: number }).sGames, 1, 'the season numbers come back too');
 }
+// a gift for one player: only the first record with that name gets it
+{
+  const lb4 = new Leaderboard(kv, () => now);
+  const P = { id: 'gift0000000000000000', secret: 'gift1111111111111111', name: 'sakaphone' };
+  const Q = { id: 'gift2222222222222222', secret: 'gift3333333333333333', name: 'さかな' };
+  await lb4.submit({ ...P, games: [] });
+  now += 1000;
+  await lb4.submit({ ...Q, games: [] });
+  await lb4.submit({ ...Q, name: 'SakaPhone', games: [] }); // renamed later: not the one the gift is for
+  const gp = (await lb4.gifts(P)).body as { gifts: { id: string }[] };
+  const gq = (await lb4.gifts(Q)).body as { gifts: { id: string }[] };
+  assert.deepEqual(gp.gifts.map((g) => g.id), ['pg-archive-sakaphone']);
+  assert.equal(gq.gifts.length, 0, 'a later player with the same name gets nothing');
+  assert.equal(((await lb4.gifts({ ...P, secret: 'wrongwrongwrongwrong' })).body as { gifts: unknown[] }).gifts.length, 0);
+}
 console.log('all rating tests passed');
