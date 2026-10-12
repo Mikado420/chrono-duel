@@ -62,8 +62,10 @@ for (let r = 900; r <= 2200; r += 50) {
 assert.equal(ROSTER.length, 120);
 assert.ok(ROSTER.every((x) => rivalById(rivalId(x)) === x && foeById(rivalId(x))!.rating === x.rating), 'every rival id resolves');
 // 第2弾 is not out: a rival whose main deck is 第2弾 brings its second deck
-const g2 = ROSTER.find((x) => x.deck.startsWith('g_'))!;
+const g2 = { ...ROSTER[0], deck: 'g_mid' };
 assert.equal(rivalDeck(g2, false), g2.sub);
+// every rival's decks exist and are legal
+assert.ok(ROSTER.every((x) => deckAvailable(x.deck) && deckAvailable(x.sub)), 'every roster deck is in the card pool');
 // a rival that lost last time sometimes switches decks
 const both = ROSTER.find((x) => !x.deck.startsWith('g_') && !x.sub.startsWith('g_'))!;
 const switched = Array.from({ length: 400 }, () => rivalDeck(both, true, rand)).filter((d) => d === both.sub).length;

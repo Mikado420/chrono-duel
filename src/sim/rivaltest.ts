@@ -6,6 +6,7 @@ import { determinize } from '../core/ai';
 import { guessDecks, guessWorld, likelyDeck, observe, type Seen } from '../core/infer';
 import { actor, apply, createGame, legalActions, mulberry32, type Action, type GameState } from '../core/engine';
 import { ROSTER, rivalCfg, rivalDeckCards } from '../meta/roster';
+import { planOf } from './rosterDecks';
 
 const rand = mulberry32(5);
 const unit = (card: string, atk: number, hp: number, ready = 0) => ({ uid: 900 + atk * 10 + hp, card, atk, hp, maxHp: hp, reload: 1, readyAt: ready, taunt: false, pierce: false });
@@ -79,7 +80,7 @@ assert.ok(new Set(ROSTER.map((r) => JSON.stringify(quirksOf(r.name)))).size > 20
   assert.equal(likelyDeck(guessDecks({ e_verna: 1, e_peek: 2, rewind: 1 })), null);
   const seen: Seen = { e_verna: 1, e_peek: 2, rewind: 2, e_pray: 1 };
   const g = guessDecks(seen);
-  assert.equal(likelyDeck(g), 'verna', JSON.stringify(g.slice(0, 3)));
+  assert.equal(planOf(likelyDeck(g) ?? ''), 'verna', JSON.stringify(g.slice(0, 3)));
   assert.ok(Math.abs(g.reduce((a, x) => a + x.p, 0) - 1) < 1e-9);
   assert.equal(likelyDeck(guessDecks({ scout: 1 })), null, 'one common card is not enough');
   // what is seen: the board, used spells and revealed reservations (never the hand)

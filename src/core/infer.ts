@@ -9,6 +9,7 @@ import { clone, other, resvRange, timeCost, type Action, type GameState, type Pl
 import { RULES } from './rules';
 import { META_DECKS } from '../sim/metaDecks';
 import { SET2_TEST_DECKS } from '../sim/set2Decks';
+import { ROSTER_DECKS, planOf } from '../sim/rosterDecks';
 
 export type Seen = Record<string, number>;
 export interface Guess { id: string | null; p: number }
@@ -17,7 +18,13 @@ const playable = (cards: string[]) => { try { cards.forEach((c) => cardDef(c)); 
 /** The decks a guess can be: every deck the rivals use and the starter decks (第2弾 ones once the set is out). */
 export function knownDecks(): { id: string; cards: string[] }[] {
   const out = new Map<string, string[]>();
-  for (const d of [...META_DECKS, ...SET2_TEST_DECKS, ...PRESET_DECKS]) if (!out.has(d.id) && playable(d.cards)) out.set(d.id, d.cards);
+  const lists = new Set<string>(); // the same list under two names counts once (the rivals' copy of an older deck)
+  for (const d of [...ROSTER_DECKS, ...META_DECKS, ...SET2_TEST_DECKS, ...PRESET_DECKS]) {
+    const key = [...d.cards].sort().join(',');
+    if (out.has(d.id) || lists.has(key) || !playable(d.cards)) continue;
+    out.set(d.id, d.cards);
+    lists.add(key);
+  }
   return [...out].map(([id, cards]) => ({ id, cards }));
 }
 
@@ -54,8 +61,19 @@ export function guessDecks(seen: Seen): Guess[] {
   return w.map((x) => ({ id: x.id, p: x.p / sum })).sort((a, b) => b.p - a.p);
 }
 /** The deck the opponent most likely plays, once the guess is good enough (60%). */
+/**
+ * The deck the opponent most likely plays, once its kind is clear: the builds of one kind (same 作戦, e.g. every
+ * ヴェルナループ) are added up, since they play alike, and the likeliest build of a kind that reaches 60% is named.
+ */
 export function likelyDeck(g: Guess[]): string | null {
-  return g[0] && g[0].id && g[0].p >= 0.6 ? g[0].id : null;
+  const byPlan = new Map<string, { p: number; top: string }>();
+  for (const x of g) {
+    if (!x.id) continue;
+    const k = planOf(x.id), e = byPlan.get(k);
+    if (e) e.p += x.p; else byPlan.set(k, { p: x.p, top: x.id }); // g is sorted, so the first build seen is the likeliest
+  }
+  const best = [...byPlan.values()].sort((a, b) => b.p - a.p)[0];
+  return best && best.p >= 0.6 ? best.top : null;
 }
 
 const COLLECTIBLE = () => CARD_LIST.filter((c) => !c.token);
