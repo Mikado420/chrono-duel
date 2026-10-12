@@ -128,6 +128,7 @@ export const expected = (me: number, them: number) => 1 / (1 + Math.pow(10, (the
 export const OPP_SPREAD = 60;
 /** New rating after one game against an opponent rated `opp`. `score` is 1 for a win, 0.5 for a draw, 0 for a loss. */
 export function nextRating(rating: number, games: number, opp: number, score: 0 | 0.5 | 1): number {
+  if (score === 0.5) return rating; // a draw (the same base hp at the end) moves nobody
   const k = games < PLACEMENT_GAMES ? K_PLACEMENT : K_NORMAL;
   const d = Math.round(k * (score - expected(rating, opp)));
   // never a zero-point win or a zero-point loss: every game moves the needle

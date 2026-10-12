@@ -1,15 +1,17 @@
-import { Container, Graphics, Sprite, Texture, type Text } from 'pixi.js';
+import { CanvasSource, Container, Graphics, Sprite, Texture, type Text } from 'pixi.js';
 import { cardDef } from '../core/cards';
 import type { PlayerIndex, Unit } from '../core/engine';
 import { RULES } from '../core/rules';
-import { CARD_H, CARD_W, cardBack, cardFace, raidBell, unitFace } from './cardArt';
+import { CARD_H, CARD_W, FACE_RES, cardBack, cardFace, raidBell, unitFace } from './cardArt';
 import { artBack, isArtBack } from './looks';
 import { COLORS, FONTS } from './theme';
 import { ease, type Tweener } from './tween';
 import { label } from './ui';
 
 const tex = new Map<string, Texture>();
-export function faceTex(id: string) { let t = tex.get('f:' + id); if (!t) { t = Texture.from(cardFace(id)); tex.set('f:' + id, t); } return t; }
+/** A texture for a canvas drawn at `res` pixels per unit: it keeps the logical size (width / res) on screen. */
+export const hiTex = (cv: HTMLCanvasElement, res = FACE_RES) => new Texture({ source: new CanvasSource({ resource: cv, resolution: res }) });
+export function faceTex(id: string) { let t = tex.get('f:' + id); if (!t) { t = hiTex(cardFace(id)); tex.set('f:' + id, t); } return t; }
 export function backTex(style = 'back:brass'): Texture { if (isArtBack(style) && !artBack(style)) return backTex('back:brass'); let t = tex.get('b:' + style); if (!t) { t = Texture.from(cardBack(style)); tex.set('b:' + style, t); } return t; }
 
 export const UNIT_W = 176, UNIT_H = 214;
@@ -49,7 +51,7 @@ export class UnitView extends Container {
       .roundRect(-W / 2 + 8, H / 2 + 5, W - 16, 6, 3).fill({ color: col, alpha: 0.35 })
       .roundRect(-W / 2 + 10, H / 2 + 6, W - 20, 4, 2).fill(col);
     const kw = [u.taunt ? '挑発' : '', u.pierce ? '貫通' : '', d.hook?.startsWith('resonate') ? '共鳴' : ''].filter(Boolean).join('・');
-    const face = new Sprite(Texture.from(unitFace(u.card, kw, u.reload)));
+    const face = new Sprite(hiTex(unitFace(u.card, kw, u.reload)));
     face.anchor.set(0.5); face.scale.set(0.5);
     this.atkTxt = label(String(u.atk), 24, 0xffffff, { font: FONTS.num, weight: '700', align: 'center' });
     this.hpTxt = label(String(u.hp), 24, 0xffffff, { font: FONTS.num, weight: '700', align: 'center' });

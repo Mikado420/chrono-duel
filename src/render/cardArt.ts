@@ -272,6 +272,11 @@ export function raidBell(cost: number): HTMLCanvasElement {
 }
 
 export const CARD_W = 340, CARD_H = 476;
+/**
+ * Card faces (and board units) are rendered at this many pixels per unit of CARD_W / CARD_H; their textures carry the
+ * same resolution (views.ts hiTex), so sizes on screen do not change — only the sharpness.
+ */
+export const FACE_RES = 2;
 /** The card's outline, `i` pixels in: units are rounded, spells have their corners cut (an octagon). */
 function cardShape(c: Ctx, spell: boolean, i: number) {
   const x0 = i, y0 = i, x1 = CARD_W - i, y1 = CARD_H - i;
@@ -296,8 +301,9 @@ export function cardFace(id: string): HTMLCanvasElement {
   const look = KIND_LOOK[d.kind];
   const [r1, r2, r3] = RARITY_FRAME[d.rarity] ?? RARITY_FRAME.C;
   const cv = document.createElement('canvas');
-  cv.width = W; cv.height = H;
+  cv.width = W * FACE_RES; cv.height = H * FACE_RES;
   const c = cv.getContext('2d')!;
+  c.scale(FACE_RES, FACE_RES); // drawn in the same coordinates, at FACE_RES × the pixels (sharp on 3x phone screens and in the zoom)
   // frame
   const fg = c.createLinearGradient(0, 0, W, H);
   fg.addColorStop(0, r1); fg.addColorStop(0.45, r2); fg.addColorStop(0.6, r1); fg.addColorStop(1, r3);
@@ -306,7 +312,7 @@ export function cardFace(id: string): HTMLCanvasElement {
   c.save(); cardShape(c, spell, F); c.clip();
   c.fillStyle = look.plate; c.fillRect(0, 0, W, H);
   const artH = 292;
-  c.drawImage(cardArt(id, W - 2 * F, artH), F, F);
+  c.drawImage(cardArt(id, (W - 2 * F) * FACE_RES, artH * FACE_RES), F, F, W - 2 * F, artH);
   if (d.rarity === 'L' || d.rarity === 'E') {
     // foil: a soft prismatic sheen across the art
     const fo = c.createLinearGradient(F, F, W - F, F + artH);
@@ -416,15 +422,16 @@ export function unitFace(id: string, kw: string, reload: number): HTMLCanvasElem
   const d = cardDef(id);
   const W = UNIT_FACE_W, H = UNIT_FACE_H, F = 10, plate = KIND_LOOK.unit.plate;
   const [r1, r2, r3] = RARITY_FRAME[d.rarity] ?? RARITY_FRAME.C;
-  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const cv = document.createElement('canvas'); cv.width = W * FACE_RES; cv.height = H * FACE_RES;
   const c = cv.getContext('2d')!;
+  c.scale(FACE_RES, FACE_RES);
   const fg = c.createLinearGradient(0, 0, W, H);
   fg.addColorStop(0, r1); fg.addColorStop(0.45, r2); fg.addColorStop(0.6, r1); fg.addColorStop(1, r3);
   rr(c, 0, 0, W, H, 32); c.fillStyle = fg; c.fill();
   c.save(); rr(c, F, F, W - 2 * F, H - 2 * F, 24); c.clip();
   c.fillStyle = plate; c.fillRect(0, 0, W, H);
   const artH = 260;
-  c.drawImage(cardArt(id, W - 2 * F, artH), F, F);
+  c.drawImage(cardArt(id, (W - 2 * F) * FACE_RES, artH * FACE_RES), F, F, W - 2 * F, artH);
   const fade = c.createLinearGradient(0, F + artH * 0.55, 0, F + artH);
   fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(1, plate);
   c.fillStyle = fade; c.fillRect(F, F + artH * 0.55, W - 2 * F, artH * 0.45 + 1);

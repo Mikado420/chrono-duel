@@ -983,12 +983,8 @@ function settle(s: GameState, ev: GameEvent[]) {
   }
   if (!s.over && !s.pending && actor(s) === -1) {
     const [a, b] = s.players;
-    let winner: PlayerIndex | -1 = a.hp > b.hp ? 0 : b.hp > a.hp ? 1 : -1;
-    if (winner === -1) {
-      const pow = (p: PlayerState) => p.field.reduce((n, u) => n + (u ? u.atk + u.hp : 0), 0);
-      const d = pow(a) - pow(b);
-      winner = d > 0 ? 0 : d < 0 ? 1 : -1;
-    }
+    // the same base hp is a draw (the board no longer breaks the tie)
+    const winner: PlayerIndex | -1 = a.hp > b.hp ? 0 : b.hp > a.hp ? 1 : -1;
     s.over = { winner, reason: 'time' };
     ev.push({ e: 'end', winner, reason: 'time' });
   }

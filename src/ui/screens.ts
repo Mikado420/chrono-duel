@@ -1421,7 +1421,7 @@ export class Screens {
       ? (kind === 'draw' ? `${RULES.END}刻に到達・同じ体力` : `${kind === 'win' ? watch[0] : watch[1]}の勝ち`)
       : {
         ko: win ? '相手の拠点を破壊した' : '拠点を破壊された',
-        time: `${RULES.END}刻に到達 ・ 体力の差で決着`,
+        time: kind === 'draw' ? `${RULES.END}刻に到達 ・ 同じ体力で引き分け` : `${RULES.END}刻に到達 ・ 体力の差で決着`,
         surrender: win ? `${foeLabel}が降参した` : '降参した',
         timeout: win ? `${foeLabel}が時間切れを重ねた` : '時間切れを重ねた',
         disconnect: win ? `${foeLabel}が戻ってこなかった` : '接続が戻らなかった',
@@ -1466,7 +1466,7 @@ export class Screens {
         gains,
         msBox,
         cap,
-        buttons.chips && buttons.chips.some(Boolean) ? h('div', { class: 'chips' }, ...buttons.chips) : null,
+        buttons.chips && buttons.chips.some(Boolean) ? h('div', { class: `chips n${buttons.chips.filter(Boolean).length}` }, ...buttons.chips) : null,
         h('div', { class: 'main-btns' }, ...buttons.main),
         buttons.foot ? h('div', { class: 'foot-note' }, buttons.foot) : null));
   }
@@ -1480,7 +1480,7 @@ export class Screens {
     const up = t1.min > t0.min, down = t1.min < t0.min;
     if (up) setTimeout(() => audio.play('rareE'), 900);
     return h('div', { class: `rated2 ${d >= 0 ? 'up' : 'down'}`, style: `--tier:${t1.color}` },
-      h('div', { class: 'rr' }, tierBadge(t1), h('span', { class: 'muted', style: 'font-size:13px' }, 'レート'), num, h('span', { class: 'delta' }, `${d >= 0 ? '+' : ''}${d}`)),
+      h('div', { class: 'rr' }, tierBadge(t1), h('span', { class: 'muted', style: 'font-size:13px' }, 'レート'), num, h('span', { class: 'delta' }, g.score === 0.5 && d === 0 ? '±0' : `${d >= 0 ? '+' : ''}${d}`)),
       h('small', {}, `対戦相手：${g.foe || '対戦相手'}（レート ${g.foeRating}）`),
       up ? h('div', { class: 'promo' }, `昇格！「${t1.name}」になりました`) : down ? h('small', {}, `「${t1.name}」に降格しました`) : null);
   }

@@ -34,6 +34,7 @@ assert.ok(Array.from({ length: 200 }, () => pickOpponent(800, rand)).every((l) =
 const upHard = nextRating(1000, 50, AI_RATING.hard, 1) - 1000, upEasy = nextRating(1000, 50, AI_RATING.easy, 1) - 1000;
 assert.ok(upHard > upEasy && upEasy >= 1, 'bigger gain against a stronger AI');
 assert.ok(nextRating(1000, 50, AI_RATING.easy, 0) < 1000);
+assert.equal(nextRating(1500, 50, 1800, 0.5), 1500, "a draw moves nobody"); assert.equal(nextRating(1500, 3, 1200, 0.5), 1500);
 assert.ok(nextRating(1000, 0, AI_RATING.normal, 1) - 1000 > nextRating(1000, 50, AI_RATING.normal, 1) - 1000, 'placement games swing more');
 assert.ok(nextRating(2400, 50, AI_RATING.expert, 1) > 2400, 'a win always gains');
 assert.equal(nextRating(100, 50, AI_RATING.expert, 0), 100, 'floor');

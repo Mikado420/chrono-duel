@@ -17,7 +17,7 @@ import type { Fx } from './fx';
 import { COLORS, FONTS } from './theme';
 import { ease, type Tweener } from './tween';
 import { Button, label } from './ui';
-import { backTex, faceTex } from './views';
+import { backTex, faceTex, hiTex } from './views';
 
 function drawRays(g: Graphics, n: number, w: number, color: number) {
   g.clear();
@@ -386,7 +386,7 @@ export class PackOpenScene extends Container {
     dim.eventMode = 'static';
     dim.on('pointertap', () => this.spotDone?.());
     // the art, full width, fading into the dark below
-    const art = new Sprite(Texture.from(cardArt(s.pull.card, 360, 300)));
+    const art = new Sprite(hiTex(cardArt(s.pull.card, 720, 600)));
     art.anchor.set(0.5, 0); art.x = 360; art.y = 0; art.width = 920; art.height = 760; art.alpha = 0;
     const fade = new Graphics();
     for (let i = 0; i < 24; i++) fade.rect(-200, 420 + i * 16, 1120, 16).fill({ color: 0x020507, alpha: Math.min(1, i / 20) });
