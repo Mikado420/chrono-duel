@@ -689,9 +689,13 @@ body.reduced .ttl, body.reduced .ttl > b::before, body.reduced .ttl > b::after {
 .result2.lose .hero .word h1 { background: linear-gradient(180deg, #ffd0c4, #e9674f 60%, #6e2a12); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 4px 0 #1d0805); }
 .result2.draw .hero .word h1 { background: linear-gradient(180deg, #eef3f5, #8fa9ad); -webkit-background-clip: text; background-clip: text; }
 @keyframes wordIn { from { opacity: 0; transform: scale(1.6); letter-spacing: .3em; } to { opacity: 1; transform: none; } }
-.result2 .why2 { display: inline-flex; margin-top: 12px; height: 28px; align-items: stretch; font-size: 12px; }
-.result2 .why2 span:first-child { padding: 0 12px; display: flex; align-items: center; background: linear-gradient(90deg, #c99640, #8a5f20); color: #1d1405; font-weight: 700; clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%); }
-.result2 .why2 span:last-child { padding: 0 14px; display: flex; align-items: center; gap: 4px; background: rgba(8, 20, 28, .85); border: 1px solid #9c7432; border-left: 0; }
+/* the strip never gets wider than the screen: long names are cut with … (child selectors only: the numbers inside are spans too) */
+.result2 .why2 { display: inline-flex; max-width: calc(100% - 24px); margin-top: 12px; height: 28px; align-items: stretch; font-size: 12px; }
+.result2 .why2 > span:first-child { flex-shrink: 0; white-space: nowrap; padding: 0 12px; display: flex; align-items: center; background: linear-gradient(90deg, #c99640, #8a5f20); color: #1d1405; font-weight: 700; clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%); }
+.result2 .why2 > span:last-child { min-width: 0; white-space: nowrap; padding: 0 14px; display: flex; align-items: center; gap: 4px; background: rgba(8, 20, 28, .85); border: 1px solid #9c7432; border-left: 0; }
+.result2 .why2 .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.result2 .why2 .nm.fix { flex-shrink: 0; }
+.result2 .why2 .num { flex-shrink: 0; }
 .result2 .why2 .num { font-size: 15px; }
 .result2 .reason { display: block; margin-top: 6px; font: 500 13px var(--f-display); color: #c2d2d4; }
 .result2 .body { position: relative; width: min(520px, 100%); margin: 0 auto; padding: 0 12px max(28px, env(safe-area-inset-bottom)); display: grid; gap: 10px; margin-top: -10px; }
@@ -703,8 +707,8 @@ body.reduced .ttl, body.reduced .ttl > b::before, body.reduced .ttl > b::after {
 .lvbar u { position: absolute; top: 0; bottom: 0; background: linear-gradient(90deg, var(--teal-hi), #e9fff8); box-shadow: 0 0 10px var(--teal-hi); transition: width 1s cubic-bezier(.2, .8, .2, 1); }
 .lvnext { text-align: right; font-size: 10.5px; color: var(--mute); margin-top: 3px; }
 .rankup2 { text-align: center; font: 800 16px var(--f-display); color: var(--gold-hi); text-shadow: 0 0 14px rgba(224, 178, 92, .7); animation: pop .5s 1s both; }
-.gains { display: flex; gap: 6px; }
-.gains > div { flex: 1; min-height: 46px; border-radius: 8px; background: rgba(224, 178, 92, .12); border: 1px solid rgba(224, 178, 92, .55); display: flex; align-items: center; justify-content: center; gap: 7px; padding: 4px; animation: rise .5s both; }
+.gains { display: flex; flex-wrap: wrap; gap: 6px; }
+.gains > div { flex: 1 1 130px; min-width: 0; min-height: 46px; border-radius: 8px; background: rgba(224, 178, 92, .12); border: 1px solid rgba(224, 178, 92, .55); display: flex; align-items: center; justify-content: center; gap: 7px; padding: 4px; animation: rise .5s both; }
 .gains .ic-coin { width: 22px; height: 22px; }
 .gains b { font: 700 17px var(--f-num); color: var(--gold-hi); }
 .gains small { font-size: 10px; color: #c2d2d4; }

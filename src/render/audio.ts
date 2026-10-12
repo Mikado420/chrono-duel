@@ -9,7 +9,7 @@ export type BgmScene = 'title' | 'home' | 'battle';
 const BGM: Record<BgmScene, string[]> = {
   title: ['title_azure_core'],
   home: ['home_tsuki_no_furu_machi'],
-  battle: ['battle_crystal_brilliance', 'battle_crystal_reverie', 'battle_crystal_afterimage'],
+  battle: ['battle_crystal_brilliance', 'battle_crystal_reverie', 'battle_crystal_afterimage', 'battle_frost_vector', 'battle_neon_velocity'],
 };
 /** AAC plays in every major browser; builds without it (open-source Chromium, some Linux browsers) get Opus. */
 let bgmExt = '';

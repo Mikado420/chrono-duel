@@ -1454,7 +1454,7 @@ export class Screens {
         h('div', { class: 'rays' }),
         h('div', { class: 'word' },
           h('small', {}, en), h('h1', {}, title),
-          h('div', { class: 'why2' }, h('span', {}, '決着'), h('span', {}, `${me} 体力 `, h('span', { class: 'num', style: 'color:var(--you)' }, String(Math.max(0, r.myHp))), ` ・ ${foeLabel} `, h('span', { class: 'num', style: 'color:#ff9a80' }, String(Math.max(0, r.foeHp))))),
+          h('div', { class: 'why2' }, h('span', {}, '決着'), h('span', {}, h('span', { class: watch ? 'nm' : 'nm fix' }, `${me} 体力`), h('span', { class: 'num', style: 'color:var(--you)' }, String(Math.max(0, r.myHp))), ' ・ ', h('span', { class: 'nm' }, foeLabel), h('span', { class: 'num', style: 'color:#ff9a80' }, String(Math.max(0, r.foeHp))))),
           h('span', { class: 'reason' }, why, extra.note ? `　${extra.note}` : ''))),
       h('div', { class: 'body' },
         this.ratedView(extra.rated ?? undefined),
