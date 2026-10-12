@@ -1,8 +1,8 @@
 /* The rated rivals' brain: `npm run test:rivals` */
 import assert from 'node:assert/strict';
-import { LV, chooseRival, findLethal, incoming, newMind, quirksOf, thinkMs, type RivalCfg } from '../core/rival';
+import { LV, chooseRival, findLethal, incoming, likelyCards, newMind, quirksOf, reach, thinkMs, type RivalCfg } from '../core/rival';
 import { planBonus } from '../core/plans';
-import { determinize } from '../core/ai';
+import { determinize, handWorth, intentBonus } from '../core/ai';
 import { guessDecks, guessWorld, likelyDeck, observe, type Seen } from '../core/infer';
 import { actor, apply, createGame, legalActions, mulberry32, type Action, type GameState } from '../core/engine';
 import { ROSTER, rivalCfg, rivalDeckCards } from '../meta/roster';
@@ -37,6 +37,32 @@ const fresh = (): GameState => {
   assert.equal(incoming(s, 1), 6);
   const m = chooseRival(s, 1, { name: 't', lv: 6, persona: 'attack', deck: 'titan', quirks: quirksOf('t') }, newMind(rand), rand);
   assert.ok(m.why === 'defend' || m.surrender || m.why === 'lethal', `defends (${m.why})`);
+}
+// 手の内まで考えた危険度 (0.22.0 review): the likely bolt / 加速 / hidden bolt pin count, the board alone does not
+{
+  const s = fresh();
+  s.players[1].time = 10; s.players[0].time = 11;
+  s.players[0].field[0] = unit('gear', 3, 3);
+  s.players[0].field[0]!.readyAt = 30; // not ready: the board alone is no threat
+  s.players[0].hand = [{ uid: 901, card: 'scout' }, { uid: 902, card: 'scout' }];
+  assert.equal(incoming(s, 1), 0);
+  assert.equal(reach(s, 1, new Set()), 0, 'nothing likely: nothing more');
+  assert.equal(reach(s, 1, new Set(['bolt'])), 4, 'a bolt from the hand');
+  assert.equal(reach(s, 1, new Set(['bolt', 'haste'])), 8, 'bolt + 加速 (3+1 from the waiting unit)');
+  s.players[0].hand = [{ uid: 901, card: 'scout' }];
+  assert.equal(reach(s, 1, new Set(['bolt', 'haste'])), 4, 'one card in hand: only the largest');
+  s.players[0].resv = [{ uid: 903, card: 'bolt', T: 12, revealed: false }];
+  assert.equal(reach(s, 1, new Set(['bolt'])), 9, 'a hidden pin about to fire, guessed as a reserved bolt (5)');
+  assert.ok(likelyCards(guessDecks({ bolt: 1, e_raider: 1, haste: 1 })).has('haste'), 'a rush deck is expected to hold 加速');
+}
+// 終盤の手札: cards in hand lose their worth in the last ticks; 檻 and 嵐 are not reserved into an empty board
+{
+  assert.equal(handWorth(25), 1);
+  assert.ok(handWorth(38) < 0.3 && handWorth(40) === 0);
+  const s = fresh();
+  assert.ok(intentBonus(s, 1, { t: 'reserve', hand: -1, T: 5 } as Action, 'cage') < 0, 'no target for 停滞の檻');
+  s.players[0].field[1] = unit('gear', 3, 3);
+  assert.ok(intentBonus(s, 1, { t: 'reserve', hand: -1, T: 5 } as Action, 'cage') > 0);
 }
 // every Lv answers a fresh game with a legal move
 for (let lv = 1; lv <= 7; lv++) {

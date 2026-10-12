@@ -9,7 +9,7 @@
  *   5. quirks break ties                                  6. the battle scene waits a human-like time and plays it
  */
 import {
-  BASE_WEIGHTS, EXPERT_WEIGHTS, bestReply, breakBonus, chooseChoice, deepValue, determinize, evaluate, fogged,
+  AI_FIX, BASE_WEIGHTS, EXPERT_WEIGHTS, bestReply, handWorth, breakBonus, chooseChoice, deepValue, determinize, evaluate, fogged,
   intentBonus, pruneReserves, rollout, type Weights,
 } from './ai';
 import { cardDef } from './cards';
@@ -17,7 +17,7 @@ import {
   actor, apply, attackTarget, clone, legalActions, other, resvRange, timeCost, worldTime,
   type Action, type GameState, type PlayerIndex, type PlayerState,
 } from './engine';
-import { guessDecks, guessWorld, likelyDeck, moreReserveTimes, observe, type Seen } from './infer';
+import { guessDecks, guessWorld, knownDecks, likelyDeck, moreReserveTimes, observe, type Guess, type Seen } from './infer';
 import { planBonus, type PlanScale } from './plans';
 import { RULES } from './rules';
 
@@ -94,7 +94,7 @@ export function evaluatePersona(s: GameState, pi: PlayerIndex, P: PersonaW, W: W
       if (!attackTarget(s, owner, l)) v += sign * u.atk * W.open * P.open;
     });
     const hc = p.hand.length;
-    v += sign * (Math.min(hc, 3) * W.hand + Math.max(0, hc - 3) * W.handExtra) * P.hand;
+    v += sign * (Math.min(hc, 3) * W.hand + Math.max(0, hc - 3) * W.handExtra) * P.hand * handWorth(p.time);
     v += sign * p.resv.filter((r) => !r.decoy).length * W.resv * P.resv;
   };
   side(me, 1, pi);
@@ -228,6 +228,50 @@ export function incoming(s: GameState, pi: PlayerIndex): number {
   return dmg;
 }
 
+/** How likely the opponent's deck holds card `c`, from the deck guess (an unknown deck: 30%). */
+export function chanceOf(g: Guess[], c: string): number {
+  const lists = new Map(knownDecks().map((d) => [d.id, d.cards]));
+  return g.reduce((n, x) => n + x.p * (x.id ? (lists.get(x.id)?.includes(c) ? 1 : 0) : 0.3), 0);
+}
+/**
+ * 手の内まで考えた危険度 (the 0.22.0 review: 61% of the KO lines that beat rated rivals needed a card from the hand,
+ * 20% a hidden pin, almost none were on the board alone). On top of `incoming`: a bolt from the hand (4), 加速 (every
+ * unit ready and +1), a swift 騎兵 into an open lane, 永劫回帰 — the two largest of these the opponent's hand can pay
+ * for — and the hidden pins that fire before our next move (a bolt there hits for 5). A card counts when the deck
+ * guess gives it at least a 35% chance. Rivals use it as a penalty on moves that leave them inside that reach (a soft
+ * check: forcing the defence on a guess cost more games than it saved), while the forced 必ず守る stays on the board.
+ */
+/** The cards `reach` looks for that the opponent likely has. */
+export const REACH_CARDS = ['bolt', 'e_eternal', 'haste', 'e_raider'];
+export const likelyCards = (g: Guess[]) => new Set(REACH_CARDS.filter((c) => chanceOf(g, c) >= 0.35));
+export function reach(s: GameState, pi: PlayerIndex, has: Set<string>): number {
+  const q = other(pi), me = s.players[pi], op = s.players[q];
+  const likely = (c: string) => has.has(c);
+  let dmg = incoming(s, pi);
+  const soon = me.time + 1;
+  const extra: number[] = [];
+  if (op.hand.length) {
+    if (likely('bolt')) extra.push(4);
+    if (likely('e_eternal')) extra.push(2);
+    if (likely('haste')) {
+      let all = 0, now = 0;
+      op.field.forEach((u, l) => {
+        if (!u || attackTarget(s, q, l) !== null) return;
+        all += u.atk + 1 + s.doom;
+        if (u.readyAt <= soon) now += u.atk + s.doom;
+      });
+      if (all > now) extra.push(all - now);
+    }
+    if (likely('e_raider') && op.field.some((u, l) => !u && attackTarget(s, q, l) === null)) extra.push(4 + s.doom);
+  }
+  dmg += extra.sort((a, b) => b - a).slice(0, Math.min(2, op.hand.length)).reduce((a, b) => a + b, 0);
+  for (const r of op.resv) {
+    if (r.revealed || r.echo || r.T > me.time + 3) continue;
+    dmg += likely('bolt') ? 5 : likely('e_eternal') ? 3 : 0;
+  }
+  return dmg;
+}
+
 /** The guessed world as the shortlist sees it: our hand is real, every draw is unknown (like `fogged`), the pins stay. */
 function fogPins(w: GameState): GameState {
   for (const p of w.players) p.deck = p.deck.map(() => 'scout');
@@ -266,10 +310,14 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
   const base = fogged(real, pi);
   const me = base.players[pi];
   observe((mind.seen ??= {}), real, pi);
-  const guess = P.infer ? guessDecks(mind.seen) : null;
+  const wide = AI_FIX.wide && cfg.lv >= 9;
+  const infer = P.infer || wide, pins = P.pins || wide;
+  const guess = infer ? guessDecks(mind.seen) : null;
   const oppDeck = guess ? likelyDeck(guess) : null;
+  // 手の内まで考えた危険度 (Lv6+): needs the deck guess even below Lv8
+  const threat = AI_FIX.reach && cfg.lv >= 6 ? likelyCards(guess ?? guessDecks(mind.seen)) : null;
   let acts = pruneReserves(base, pi, legalActions(base, pi));
-  if (P.pins) acts = moreReserveTimes(base, pi, legalActions(base, pi), acts);
+  if (pins) acts = moreReserveTimes(base, pi, legalActions(base, pi), acts);
   const miss = rollMiss(P, mind, rand);
   noteMiss(mind, miss);
 
@@ -307,10 +355,10 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
   } else {
     const search = P.search.candidates ? P.search : LV[7].search;
     // Lv10 reads its shortlist with the opponent's pins in place (their spells guessed)
-    const pinBase = P.pins && guess ? fogPins(guessWorld(real, pi, guess, mind.seen, true, rand)) : base;
+    const pinBase = pins && guess ? fogPins(guessWorld(real, pi, guess, mind.seen, true, rand)) : base;
     const pre = acts.map((a) => { const c = clone(pinBase); try { apply(c, a); } catch { return { a, v: -1e9 }; } return { a, v: deepValue(c, pi, 2, 2) + bonus(a) }; }).sort((x, y) => y.v - x.v);
     const short = pre.slice(0, search.candidates);
-    const worlds = Array.from({ length: search.rollouts }, () => (guess ? guessWorld(real, pi, guess, mind.seen, !!P.pins, rand) : determinize(real, pi, real.players[pi].deck.slice(), rand)));
+    const worlds = Array.from({ length: search.rollouts }, () => (guess ? guessWorld(real, pi, guess, mind.seen, pins, rand) : determinize(real, pi, real.players[pi].deck.slice(), rand)));
     scored = [];
     for (const cand of short) {
       yield;
@@ -318,12 +366,20 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
       for (const w of worlds) {
         const c = clone(w);
         try { apply(c, cand.a); } catch { sum -= 1000; continue; }
-        const r = P.pins ? rolloutWithReserves(c, pi, search.depth, rand) : rollout(c, pi, search.depth, rand);
+        const r = pins ? rolloutWithReserves(c, pi, search.depth, rand) : rollout(c, pi, search.depth, rand);
         sum += r;
         if (r > 0) ahead++;
       }
       scored.push({ a: cand.a, v: sum / Math.max(1, worlds.length) + cand.v * 0.25 + noise(), ahead: ahead / Math.max(1, worlds.length) });
     }
+  }
+  // 手の内まで考えた危険度: a move that leaves the base inside the opponent's likely reach is marked down by how far
+  if (threat) for (const x of scored) {
+    const c = clone(base);
+    try { apply(c, x.a); } catch { continue; }
+    if (c.over || actor(c) === pi) continue; // a win, or still our move (the next move is judged then)
+    const d = reach(c, pi, threat) - c.players[pi].hp;
+    if (d >= 0) x.v -= (d + 1) * 3;
   }
   scored.sort((x, y) => y.v - x.v);
   const best = scored[0];
@@ -349,7 +405,7 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
   if (miss !== 'forgetDefend' && incoming(base, pi) >= me.hp) {
     const safe = scored.map((x) => { const c = clone(base); apply(c, x.a); return { ...x, in: c.over ? (c.over.winner === pi ? -99 : 99) : incoming(c, pi) - c.players[pi].hp }; })
       .sort((x, y) => x.in - y.in || y.v - x.v);
-    // 降参: the opponent's finish is coming and nothing stops it
+    // 降参: the opponent's finish is coming and nothing stops it (judged on the board alone: a guessed hand is no reason to give up)
     if (safe[0].in >= 0 && worldTime(base) >= 12 && cfg.lv >= 4 && !mind.surrenderChecked) {
       mind.surrenderChecked = true;
       if (rand() < (cfg.lv >= 8 ? 0.5 : 0.25)) return { action: { t: 'wait' }, kind: 'key', surrender: true, why: 'defend' };

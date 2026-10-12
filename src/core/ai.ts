@@ -17,6 +17,16 @@ export const levelOfLv = (lv: number): AiLevel => (lv <= 2 ? 'easy' : lv <= 4 ? 
 /** Where an old choice of level lands on the Lv scale. */
 export const LV_OF_LEVEL: Record<AiLevel, number> = { easy: 1, normal: 3, hard: 5, expert: 8 };
 
+/**
+ * The fixes from the 0.22.0 rated-play review (all on in the game; balance tools may switch them off per move to
+ * compare): `reach` — rated rivals (Lv6+) count the opponent's likely hand and hidden pins in their danger check;
+ * `fade` — cards in hand are worth less as the clock runs out (no draws at 39); `fizzle` — no 檻・嵐 into an empty
+ * board; `wide` — Lv9 also reads the hidden pins (as Lv10).
+ */
+export const AI_FIX = { reach: true, fade: true, fizzle: true, wide: true };
+/** How much a card in hand is still worth to a player whose clock is at `time` (1 until 10 ticks before the end). */
+export const handWorth = (time: number) => (AI_FIX.fade ? Math.min(1, Math.max(0, (RULES.END - time) / 10)) : 1);
+
 /** Weights of the static evaluation. Each AI level can use its own set (超つよい uses tuned ones). */
 export interface Weights { hp: number; danger: number; atk: number; body: number; open: number; hand: number; handExtra: number; resv: number; tempo: number; ready: number }
 export const BASE_WEIGHTS: Weights = { hp: 1.5, danger: 1.5, atk: 1.1, body: 0.7, open: 0.7, hand: 1.4, handExtra: 0.6, resv: 1.8, tempo: 0.85, ready: 0 };
@@ -47,7 +57,7 @@ export function evaluate(s: GameState, pi: PlayerIndex, W: Weights = BASE_WEIGHT
       if (!t) v += sign * u.atk * W.open; // open lane = pressure on the base
     });
     const hc = p.hand.length;
-    v += sign * (Math.min(hc, 3) * W.hand + Math.max(0, hc - 3) * W.handExtra);
+    v += sign * (Math.min(hc, 3) * W.hand + Math.max(0, hc - 3) * W.handExtra) * handWorth(p.time);
     v += sign * p.resv.filter((r) => !r.decoy).length * W.resv;
   };
   side(me, 1, pi);
@@ -111,7 +121,7 @@ export function intentBonus(s: GameState, pi: PlayerIndex, a: Action, card?: str
     case 'bolt': b = 3.5; break;
     case 'arrow': b = 2 + enemies * 0.8; break;
     case 'collapse': b = 1 + enemies * 1.5; break;
-    case 'cage': b = 1.5 + enemies * 0.6; break;
+    case 'cage': b = enemies || !AI_FIX.fizzle ? 1.5 + enemies * 0.6 : -2; break;
     case 'stop': b = 4; break;
     case 'insight': b = 3; break;
     case 'rewind': b = s.players[pi].hp < 10 ? 3 : 1.5; break;
@@ -123,7 +133,7 @@ export function intentBonus(s: GameState, pi: PlayerIndex, a: Action, card?: str
     case 'eBreak': b = 0; break; // valued by breakBonus, which can see how many reservations the opponent has
     case 'eDraw': b = 2.5; break;
     case 'eReverse': b = 3.5; break;
-    case 'eStorm': b = 1 + enemies * 1.3; break;
+    case 'eStorm': b = enemies || !AI_FIX.fizzle ? 1 + enemies * 1.3 : -2; break;
     case 'eEternal': b = 3.5; break;
     // 第2弾
     case 'gSpanner': b = 1.2 + enemies * 0.5; break;
