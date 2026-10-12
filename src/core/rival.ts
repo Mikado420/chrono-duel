@@ -9,7 +9,7 @@
  *   5. quirks break ties                                  6. the battle scene waits a human-like time and plays it
  */
 import {
-  AI_FIX, BASE_WEIGHTS, EXPERT_WEIGHTS, bestReply, handWorth, breakBonus, chooseChoice, deepValue, determinize, evaluate, fogged,
+  AI_FIX, BASE_WEIGHTS, EXPERT_WEIGHTS, bestReply, handWorth, rushValue, breakBonus, chooseChoice, deepValue, determinize, evaluate, fogged,
   intentBonus, pruneReserves, rollout, type Weights,
 } from './ai';
 import { cardDef } from './cards';
@@ -100,6 +100,7 @@ export function evaluatePersona(s: GameState, pi: PlayerIndex, P: PersonaW, W: W
   side(me, 1, pi);
   side(op, -1, other(pi));
   v += (op.time - me.time) * W.tempo * P.tempo;
+  v += rushValue(s, pi) * 0.5;
   return v;
 }
 /** What a persona likes among equally good moves (互角なら…). */
@@ -237,12 +238,13 @@ export function chanceOf(g: Guess[], c: string): number {
  * 手の内まで考えた危険度 (the 0.22.0 review: 61% of the KO lines that beat rated rivals needed a card from the hand,
  * 20% a hidden pin, almost none were on the board alone). On top of `incoming`: a bolt from the hand (4), 加速 (every
  * unit ready and +1), a swift 騎兵 into an open lane, 永劫回帰 — the two largest of these the opponent's hand can pay
- * for — and the hidden pins that fire before our next move (a bolt there hits for 5). A card counts when the deck
+ * for — and the hidden pins that fire before our next move (a bolt there hits for 5, a clock push lets every unit
+ * facing an open lane swing again). A card counts when the deck
  * guess gives it at least a 35% chance. Rivals use it as a penalty on moves that leave them inside that reach (a soft
  * check: forcing the defence on a guess cost more games than it saved), while the forced 必ず守る stays on the board.
  */
 /** The cards `reach` looks for that the opponent likely has. */
-export const REACH_CARDS = ['bolt', 'e_eternal', 'haste', 'e_raider'];
+export const REACH_CARDS = ['bolt', 'e_eternal', 'haste', 'e_raider', 'e_reverse', 'stop'];
 export const likelyCards = (g: Guess[]) => new Set(REACH_CARDS.filter((c) => chanceOf(g, c) >= 0.35));
 export function reach(s: GameState, pi: PlayerIndex, has: Set<string>): number {
   const q = other(pi), me = s.players[pi], op = s.players[q];
@@ -265,9 +267,13 @@ export function reach(s: GameState, pi: PlayerIndex, has: Set<string>): number {
     if (likely('e_raider') && op.field.some((u, l) => !u && attackTarget(s, q, l) === null)) extra.push(4 + s.doom);
   }
   dmg += extra.sort((a, b) => b - a).slice(0, Math.min(2, op.hand.length)).reduce((a, b) => a + b, 0);
+  // a hidden pin about to fire: a reserved bolt (5), 永劫回帰 (3), or a clock push (逆転の針 +3, 時間停止 +4) that
+  // hands the opponent a run of moves: every unit of theirs facing an open lane gets another swing
+  let round = 0;
+  if (AI_FIX.push && (likely('e_reverse') || likely('stop'))) op.field.forEach((u, l) => { if (u && attackTarget(s, q, l) === null) round += u.atk + s.doom; });
   for (const r of op.resv) {
     if (r.revealed || r.echo || r.T > me.time + 3) continue;
-    dmg += likely('bolt') ? 5 : likely('e_eternal') ? 3 : 0;
+    dmg += Math.max(likely('bolt') ? 5 : 0, likely('e_eternal') ? 3 : 0, round);
   }
   return dmg;
 }
@@ -310,12 +316,13 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
   const base = fogged(real, pi);
   const me = base.players[pi];
   observe((mind.seen ??= {}), real, pi);
-  const wide = AI_FIX.wide && cfg.lv >= 9;
-  const infer = P.infer || wide, pins = P.pins || wide;
+  const infer = !!P.infer, pins = !!P.pins;
   const guess = infer ? guessDecks(mind.seen) : null;
   const oppDeck = guess ? likelyDeck(guess) : null;
   // 手の内まで考えた危険度 (Lv6+): needs the deck guess even below Lv8
-  const threat = AI_FIX.reach && cfg.lv >= 6 ? likelyCards(guess ?? guessDecks(mind.seen)) : null;
+  // (Lv6–9: Lv10 already plays the hidden pins out in its search, and adding this on top made it defend too much:
+  // 33% against itself without it)
+  const threat = AI_FIX.reach && cfg.lv >= 6 && !pins ? likelyCards(guess ?? guessDecks(mind.seen)) : null;
   let acts = pruneReserves(base, pi, legalActions(base, pi));
   if (pins) acts = moreReserveTimes(base, pi, legalActions(base, pi), acts);
   const miss = rollMiss(P, mind, rand);
@@ -402,9 +409,10 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
   if (scored.length === 1) return finish(best.a, 'only');
 
   // ---- 3b. forced: 必ず守る
+  const rank = (f: (c: GameState) => number) => scored.map((x) => { const c = clone(base); apply(c, x.a); return { ...x, in: c.over ? (c.over.winner === pi ? -99 : 99) : f(c) - c.players[pi].hp }; })
+    .sort((x, y) => x.in - y.in || y.v - x.v);
   if (miss !== 'forgetDefend' && incoming(base, pi) >= me.hp) {
-    const safe = scored.map((x) => { const c = clone(base); apply(c, x.a); return { ...x, in: c.over ? (c.over.winner === pi ? -99 : 99) : incoming(c, pi) - c.players[pi].hp }; })
-      .sort((x, y) => x.in - y.in || y.v - x.v);
+    const safe = rank((c) => incoming(c, pi));
     // 降参: the opponent's finish is coming and nothing stops it (judged on the board alone: a guessed hand is no reason to give up)
     if (safe[0].in >= 0 && worldTime(base) >= 12 && cfg.lv >= 4 && !mind.surrenderChecked) {
       mind.surrenderChecked = true;

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { LV, chooseRival, findLethal, incoming, likelyCards, newMind, quirksOf, reach, thinkMs, type RivalCfg } from '../core/rival';
 import { planBonus } from '../core/plans';
-import { determinize, handWorth, intentBonus } from '../core/ai';
+import { determinize, handWorth, intentBonus, rushValue } from '../core/ai';
 import { guessDecks, guessWorld, likelyDeck, observe, type Seen } from '../core/infer';
 import { actor, apply, createGame, legalActions, mulberry32, type Action, type GameState } from '../core/engine';
 import { ROSTER, rivalCfg, rivalDeckCards } from '../meta/roster';
@@ -54,6 +54,26 @@ const fresh = (): GameState => {
   s.players[0].resv = [{ uid: 903, card: 'bolt', T: 12, revealed: false }];
   assert.equal(reach(s, 1, new Set(['bolt'])), 9, 'a hidden pin about to fire, guessed as a reserved bolt (5)');
   assert.ok(likelyCards(guessDecks({ bolt: 1, e_raider: 1, haste: 1 })).has('haste'), 'a rush deck is expected to hold 加速');
+}
+// a hidden pin that may push the clock: every enemy unit facing an open lane swings again
+{
+  const s = fresh();
+  s.players[1].time = 10; s.players[0].time = 11;
+  s.players[0].field[0] = unit('gear', 3, 3, 30);
+  s.players[0].field[2] = unit('archer', 2, 2, 30);
+  s.players[0].resv = [{ uid: 904, card: 'e_reverse', T: 12, revealed: false }];
+  s.players[0].hand = []; // nothing from the hand: only the pin
+  assert.equal(reach(s, 1, new Set(['e_reverse'])), 5, 'two units, 3 + 2');
+  assert.equal(reach(s, 1, new Set(['e_reverse', 'bolt'])), 5, 'the larger of a bolt (5) and the extra round (5)');
+}
+// 急襲の価値: 2+ ticks behind, the rush cards in hand count; not otherwise
+{
+  const s = fresh();
+  s.players[1].hand = [{ uid: 905, card: 'e_raider' }, { uid: 906, card: 'e_page' }];
+  s.players[1].time = 4; s.players[0].time = 6;
+  assert.equal(rushValue(s, 1), 3, '騎兵 saves 2, 見習い 1');
+  s.players[0].time = 5;
+  assert.equal(rushValue(s, 1), 0);
 }
 // 終盤の手札: cards in hand lose their worth in the last ticks; 檻 and 嵐 are not reserved into an empty board
 {

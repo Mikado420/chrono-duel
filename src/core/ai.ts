@@ -1,7 +1,7 @@
 import { CARD_LIST, cardDef } from './cards';
 import { RULES } from './rules';
 import {
-  actor, apply, attackTarget, clone, legalActions, other, worldTime,
+  actor, apply, attackTarget, clone, legalActions, other, rushActive, worldTime,
   type Action, type GameState, type PlayerIndex, type PlayerState,
 } from './engine';
 
@@ -19,11 +19,20 @@ export const LV_OF_LEVEL: Record<AiLevel, number> = { easy: 1, normal: 3, hard: 
 
 /**
  * The fixes from the 0.22.0 rated-play review (all on in the game; balance tools may switch them off per move to
- * compare): `reach` — rated rivals (Lv6+) count the opponent's likely hand and hidden pins in their danger check;
+ * compare): `reach` — rated rivals of Lv6–9 count the opponent's likely hand and hidden pins in their danger check;
  * `fade` — cards in hand are worth less as the clock runs out (no draws at 39); `fizzle` — no 檻・嵐 into an empty
- * board; `wide` — Lv9 also reads the hidden pins (as Lv10).
+ * board; `push` — a hidden pin that may push the clock counts as
+ * another round of attacks in the danger check; `rush` — the 急襲 discount in hand is worth something (rushValue).
  */
-export const AI_FIX = { reach: true, fade: true, fizzle: true, wide: true };
+export const AI_FIX = { reach: true, fade: true, fizzle: true, push: true, rush: true };
+/**
+ * 急襲の価値: being 2+ ticks behind makes the 急襲 cards in hand cheaper (`rush` — the ticks they would save, counted
+ * for the side whose hand is known: our own). The clock gap alone (tempo) does not see that.
+ */
+export function rushValue(s: GameState, pi: PlayerIndex): number {
+  if (!AI_FIX.rush || !rushActive(s, pi)) return 0;
+  return s.players[pi].hand.reduce((n, h) => { const d = cardDef(h.card); return n + (d.rush ? Math.min(d.rush, d.cost - 1) : 0); }, 0);
+}
 /** How much a card in hand is still worth to a player whose clock is at `time` (1 until 10 ticks before the end). */
 export const handWorth = (time: number) => (AI_FIX.fade ? Math.min(1, Math.max(0, (RULES.END - time) / 10)) : 1);
 
@@ -63,6 +72,7 @@ export function evaluate(s: GameState, pi: PlayerIndex, W: Weights = BASE_WEIGHT
   side(me, 1, pi);
   side(op, -1, other(pi));
   v += (op.time - me.time) * W.tempo;
+  v += rushValue(s, pi) * 0.5;
   return v;
 }
 
