@@ -133,6 +133,10 @@ assert.equal((r2.body as { env: boolean }).env, false);
   assert.equal(p.diff, 0);
   assert.equal(bookKey('rush', 9), 'rush');
   assert.equal(archeOf(bookKey('rush', 3)), 'rush');
+  // decks renamed in 0.22.x: an old id (and an old book key) means the new deck
+  assert.equal(archeOf('rush_haste~lo'), 'second_aggro_pendulum');
+  assert.equal(bookKey('tempo_guard', 9), 'raid_tempo_guard');
+  assert.equal(Object.keys(cleanBook({ version: 1, decks: { 'rush_haste~lo': { v: 1, cards: originList('second_aggro_pendulum')! } } }).decks)[0], 'second_aggro_pendulum~lo');
 }
 // 発見: a new deck needs 15 players, 100 games and 3 days; a 型 8 players and 50 games
 {

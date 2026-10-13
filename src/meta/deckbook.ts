@@ -3,6 +3,7 @@
  * The game checks every list against its 設計図 before using it and falls back to the built-in list otherwise,
  * so a bad book can never put a broken or off-plan deck in front of a player.
  */
+import { canonDeck } from '../sim/rosterDecks';
 import { checkList, originList } from './blueprints';
 
 export interface BookEntry {
@@ -19,9 +20,11 @@ export interface BookEntry {
  */
 export interface DeckBook { version: number; at: number; decks: Record<string, BookEntry> }
 /** The book key for a rival of Lv `lv` playing archetype `id`. */
-export const bookKey = (id: string, lv: number) => (lv >= 8 ? id : `${id}~lo`);
+export const bookKey = (id: string, lv: number) => (lv >= 8 ? canonDeck(id) : `${canonDeck(id)}~lo`);
 /** The archetype a book key is for. */
-export const archeOf = (key: string) => key.replace(/~lo$/, '');
+export const archeOf = (key: string) => canonDeck(key.replace(/~lo$/, ''));
+/** A book key as it is today (keys written under an old deck id are renamed). */
+const canonKey = (key: string) => (key.endsWith('~lo') ? `${archeOf(key)}~lo` : archeOf(key));
 export const EMPTY_BOOK: DeckBook = { version: 0, at: 0, decks: {} };
 
 /** The book with every entry that fails its checks removed (a bad trial is dropped on its own). */
@@ -29,7 +32,8 @@ export function cleanBook(raw: unknown): DeckBook {
   const b = raw as Partial<DeckBook> | null;
   if (!b || typeof b !== 'object' || typeof b.version !== 'number' || typeof b.decks !== 'object' || !b.decks) return EMPTY_BOOK;
   const decks: Record<string, BookEntry> = {};
-  for (const [id, e] of Object.entries(b.decks as Record<string, Partial<BookEntry>>)) {
+  for (const [rawId, e] of Object.entries(b.decks as Record<string, Partial<BookEntry>>)) {
+    const id = canonKey(rawId);
     if (!e || typeof e.v !== 'number' || !Array.isArray(e.cards) || checkList(archeOf(id), e.cards as string[]).length) continue;
     const t = e.trial;
     const trialOk = t && typeof t.v === 'number' && Array.isArray(t.cards) && typeof t.share === 'number' && t.share > 0 && t.share <= 1 && !checkList(archeOf(id), t.cards).length;
