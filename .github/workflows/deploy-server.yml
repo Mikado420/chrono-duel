@@ -10,6 +10,11 @@ on:
       - src/core/**
       - src/server/**
       - src/meta/rating.ts
+      - src/meta/blueprints.ts
+      - src/meta/deckbook.ts
+      - src/sim/rosterDecks.ts
+      - src/sim/metaDecks.ts
+      - src/sim/set2Decks.ts
       - .github/workflows/deploy-server.yml
   workflow_dispatch:
 
