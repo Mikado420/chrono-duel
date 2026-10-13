@@ -33,7 +33,7 @@ function puff(): Texture {
 }
 
 // ------------------------------------------------------------------ shapes
-type Shape = 'petal' | 'spark' | 'flower' | 'puff' | 'dot' | 'shard' | 'star';
+type Shape = 'petal' | 'spark' | 'flower' | 'puff' | 'dot' | 'shard' | 'star' | 'leaf';
 function shape(kind: Shape, color: number, size: number): Container {
   if (kind === 'puff') { const s = new Sprite(puff()); s.anchor.set(0.5); s.width = s.height = size * 2; return s; }
   const g = new Graphics();
@@ -42,6 +42,7 @@ function shape(kind: Shape, color: number, size: number): Container {
     case 'spark': g.rect(-size * 1.8, -size * 0.3, size * 3.6, size * 0.6).fill(color); g.blendMode = 'add'; break;
     case 'flower': for (let k = 0; k < 4; k++) { const a = (k * Math.PI) / 2 + Math.PI / 4; g.ellipse(Math.cos(a) * size * 0.55, Math.sin(a) * size * 0.55, size * 0.55, size * 0.36).fill(color); }
       g.circle(0, 0, size * 0.22).fill(0xffd27a); g.blendMode = 'add'; break;
+    case 'leaf': g.moveTo(0, size).bezierCurveTo(size * 0.7, size * 0.4, size * 0.6, -size * 0.6, 0, -size).bezierCurveTo(-size * 0.6, -size * 0.6, -size * 0.7, size * 0.4, 0, size).fill(color).moveTo(0, size).lineTo(0, -size * 0.8).stroke({ color: 0xf6f0b0, width: Math.max(0.6, size * 0.12), alpha: 0.6 }); break;
     case 'shard': g.poly([0, -size * 1.5, size * 0.8, 0, 0, size * 1.5, -size * 0.6, 0]).fill(color); g.blendMode = 'add'; break;
     case 'star': g.poly([0, -size, size * 0.22, -size * 0.22, size, 0, size * 0.22, size * 0.22, 0, size, -size * 0.22, size * 0.22, -size, 0, -size * 0.22, -size * 0.22]).fill(color); g.blendMode = 'add'; break;
     default: g.circle(0, 0, size).fill(color); g.blendMode = 'add';
@@ -57,11 +58,11 @@ export interface ThemeStyle { col: number; acc: number; doom: number }
 export const THEME_STYLE: Record<string, ThemeStyle> = {
   skeleton: { col: 0xff4a66, acc: 0xf6dc98, doom: 0xd6334a },
   astro: { col: 0xfff3c4, acc: 0x9ab8ff, doom: 0xff4a4a },
-  steam: { col: 0xffd2a8, acc: 0xffffff, doom: 0xe0483a },
+  steam: { col: 0xe8ff9a, acc: 0xfff6c8, doom: 0xc8641e },
   wadokei: { col: 0xff8ab4, acc: 0xf0cc80, doom: 0xd8203e },
   compass: { col: 0xffe8a0, acc: 0xbfc8ff, doom: 0x000000 },
   forge: { col: 0xffb347, acc: 0xfff2c0, doom: 0xff5a10 },
-  archive: { col: 0xff9a8a, acc: 0xf0cc80, doom: 0xa01a2a },
+  archive: { col: 0xc070ff, acc: 0xff8ad8, doom: 0xd0204a },
   cathedral: { col: 0xbff0ff, acc: 0xffffff, doom: 0xe8f8ff },
 };
 
@@ -198,20 +199,17 @@ export class DialFx extends Layer {
         break;
       }
       case 'steam': {
-        this.ring(p.x, p.y, 10, 64, col, 3, 0.8);
-        // the screw turns an eighth
-        const g = new Graphics();
-        g.circle(0, 0, 13).fill({ color: 0xe0a860, alpha: 0.95 }).circle(0, 0, 13).stroke({ color: 0x6a3a14, width: 1.5 });
-        g.rect(-8, -2.5, 16, 5).fill(0x2a1406).rect(-2.5, -8, 5, 16).fill(0x2a1406);
-        g.x = p.x; g.y = p.y; g.scale.set(big ? 1.1 : 0.92); this.addChild(g);
-        let t = 0;
-        this.anims.push((dt) => { t += dt; const k = Math.min(1, t / 0.5); g.rotation = (Math.PI / 4) * (1 - Math.pow(1 - k, 3)); g.alpha = t < 0.7 ? 1 : Math.max(0, 1 - (t - 0.7) / 0.3); if (t >= 1) { g.destroy(); return false; } return true; });
-        for (let i = 0; i < 5; i++) this.add('puff', 0xffffff, 14 + Math.random() * 8, p.x + (Math.random() - 0.5) * 10, p.y - 6, { vx: (Math.random() - 0.5) * 20, vy: -40 - Math.random() * 30, life: 1.4, a: 0.35, vr: 0 });
+        // a shaft of sunlight from the canopy to the bell, and leaves let go
+        const sun = B(this.f, 300, 70);
+        this.streak([sun, p], 0xfff6c8, 0.6, 5, 0.6, 0.3);
+        this.glowAt(p.x, p.y, big ? 64 : 52, col, 0.4, 1);
+        this.glowAt(sun.x, sun.y, 110, acc, 0.2, 1.2, 0.1);
+        for (let i = 0; i < 8; i++) this.add('leaf', i % 3 ? 0x8ad04a : 0xc8e870, 5.5 + Math.random() * 3, p.x + (Math.random() - 0.5) * 16, p.y, { vx: (Math.random() - 0.5) * 60, vy: -20 - Math.random() * 30, ay: 50, vr: (Math.random() - 0.5) * 5, life: 1.8 + Math.random() * 0.6, a: 0.85, sway: 10 });
         break;
       }
       case 'wadokei': {
         this.glowAt(p.x, p.y, big ? 64 : 52, col, 0.4, 1);
-        const moon = B(this.f, 300, 150);
+        const moon = B(this.f, 298, 124);
         this.glowAt(moon.x, moon.y, 130, acc, 0.22, 1.1, 0.1);
         for (let i = 0; i < 12; i++) this.add('petal', i % 3 ? 0xffc0d8 : 0xff8ab4, 4 + Math.random() * 2.5, p.x, p.y, { vx: 50 + Math.random() * 90, vy: -30 - Math.random() * 60, ay: 40, vr: (Math.random() - 0.5) * 6, life: 1.6 + Math.random() * 0.6, a: 0.85, sway: 6 });
         break;
@@ -220,7 +218,7 @@ export class DialFx extends Layer {
         this.glowAt(p.x, p.y, big ? 60 : 48, col, 0.4, 0.9);
         for (let i = 0; i < 7; i++) this.add('flower', 0xfff4cc, 3 + Math.random() * 3, p.x + (Math.random() - 0.5) * 20, p.y, { vy: -30 - Math.random() * 40, vr: (Math.random() - 0.5) * 2, life: 1.8 + Math.random() * 0.8, a: 0.8, sway: 8 });
         // light runs along the whale's back
-        this.streak([B(this.f, 110, 186), B(this.f, 190, 150), B(this.f, 300, 128), B(this.f, 380, 126), B(this.f, 470, 150)], 0xd8e0ff, 0.9, 2.4, 0.35, 0.35);
+        this.streak([B(this.f, 120, 170), B(this.f, 200, 112), B(this.f, 300, 96), B(this.f, 400, 90), B(this.f, 480, 120)], 0xd8e0ff, 0.9, 2.4, 0.35, 0.35);
         break;
       }
       case 'forge':
@@ -228,11 +226,14 @@ export class DialFx extends Layer {
         this.glowAt(p.x, p.y, 40, col, 0.35, 0.9);
         for (let i = 0; i < 16; i++) { const a = Math.random() * Math.PI * 2, v = 60 + Math.random() * 120; this.add('spark', i % 2 ? 0xffd27a : 0xff8a3a, 2 + Math.random() * 1.5, p.x, p.y, { vx: Math.cos(a) * v, vy: Math.sin(a) * v - 30, ay: 160, life: 0.6 + Math.random() * 0.4, a: 1 }); }
         break;
-      case 'archive':
-        this.ring(p.x, p.y, 10, big ? 80 : 64, 0xffd0a0, 3, 0.9);
-        this.glowAt(p.x, p.y, 44, col, 0.3, 0.8);
-        for (let i = 0; i < 5; i++) this.add('petal', 0xc8202e, 3.5 + Math.random() * 2, p.x + (Math.random() - 0.5) * 16, p.y, { vx: (Math.random() - 0.5) * 40, vy: 10 + Math.random() * 20, ay: 20, vr: (Math.random() - 0.5) * 4, life: 1.6, a: 0.8, sway: 10 });
+      case 'archive': {
+        // the seal glows and violet sparks rise like the circle's flames
+        this.ring(p.x, p.y, 10, big ? 84 : 66, col, 3, 0.9);
+        this.ring(p.x, p.y, 6, big ? 50 : 40, acc, 2, 0.7, { delay: 0.1, dotted: true, peak: 0.35 });
+        this.glowAt(p.x, p.y, 48, col, 0.38, 0.9);
+        for (let i = 0; i < 9; i++) this.add('shard', i % 3 ? 0xc070ff : 0xff8ad8, 2.2 + Math.random() * 1.6, p.x + (Math.random() - 0.5) * 20, p.y, { vx: (Math.random() - 0.5) * 30, vy: -50 - Math.random() * 50, vr: (Math.random() - 0.5) * 3, life: 1.2 + Math.random() * 0.5, a: 0.8, sway: 4 });
         break;
+      }
       case 'cathedral': {
         this.glowAt(p.x, p.y, big ? 60 : 50, col, 0.4, 0.8);
         const g = new Graphics(); g.blendMode = 'add'; g.x = p.x; g.y = p.y; this.addChild(g);
@@ -252,14 +253,15 @@ export class DialFx extends Layer {
   doom(level: number) {
     this.doomLv = level;
     if (!this.motion) return;
-    const { cx, cy, R } = this.f;
+    const { cy, R } = this.f;
     const d = this.st.doom;
     switch (this.theme) {
       case 'compass': this.flashFace(0x000000, 0.35, 1.5); break;
       case 'cathedral': this.flashRim(0xffffff, 0.4, 1.5, 34); for (let i = 0; i < 14; i++) { const t = this.doomFrom + Math.random() * (RULES.END - this.doomFrom); const q = this.f.point(t, R + 6); this.add('star', 0xffffff, 3 + Math.random() * 3, q.x, q.y, { life: 1.2, a: 0.8, vr: 1 }); } break;
-      case 'steam': this.flashRim(d, 0.35, 1.5, 22); for (let i = 0; i < 10; i++) { const t = this.doomFrom + Math.random() * (RULES.END - this.doomFrom); const q = this.f.point(t, R + 4); this.add('puff', 0xffffff, 16 + Math.random() * 10, q.x, q.y, { vx: (q.x - cx) * 0.15, vy: (q.y - cy) * 0.15 - 10, life: 1.6, a: 0.32 }); } break;
+      case 'steam': this.flashFace(d, 0.22, 1.5); for (let i = 0; i < 12; i++) { const t = this.doomFrom + Math.random() * (RULES.END - this.doomFrom); const q = this.f.point(t, R - 30); this.add('leaf', i % 2 ? 0xc8641e : 0x8a4a14, 4 + Math.random() * 2, q.x, q.y, { vx: (Math.random() - 0.5) * 40, vy: 10 + Math.random() * 20, ay: 30, vr: (Math.random() - 0.5) * 5, life: 2.2, a: 0.8, sway: 10 }); } break;
+      case 'archive': this.flashRim(d, 0.4, 1.5, 30); this.flashFace(0x6a1aa8, 0.25, 1.5); break;
       case 'forge': this.flashRim(0xff7a1a, 0.4, 1.5, 40); for (let i = 0; i < 24; i++) { const t = this.doomFrom + Math.random() * (RULES.END - this.doomFrom); const q = this.f.point(t, R + 8); this.add('spark', 0xffc46b, 2, q.x, q.y, { vx: (Math.random() - 0.5) * 60, vy: -40 - Math.random() * 60, ay: 50, life: 1, a: 1 }); } break;
-      case 'wadokei': { this.flashFace(d, 0.3, 1.5); const m = B(this.f, 300, 150); this.glowAt(m.x, m.y, 120, 0xff4040, 0.35, 1.5); break; }
+      case 'wadokei': { this.flashFace(d, 0.3, 1.5); const m = B(this.f, 298, 124); this.glowAt(m.x, m.y, 120, 0xff4040, 0.35, 1.5); break; }
       default: this.flashRim(d, 0.4, 1.5, 30); this.flashFace(d, 0.18, 1.5);
     }
     void cy;
@@ -293,7 +295,7 @@ export class DialFx extends Layer {
       case 'skeleton':
         for (const b of RULES.BELLS) { const q = this.bellPos(b); g.circle(q.x, q.y, 20).fill({ color: 0xff2040, alpha: (0.1 + 0.08 * br) * lv / 2 }); }
         break;
-      case 'astro': case 'wadokei': case 'archive':
+      case 'astro': case 'wadokei': case 'archive': case 'steam':
         face().fill({ color: this.st.doom, alpha: (0.05 + 0.04 * br) * lv }); break;
       case 'compass':
         face().fill({ color: 0x000000, alpha: (0.1 + 0.05 * br) * lv }); break;
@@ -354,11 +356,13 @@ export class DialFx extends Layer {
     // ambient: petals drift over the night sky, flowers rise in the sea, frost glints on the ice
     const dt = ms / 1000, { cx, cy, R } = this.f;
     this.amb += dt;
-    const every = this.theme === 'wadokei' ? 0.7 : this.theme === 'compass' ? 0.9 : this.theme === 'cathedral' ? 0.5 : 0;
+    const every = this.theme === 'wadokei' ? 0.7 : this.theme === 'compass' ? 0.9 : this.theme === 'cathedral' ? 0.5 : this.theme === 'steam' ? 0.8 : this.theme === 'archive' ? 0.7 : 0;
     if (!every || this.amb < every) return;
     this.amb = 0;
     if (this.theme === 'wadokei') this.add('petal', this.doomLv ? 0xff5a7a : 0xffc0d8, 3 + Math.random() * 2, cx - R + Math.random() * R * 1.4, cy - R * (0.6 + Math.random() * 0.3), { vx: 18 + Math.random() * 16, vy: 14 + Math.random() * 10, vr: (Math.random() - 0.5) * 3, life: 6, a: 0.55, sway: 8 });
     else if (this.theme === 'compass') this.add('flower', 0xfff4cc, 2.4 + Math.random() * 2, cx - R * 0.8 + Math.random() * R * 1.6, cy - 10, { vy: -16 - Math.random() * 10, vr: (Math.random() - 0.5), life: 7, a: 0.45, sway: 10 });
+    else if (this.theme === 'steam') { const a = Math.PI + Math.random() * Math.PI, r = 30 + Math.random() * (R - 40); this.add(Math.random() < 0.3 ? 'leaf' : 'dot', this.doomLv ? 0xc8641e : 0xfff6c8, Math.random() < 0.3 ? 3.5 : 1.6 + Math.random() * 1.2, cx + Math.cos(a) * r, cy + Math.sin(a) * r, { vx: 6 + Math.random() * 8, vy: 8 + Math.random() * 8, vr: (Math.random() - 0.5) * 2, life: 4, a: 0.45, sway: 6 }); }
+    else if (this.theme === 'archive') this.add('dot', this.doomLv ? 0xff4a7a : 0xc070ff, 1.5 + Math.random() * 1.5, cx - R * 0.8 + Math.random() * R * 1.6, cy - 6, { vy: -20 - Math.random() * 14, life: 4, a: 0.5, sway: 5 });
     else { const a = Math.PI + Math.random() * Math.PI, r = 40 + Math.random() * (R - 20); this.add('star', 0xffffff, 2 + Math.random() * 2.5, cx + Math.cos(a) * r, cy + Math.sin(a) * r, { life: 0.9, a: 0.5, vr: 0.6 }); }
   }
 }
@@ -387,20 +391,30 @@ export class MatFx extends Layer {
     const { col, acc } = this.st;
     switch (this.theme) {
       case 'skeleton':
-        this.streak([M(-20, 230), M(410, 230)], acc, 0.9, 3, 0.5, 0.3);
-        for (const [x, y] of [[372, 58], [40, 420], [178, 384], [352, 390]]) { const q = M(x, y); this.glowAt(q.x, q.y, 30, col, 0.32, 0.9, 0.2); }
+        this.streak([M(195, -10), M(195, 420)], acc, 0.9, 3, 0.5, 0.3);
+        for (const [x, y] of [[0, 195], [390, 195], [89, 178], [94, 224], [301, 178], [290, 224]]) { const q = M(x, y); this.glowAt(q.x, q.y, x % 390 ? 24 : 40, col, 0.32, 0.9, 0.2); }
         break;
-      case 'astro': { const y = 220 + Math.random() * 80; this.streak([M(-20, y), M(300, y + 90)], 0xfff6d8, 0.8, 2.6, 0.3); this.glowAt(195, 676, 60, col, 0.25, 1); break; }
+      case 'astro': { const y = 220 + Math.random() * 80; this.streak([M(-20, y), M(300, y + 90)], 0xfff6d8, 0.8, 2.6, 0.3); this.glowAt(195, 595, 60, col, 0.25, 1); break; }
       case 'steam':
-        for (const v of [M(30, 108), M(360, 308), M(200, 400)]) for (let i = 0; i < 4; i++) this.add('puff', 0xffffff, 18 + Math.random() * 10, v.x, v.y, { vx: (Math.random() - 0.5) * 24, vy: -30 - Math.random() * 20, life: 1.6, a: 0.32 });
+        // the sun spots on the floor brighten and a few leaves blow across
+        for (const [x, y] of [[300, 120], [110, 260], [280, 320]]) { const q = M(x, y); this.glowAt(q.x, q.y, 80, acc, 0.22, 1.4, Math.random() * 0.3); }
+        for (let i = 0; i < 10; i++) this.add('leaf', i % 3 ? 0x8ad04a : 0xc8a050, 6 + Math.random() * 3, -10, 400 + Math.random() * 300, { vx: 110 + Math.random() * 70, vy: -10 + Math.random() * 20, vr: (Math.random() - 0.5) * 6, life: 3.2, a: 0.8, sway: 10 });
         break;
       case 'wadokei':
         for (let i = 0; i < 14; i++) this.add('petal', i % 3 ? 0xffc0d8 : 0xff8ab4, 4 + Math.random() * 3, -10, 400 + Math.random() * 300, { vx: 120 + Math.random() * 80, vy: -10 + Math.random() * 20, vr: (Math.random() - 0.5) * 6, life: 3.2, a: 0.75, sway: 10 });
-        this.glowAt(195, 706, 120, acc, 0.18, 1.1);
+        this.glowAt(195, 571, 120, acc, 0.18, 1.1);
         break;
       case 'compass': this.ring(M(195, 384).x, M(195, 384).y, 10, 170, 0xd8e0ff, 2, 1.4, { ry: 22, peak: 0.4 }); this.ring(M(320, 384).x, M(320, 384).y, 4, 40, 0xffe8a0, 1.5, 1, { ry: 6, delay: 0.2 }); break;
-      case 'forge': { const f = M(70, 280); for (let i = 0; i < 22; i++) this.add('spark', i % 2 ? 0xffd27a : 0xff8a3a, 2.2, f.x + (Math.random() - 0.5) * 60, f.y, { vx: (Math.random() - 0.5) * 120, vy: -120 - Math.random() * 120, ay: 140, life: 0.9 + Math.random() * 0.5, a: 1 }); this.glowAt(f.x, f.y + 40, 120, col, 0.3, 1); break; }
-      case 'archive': for (let i = 0; i < 6; i++) this.add('petal', 0xc8202e, 4 + Math.random() * 2, 40 + Math.random() * 310, 380, { vx: (Math.random() - 0.5) * 20, vy: 50 + Math.random() * 30, vr: (Math.random() - 0.5) * 3, life: 2.8, a: 0.75, sway: 14 }); break;
+      case 'forge': { const f = M(212, 198); for (let i = 0; i < 22; i++) this.add('spark', i % 2 ? 0xffd27a : 0xff8a3a, 2.2, f.x + (Math.random() - 0.5) * 60, f.y, { vx: (Math.random() - 0.5) * 120, vy: -120 - Math.random() * 120, ay: 140, life: 0.9 + Math.random() * 0.5, a: 1 }); this.glowAt(f.x, f.y, 120, col, 0.3, 1); break; }
+      case 'archive': {
+        // the circle on the page lights up and sparks rise from it
+        const c = M(195, 205);
+        this.ring(c.x, c.y, 10, 150, col, 2.5, 1.3, { ry: 120, peak: 0.4 });
+        this.ring(c.x, c.y, 6, 90, acc, 2, 1, { ry: 72, delay: 0.15, dotted: true, peak: 0.35 });
+        this.glowAt(c.x, c.y, 90, col, 0.3, 1.1);
+        for (let i = 0; i < 12; i++) this.add('shard', i % 3 ? 0xc070ff : 0xff8ad8, 3.2 + Math.random() * 2, c.x + (Math.random() - 0.5) * 200, c.y + (Math.random() - 0.5) * 120, { vy: -40 - Math.random() * 40, vr: (Math.random() - 0.5) * 3, life: 1.4, a: 0.8, sway: 5 });
+        break;
+      }
       case 'cathedral': {
         const crack = [[195, 186], [195, 228], [232, 250], [232, 272], [268, 292], [268, 340]].map(([x, y]) => M(x, y));
         const crack2 = [[195, 228], [158, 250], [158, 272], [122, 292], [122, 340]].map(([x, y]) => M(x, y));
@@ -443,8 +457,8 @@ export class MatFx extends Layer {
       return;
     }
     if (this.theme === 'compass') { g.rect(0, 366, 390, 414).fill({ color: 0x000000, alpha: (0.1 + 0.05 * br) * lv }); return; }
-    if (this.theme === 'steam') { for (let i = 0; i < 4; i++) g.rect(0, 700 + i * 20, 390, 80 - i * 20).fill({ color: 0xf0ece4, alpha: (0.03 + 0.02 * br) * lv }); return; }
-    if (this.theme === 'archive') { for (const [x, y, r] of [[90, 620, 40], [300, 700, 34], [220, 560, 22]]) g.circle(x, y, r * (0.8 + 0.2 * lv)).fill({ color: 0xa01a2a, alpha: (0.08 + 0.04 * br) * lv / 2 }); return; }
+    if (this.theme === 'steam') { g.rect(0, 366, 390, 414).fill({ color: 0x5a2a08, alpha: (0.06 + 0.03 * br) * lv }); return; }
+    if (this.theme === 'archive') { g.ellipse(195, 571, 150, 120).fill({ color: 0xd0204a, alpha: (0.05 + 0.04 * br) * lv }); g.rect(0, 366, 390, 414).fill({ color: 0x2a0a40, alpha: (0.04 + 0.02 * br) * lv }); return; }
     if (this.theme === 'cathedral') { for (let i = 0; i < 4; i++) g.rect(0, 760 - i * 14, 390, 20 + i * 14).fill({ color: 0xffffff, alpha: (0.02 + 0.015 * br) * lv }); return; }
     g.rect(0, 366, 390, 414).fill({ color: this.st.doom, alpha: (0.04 + 0.03 * br) * lv });
   }
@@ -479,11 +493,13 @@ export class MatFx extends Layer {
     if (!this.motion) return;
     const dt = ms / 1000;
     this.amb += dt;
-    const every = this.theme === 'wadokei' ? 0.8 : this.theme === 'compass' ? 1 : this.theme === 'cathedral' ? 0.6 : 0;
+    const every = this.theme === 'wadokei' ? 0.8 : this.theme === 'compass' ? 1 : this.theme === 'cathedral' ? 0.6 : this.theme === 'steam' ? 0.9 : this.theme === 'archive' ? 0.8 : 0;
     if (!every || this.amb < every) return;
     this.amb = 0;
     if (this.theme === 'wadokei') this.add('petal', this.doomLv ? 0xff5a7a : 0xffc0d8, 3.5 + Math.random() * 2.5, Math.random() * 300, 366 + Math.random() * 200, { vx: 14 + Math.random() * 14, vy: 18 + Math.random() * 12, vr: (Math.random() - 0.5) * 3, life: 8, a: 0.6, sway: 10 });
     else if (this.theme === 'compass') this.add('flower', 0xfff4cc, 2.6 + Math.random() * 2.4, 30 + Math.random() * 330, 760, { vy: -18 - Math.random() * 12, vr: (Math.random() - 0.5), life: 12, a: 0.5, sway: 12 });
+    else if (this.theme === 'steam') this.add('dot', 0xf0ffa0, 1.6 + Math.random() * 1.4, 20 + Math.random() * 350, 420 + Math.random() * 340, { vx: (Math.random() - 0.5) * 10, vy: -6 - Math.random() * 6, life: 4, a: 0.5, sway: 8 });
+    else if (this.theme === 'archive') this.add('dot', this.doomLv ? 0xff4a7a : 0xc070ff, 1.6 + Math.random() * 1.4, 60 + Math.random() * 270, 470 + Math.random() * 220, { vy: -16 - Math.random() * 10, life: 4, a: 0.5, sway: 5 });
     else this.add('star', 0xffffff, 2 + Math.random() * 3, Math.random() * 390, 380 + Math.random() * 380, { life: 1, a: 0.5, vr: 0.5 });
   }
 }

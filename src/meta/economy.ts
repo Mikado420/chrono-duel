@@ -51,14 +51,14 @@ export interface LookDef { id: string; kind: LookKind; name: string; price: numb
 /** Themes: a clock face, a card back and a playmat that belong together (sold one by one or as a set). */
 export interface ThemeDef { id: string; name: string; blurb: string }
 export const THEMES: ThemeDef[] = [
-  { id: 'skeleton', name: '透かし機械', blurb: '盤の奥で歯車が噛み合い、時計が進むと回る' },
+  { id: 'skeleton', name: '透かし機械', blurb: '金の歯車とルビーの軸石、差し込む光' },
   { id: 'astro', name: '天文時計', blurb: '青い天空に金の黄道。星と天球儀' },
-  { id: 'cathedral', name: '零度の氷刃', blurb: '黒い氷の奥の結晶核と、突き出す氷の刃' },
-  { id: 'steam', name: '蒸気機関', blurb: '白い圧力計と、蒸気の漏れるボイラー室' },
+  { id: 'cathedral', name: '絶対零度', blurb: '六角の結晶核と氷の剣、凍てつく深い青' },
+  { id: 'steam', name: '木漏れ日の森', blurb: '梢から差す陽の光と、苔むした森の床' },
   { id: 'wadokei', name: '夜桜', blurb: '満月に金の桜紋、夜空に舞う花びら' },
-  { id: 'compass', name: '深海の鯨', blurb: '深い藍の海を横切る黒い鯨と、光る花' },
-  { id: 'forge', name: '鍛冶場', blurb: '赤熱する鋳鉄と、炉の照り返し' },
-  { id: 'archive', name: '記憶の書庫', blurb: '羊皮紙と羽根ペン、開いた古書' },
+  { id: 'compass', name: '深海の鯨', blurb: '光の差す青い海を泳ぐ鯨と、光る花' },
+  { id: 'forge', name: '鍛冶場', blurb: '熔けた鋳鉄と金床、白熱の刃' },
+  { id: 'archive', name: '封印の魔導書', blurb: '封蝋で閉じた魔導書と、紫に燃える魔法陣' },
 ];
 /** What each part of a theme costs. */
 export const THEME_PRICES: Record<LookKind, number> = { dial: 400, back: 200, mat: 400 };
@@ -74,14 +74,14 @@ export const LOOKS: LookDef[] = [
   { id: 'back:brass', kind: 'back', name: '真鍮の時計', price: 0, blurb: 'はじめから持っているスリーブ' },
   { id: 'dial:brass', kind: 'dial', name: '標準', price: 0, blurb: 'はじめから持っている文字盤' },
   { id: 'mat:none', kind: 'mat', name: 'なし', price: 0, blurb: 'いつもの盤面' },
-  ...themed('skeleton', ['透かし機械', '奥で歯車が回る文字盤、鐘はルビー'], ['重なる歯車', '大歯車を中央に据えたスリーブ'], ['機械室', '隅で歯車がゆっくり回る']),
-  ...themed('astro', ['天文時計', '黄道の輪がめぐる青い天空、鐘は四芒星'], ['天球儀', '星空に金の天球儀'], ['天文台の床', '星空の床に金の子午線と軌道']),
-  ...themed('cathedral', ['零度の氷刃', '結晶核から氷の刃が放射状に伸びる'], ['氷の剣', '結晶核を貫く氷の剣と散る氷片'], ['氷柱の床', '六角格子の床に、両端から突き上がる氷柱']),
-  ...themed('steam', ['刻圧計', '銅の縁に鋲を打った白い圧力計、鐘はネジ'], ['汽缶の銘板', '鋲打ちの鉄に圧力計と時計機関'], ['ボイラー室', '鋲打ちの鉄板と銅管、漏れる蒸気']),
-  ...themed('wadokei', ['夜桜', '満月と金の桜紋、両側から張り出す枝'], ['月と桜紋', '月と桜紋に、下から伸びる桜の枝'], ['枝垂れ桜', '夜の床に金の桜紋と、舞い落ちる花びら']),
-  ...themed('compass', ['深海の鯨', '深い海を悠然と横切るザトウクジラ'], ['昇る鯨', '光へ向かって昇る鯨と、水面の少女'], ['鯨の海', '盤の下を泳ぐ鯨と、昇る光の花']),
-  ...themed('forge', ['鋳鉄', '終焉の側の縁が赤熱し、鐘は白熱の鋲'], ['灼ける刃', '鉄のアーチの奥で白熱した刃'], ['炉の照り返し', '煉瓦の壁に燃える炉と舞う火の粉']),
-  ...themed('archive', ['書庫の時計', '羊皮紙としおり、鐘は封蝋の四つ葉'], ['革装丁', '唐草の角金具と砂時計の本'], ['開いた古書', '見開きの古書としおり']),
+  ...themed('skeleton', ['透かし機械', '奥で噛み合う金の歯車、鐘はルビー'], ['重なる歯車', '大歯車を中央に据えたスリーブ'], ['機械室', '左右の大歯車と真鍮の床板']),
+  ...themed('astro', ['天文時計', '黄道の輪がめぐる青い天空、鐘は四芒星'], ['天球儀', '星空に金の天球儀'], ['天文台の床', '星空の床に金の軌道と輝く太陽']),
+  ...themed('cathedral', ['氷晶の核', '六角の核から氷柱が放射状に伸びる、鐘は氷晶'], ['零下の剣', '六角の宝石を抱く氷の剣と、舞う氷片'], ['六花の床', '光る六角格子に雪の結晶、両端からせり出す氷']),
+  ...themed('steam', ['梢の空', '見上げた梢から陽が差し込む、鐘は若葉'], ['光の天蓋', '木々の天蓋の真ん中に輝く太陽'], ['苔むす小径', '苔とシダの床に、揺れる木漏れ日']),
+  ...themed('wadokei', ['夜桜', '満月と金の桜紋、両側から張り出す枝'], ['月と桜紋', '月と桜紋に、下から伸びる桜の枝'], ['枝垂れ桜', '花びらの浮かぶ水面に、金の桜紋']),
+  ...themed('compass', ['深海の鯨', '光の差す海を悠然と横切るザトウクジラ'], ['昇る鯨', '光へ向かって昇る鯨と、水面の少女'], ['鯨の海', '盤の下を泳ぐ鯨と、昇る光の花']),
+  ...themed('forge', ['鋳鉄', 'ひび割れから熔けた鉄がのぞく、鐘は白熱の鋲'], ['灼ける刃', '金床に突き立つ白熱の刃'], ['炉の照り返し', '金床に赤熱の鉄と槌、両脇に燃える炉']),
+  ...themed('archive', ['紫焔の魔法陣', '石床に浮かぶ紫の魔法陣、鐘は封蝋'], ['封印の書', '紅いリボンと封蝋で閉じられた魔導書'], ['開かれた禁書', '燭台の灯る机に、魔法陣の頁']),
 ];
 export const DEFAULT_LOOK: Record<LookKind, string> = { back: 'back:brass', dial: 'dial:brass', mat: 'mat:none' };
 /** Looks that were sold once and are gone: whoever bought one gets the coins back (`refundRetired`). */

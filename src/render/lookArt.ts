@@ -35,9 +35,9 @@ export const svgDoc = (viewBox: string, w: number, h: number, body: string, defs
  * templates in docs/theme-templates). A picture replaces the drawn inside of a part — the face under the dial's rim,
  * the window of a sleeve, the whole mat — while the rim, the frame, the bells, the ticks and the effects stay drawn.
  */
-export const THEME_PICS: Record<string, { dial?: boolean; back?: boolean; mat?: boolean }> = {
-  wadokei: { dial: true, back: true, mat: true },
-};
+export const THEME_PICS: Record<string, { dial?: boolean; back?: boolean; mat?: boolean }> = Object.fromEntries(
+  ['skeleton', 'astro', 'cathedral', 'steam', 'wadokei', 'compass', 'forge', 'archive'].map((t) => [t, { dial: true, back: true, mat: true }]),
+);
 let picBase = './themes/';
 export function setThemePicBase(base: string) { picBase = base; }
 const PIC: Record<string, string> = {};
@@ -51,7 +51,20 @@ async function loadPic(name: string, maxMs: number): Promise<void> {
   })().catch(() => {});
   await Promise.race([get, new Promise((res) => setTimeout(res, maxMs))]);
 }
-const picsLoaded = () => Promise.all(Object.entries(THEME_PICS).flatMap(([t, parts]) => (['dial', 'back', 'mat'] as const).filter((k) => parts[k]).map((k) => loadPic(`${t}_${k}.webp`, 8000))));
+/** Each theme's pictures load the first time something of that theme is drawn (8 themes × 3 pictures are too much at start). */
+const picsOf = new Map<string, Promise<void>>();
+const picsDone = new Set<string>();
+/** Resolves once the art is in and theme `t`'s pictures are loaded and in place. */
+function picsFor(t: string): Promise<void> {
+  let p = picsOf.get(t);
+  if (!p) {
+    const parts = THEME_PICS[t];
+    p = !parts ? Promise.resolve()
+      : artReady.then(() => Promise.all((['dial', 'back', 'mat'] as const).filter((k) => parts[k]).map((k) => loadPic(`${t}_${k}.webp`, 8000)))).then(() => { if (GEN?.[t]) applyPics(t); picsDone.add(t); });
+    picsOf.set(t, p);
+  }
+  return p;
+}
 /** Replaces the SVG group that starts with `<g ${attr}>` (and everything inside it) by `body`. */
 function swapGroup(svg: string, attr: string, body: string): string {
   const start = svg.indexOf(`<g ${attr}>`);
@@ -93,8 +106,12 @@ function applyPics(t: string) {
 // ------------------------------------------------------------------ the generated pictures (loaded on their own)
 let GEN: Record<string, GenTheme> | null = null;
 /** Resolves once the theme pictures are loaded (they fill in DIAL_ART, BACK_ART and MAT_ART; painted ones replace parts). */
-export const artReady: Promise<void> = Promise.all([import('./themeArt'), picsLoaded()]).then(([m]) => { GEN = m.THEME_ART; fill(); }).catch(() => {});
+export const artReady: Promise<void> = import('./themeArt').then((m) => { GEN = m.THEME_ART; fill(); }).catch(() => {});
 export const artLoaded = () => GEN !== null;
+/** Resolves once look `id` (dial:…, back:…, mat:… or a theme id) can be drawn with its painted pictures. */
+export const themeReady = (id: string): Promise<void> => artReady.then(() => picsFor(id.includes(':') ? themeOf(id) : id));
+/** Whether look `id` can be drawn right now (art and its theme's pictures in). */
+export const themeLoaded = (id: string) => artLoaded() && (!THEME_PICS[id.includes(':') ? themeOf(id) : id] || picsDone.has(id.includes(':') ? themeOf(id) : id));
 
 /** Theme ids (kept from the first themes, so whoever owns one keeps it) → the design each now shows. */
 const THEME_IDS = ['skeleton', 'astro', 'cathedral', 'steam', 'wadokei', 'compass', 'forge', 'archive'] as const;
@@ -236,6 +253,5 @@ function fill() {
     Object.assign(d, { defs: g.dial.defs, under: g.dial.under, over: g.dial.over, overDefs: g.dial.overDefs, clip: g.dial.clip, spinDefs: g.dial.spinDefs, spins: g.dial.spins?.map((s) => ({ ...s, defs: g.dial.spinDefs })) });
     Object.assign(BACK_ART[`back:${t}`], { body: g.back.body, defs: g.back.defs });
     Object.assign(MAT_ART[`mat:${t}`], { defs: g.mat.defs, under: g.mat.under, over: g.mat.over ?? '', spins: g.mat.spins });
-    applyPics(t);
   }
 }
