@@ -7,6 +7,7 @@ import { chooseAction, type AiLevel } from '../core/ai';
 import { CARD_LIST, cardDef } from '../core/cards';
 import { actor, apply, createGame, mulberry32, worldTime, type PlayerIndex } from '../core/engine';
 import { RULES } from '../core/rules';
+import { ROSTER_DECKS } from './rosterDecks';
 import { BLUEPRINTS, ROLE_CARDS, SAME_GROUP, checkList, checkPlay, classify, originList, shared, sizeRole, type PlayProfile } from '../meta/blueprints';
 
 // ------------------------------------------------------------------ candidates
@@ -116,9 +117,9 @@ export function paired(base: string[], cand: string[], opps: Opp[], n: number, s
   const sd = Math.sqrt(ds.reduce((a, d) => a + (d - mean) ** 2, 0) / Math.max(1, n - 1));
   return { n, base: sb / n, cand: sc / n, diff: mean, se: sd / Math.sqrt(n) };
 }
-/** The play numbers of a list as the 設計図 measured them: against every archetype's first list, at 'hard'. */
+/** The play numbers of a list as the 設計図 measured them: against every roster deck (src/sim/rosterDecks.ts), at 'hard'. */
 export function playProfile(cards: string[], n: number, seed0: number, self: string): PlayProfile & { cast: number } {
-  const opps = Object.keys(BLUEPRINTS).filter((id) => id !== self).map((id) => originList(id)!).filter((c) => c && c.every((x) => { try { cardDef(x); return true; } catch { return false; } }));
+  const opps = ROSTER_DECKS.filter((d) => d.id !== self).map((d) => d.cards).filter((c) => c.every((x) => { try { cardDef(x); return true; } catch { return false; } }));
   let end = 0, koW = 0, wins = 0, dmg = 0, atk = 0, resv = 0, cast = 0, hp = 0;
   for (let i = 0; i < n; i++) {
     const o = playOne(cards, opps[i % opps.length], seed0 + i * 104729);

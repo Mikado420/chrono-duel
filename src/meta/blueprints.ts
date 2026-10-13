@@ -7,6 +7,7 @@
 import { CARDS, cardDef } from '../core/cards';
 import { RULES } from '../core/rules';
 import { META_DECKS } from '../sim/metaDecks';
+import { ROSTER_DECKS } from '../sim/rosterDecks';
 import { SET2_TEST_DECKS } from '../sim/set2Decks';
 
 export type Style = 'beat' | 'burn' | 'endure' | 'resv' | 'mid';
@@ -40,7 +41,7 @@ export const BLUEPRINTS: Record<string, Blueprint> = {
 
 /** The first version of each archetype's list (what every later version is compared with). */
 export function originList(id: string): string[] | undefined {
-  return [...META_DECKS, ...SET2_TEST_DECKS].find((d) => d.id === id)?.cards;
+  return [...ROSTER_DECKS, ...META_DECKS, ...SET2_TEST_DECKS].find((d) => d.id === id)?.cards;
 }
 
 // ------------------------------------------------------------------ profiles
