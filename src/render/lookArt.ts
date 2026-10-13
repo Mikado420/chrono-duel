@@ -29,10 +29,71 @@ const tickArc = (r: number, n: number, len: number, w: number, color: string) =>
 export const svgDoc = (viewBox: string, w: number, h: number, body: string, defs = '') =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice"><defs>${defs}</defs>${body}</svg>`;
 
+// ------------------------------------------------------------------ painted theme pictures
+/**
+ * Themes that have painted pictures (public/themes/<theme>_<part>.webp, made from docs/theme-art-brief.md and the
+ * templates in docs/theme-templates). A picture replaces the drawn inside of a part — the face under the dial's rim,
+ * the window of a sleeve, the whole mat — while the rim, the frame, the bells, the ticks and the effects stay drawn.
+ */
+export const THEME_PICS: Record<string, { dial?: boolean; back?: boolean; mat?: boolean }> = {
+  wadokei: { dial: true, back: true, mat: true },
+};
+let picBase = './themes/';
+export function setThemePicBase(base: string) { picBase = base; }
+const PIC: Record<string, string> = {};
+/** A picture as a data: URL (an SVG drawn as an image may not load anything from outside itself). */
+async function loadPic(name: string, maxMs: number): Promise<void> {
+  const get = (async () => {
+    const r = await fetch(picBase + name);
+    if (!r.ok) return;
+    const b = await r.blob();
+    PIC[name] = await new Promise<string>((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result as string); fr.onerror = rej; fr.readAsDataURL(b); });
+  })().catch(() => {});
+  await Promise.race([get, new Promise((res) => setTimeout(res, maxMs))]);
+}
+const picsLoaded = () => Promise.all(Object.entries(THEME_PICS).flatMap(([t, parts]) => (['dial', 'back', 'mat'] as const).filter((k) => parts[k]).map((k) => loadPic(`${t}_${k}.webp`, 8000))));
+/** Replaces the SVG group that starts with `<g ${attr}>` (and everything inside it) by `body`. */
+function swapGroup(svg: string, attr: string, body: string): string {
+  const start = svg.indexOf(`<g ${attr}>`);
+  if (start < 0) return svg;
+  const re = /<g[\s>]|<\/g>/g;
+  re.lastIndex = start;
+  let depth = 0, m: RegExpExecArray | null;
+  while ((m = re.exec(svg))) {
+    if (m[0] === '</g>') { if (--depth === 0) return svg.slice(0, start) + body + svg.slice(m.index + 4); }
+    else depth++;
+  }
+  return svg;
+}
+const pic = (href: string, x: number, y: number, w: number, h: number) => `<image href="${href}" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}" preserveAspectRatio="xMidYMid slice"/>`;
+/** The painted parts in place of the drawn ones (when a theme has them and they loaded). */
+function applyPics(t: string) {
+  const parts = THEME_PICS[t];
+  if (!parts) return;
+  const d = DIAL_ART[`dial:${t}`].art, b = BACK_ART[`back:${t}`], m = MAT_ART[`mat:${t}`];
+  const dial = PIC[`${t}_dial.webp`], back = PIC[`${t}_back.webp`], mat = PIC[`${t}_mat.webp`];
+  if (parts.dial && dial) {
+    // the face: the picture, darkened a little towards the rim where the numbers sit
+    // fitted to the face (inside the rim), so nothing near the top of the picture hides under the rim
+    const w = 506, x = 47, y = 304 - (w * DIAL_VIEW.h) / DIAL_VIEW.w;
+    d.defs += `<radialGradient id="pv" gradientUnits="userSpaceOnUse" cx="300" cy="304" r="253"><stop offset=".7" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".5"/></radialGradient>`;
+    d.under = swapGroup(d.under, 'clip-path="url(#fc)"', `<g clip-path="url(#fc)">${pic(dial, x, y, w, (w * DIAL_VIEW.h) / DIAL_VIEW.w)}<path d="M47 304 A253 253 0 0 1 553 304 Z" fill="url(#pv)"/></g>`);
+    d.spins = undefined; d.pulse = undefined;
+  }
+  if (parts.back && back) {
+    // the sleeve's window: the picture, with the band under the CHRONO DUEL line kept dark
+    b.defs += `<linearGradient id="pb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".72"/></linearGradient>`;
+    b.body = swapGroup(b.body, 'clip-path="url(#in)"', `<g clip-path="url(#in)">${pic(back, 0, 0, 240, 336)}<rect x="0" y="262" width="240" height="74" fill="url(#pb)"/></g>`);
+  }
+  if (parts.mat && mat) {
+    Object.assign(m, { under: `<g transform="translate(0 ${MAT_VIEW.y})">${pic(mat, 0, 0, MAT_VIEW.w, MAT_VIEW.h)}</g>`, over: '', spins: undefined, glow: undefined, drift: undefined });
+  }
+}
+
 // ------------------------------------------------------------------ the generated pictures (loaded on their own)
 let GEN: Record<string, GenTheme> | null = null;
-/** Resolves once the theme pictures are loaded (they fill in DIAL_ART, BACK_ART and MAT_ART). */
-export const artReady: Promise<void> = import('./themeArt').then((m) => { GEN = m.THEME_ART; fill(); }).catch(() => {});
+/** Resolves once the theme pictures are loaded (they fill in DIAL_ART, BACK_ART and MAT_ART; painted ones replace parts). */
+export const artReady: Promise<void> = Promise.all([import('./themeArt'), picsLoaded()]).then(([m]) => { GEN = m.THEME_ART; fill(); }).catch(() => {});
 export const artLoaded = () => GEN !== null;
 
 /** Theme ids (kept from the first themes, so whoever owns one keeps it) → the design each now shows. */
@@ -175,5 +236,6 @@ function fill() {
     Object.assign(d, { defs: g.dial.defs, under: g.dial.under, over: g.dial.over, overDefs: g.dial.overDefs, clip: g.dial.clip, spinDefs: g.dial.spinDefs, spins: g.dial.spins?.map((s) => ({ ...s, defs: g.dial.spinDefs })) });
     Object.assign(BACK_ART[`back:${t}`], { body: g.back.body, defs: g.back.defs });
     Object.assign(MAT_ART[`mat:${t}`], { defs: g.mat.defs, under: g.mat.under, over: g.mat.over ?? '', spins: g.mat.spins });
+    applyPics(t);
   }
 }

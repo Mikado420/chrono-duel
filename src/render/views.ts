@@ -12,7 +12,7 @@ const tex = new Map<string, Texture>();
 /** A texture for a canvas drawn at `res` pixels per unit: it keeps the logical size (width / res) on screen. */
 export const hiTex = (cv: HTMLCanvasElement, res = FACE_RES) => new Texture({ source: new CanvasSource({ resource: cv, resolution: res }) });
 export function faceTex(id: string) { let t = tex.get('f:' + id); if (!t) { t = hiTex(cardFace(id)); tex.set('f:' + id, t); } return t; }
-export function backTex(style = 'back:brass'): Texture { if (isArtBack(style) && !artBack(style)) return backTex('back:brass'); let t = tex.get('b:' + style); if (!t) { t = Texture.from(cardBack(style)); tex.set('b:' + style, t); } return t; }
+export function backTex(style = 'back:brass'): Texture { if (isArtBack(style) && !artBack(style)) return backTex('back:brass'); let t = tex.get('b:' + style); if (!t) { const cv = cardBack(style); t = cv.width > CARD_W ? hiTex(cv, cv.width / CARD_W) : Texture.from(cv); tex.set('b:' + style, t); } return t; }
 
 export const UNIT_W = 176, UNIT_H = 214;
 
