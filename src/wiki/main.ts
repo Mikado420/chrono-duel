@@ -196,6 +196,8 @@ function moveOf(r: TierRow): string {
 }
 const signed = (n: number, d = 1) => `${n > 0 ? '+' : n < 0 ? '−' : '±'}${Math.abs(n).toFixed(d)}`;
 const winPct = (g: number, s: number) => (g ? `${Math.round((100 * s) / g)}%` : '—');
+/** Days a snapshot covers (from its YYYYMMDD pair). */
+const spanDays = (t: TierSnapshot) => { const p = (d: string) => Date.parse(`${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`); return Math.round((p(t.days[1]) - p(t.days[0])) / 86_400_000) + 1; };
 const dayFmt = (d: string) => (d.length === 8 ? `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6)}` : d.replace(/-/g, '.'));
 /** A type as a chip: its key card, name and arrow (opens its section on the deck page). */
 const typeChip = (t: string, r?: TierRow) => `<button type="button" class="tchip" data-type="${DECK_TYPES.indexOf(t)}">${img(keyCard(t), 'face')}<span><b>${esc(t)}</b><small>${r ? `${r.all[0]}試合・${signed(r.perf)}` : '集計中'}</small></span>${r ? moveOf(r) : ''}</button>`;
@@ -431,7 +433,7 @@ function initTier() {
   const draw = () => {
     if (page !== 'tier') return;
     const t = tierNow;
-    $('tier-when').innerHTML = t ? `集計日 <b>${dayFmt(t.date)}</b>（${dayFmt(t.days[0])}〜${dayFmt(t.days[1])}の7日間）${t.prevDate ? `／ 矢印は ${dayFmt(t.prevDate)} との比較` : ''}`
+    $('tier-when').innerHTML = t ? `集計日 <b>${dayFmt(t.date)}</b>（${dayFmt(t.days[0])}〜${dayFmt(t.days[1])}の${spanDays(t)}日間）${t.prevDate ? `／ 矢印は ${dayFmt(t.prevDate)} との比較` : ''}`
       : tierTried ? 'まだ集計がありません。毎日4:30ごろに更新されます。' : '読み込み中…';
     $('tierlist2').innerHTML = tierRows() + tierLegend();
     const rows = DECK_TYPES.map((x) => tierOfType(x)).filter((x): x is TierRow => !!x).sort((a, b) => markRank(a.tier) - markRank(b.tier) || b.perf - a.perf);
@@ -524,7 +526,7 @@ function initHome() {
   const drawTier = () => {
     if (page !== 'home') return;
     $('home-tier').innerHTML = tierRows(['S', 'A']) + tierLegend();
-    $('home-tier-when').textContent = tierNow ? `${dayFmt(tierNow.date)} 更新（直近7日の実戦）` : tierTried ? 'まだ集計がありません（毎日4:30ごろ更新）' : '読み込み中…';
+    $('home-tier-when').textContent = tierNow ? `${dayFmt(tierNow.date)} 更新（直近${spanDays(tierNow)}日の実戦）` : tierTried ? 'まだ集計がありません（毎日4:30ごろ更新）' : '読み込み中…';
     $('home-types').innerHTML = DECK_TYPES.map((t) => typeChip(t, tierOfType(t))).join('');
     hydrate($('home-tier')); hydrate($('home-types'));
     const u = document.getElementById('upd-date');

@@ -6,7 +6,7 @@
  * rated rivals' lists and both sides of online games. Strength is result − expected result (rated games know the
  * rating gap, the rest count 50%), measured against the other decks played from the same side: people beat their
  * expectation against the AI on the whole while the rivals fall short of it, so each side's average is taken off
- * (a deck only the rivals play is not marked down for being played by the AI). Then it is shrunk towards 0 by a few
+ * (a deck only the rivals play is not marked down for being played by the AI), and people within their own rank. Then it is shrunk towards 0 by a few
  * games, so a type with little data stays near the middle.
  *
  * Nothing here may point at a person: only deck ids, deck types and counts (the rivals' names never reach it).
@@ -19,6 +19,8 @@ export const TIER_MARKS: TierMark[] = ['S', 'A', 'B', 'C'];
 export const TIER_MIN_GAMES = 20;
 /** Games the strength is shrunk by (perf = (score − expected) / (games + this)). */
 export const TIER_SHRINK = 30;
+/** Games a rank's own average is leaned towards the average of all people by. */
+export const BAND_LEAN = 100;
 /** Lower bounds of S, A and B in points of result − expected (C is the rest). */
 export const TIER_CUTS: [number, number, number] = [4, 1.5, -1.5];
 
@@ -93,6 +95,14 @@ export function computeTier(env: EnvTables, date: string, prev?: TierSnapshot | 
   };
   const known = <T extends { games: number }>(o: Record<string, T>) => Object.entries(o).filter(([id, c]) => deckType(id.replace(/@\d+$/, '')) && c.games).map(([, c]) => c);
   const aHuman = avg(Object.values(env.bands ?? {}).flatMap((t) => known(t)));
+  // people are compared within their rank: everyone there meets the same rivals, so a change in the rivals' strength
+  // (a Lv made stronger while its rating stays) moves the whole rank, not the decks played there. A small rank leans
+  // on the average of all people.
+  const aBand: Record<string, number> = {};
+  for (const [band, tab] of Object.entries(env.bands ?? {})) {
+    const cs = known(tab), g = cs.reduce((a, c) => a + c.games, 0);
+    aBand[band] = (cs.reduce((a, c) => a + c.score - c.expected, 0) + BAND_LEAN * aHuman) / (g + BAND_LEAN);
+  }
   const aAi = avg(known(env.rivals ?? {}));
   const rows = new Map<string, TierRow>();
   const row = (type: string) => {
@@ -106,7 +116,7 @@ export function computeTier(env: EnvTables, date: string, prev?: TierSnapshot | 
     for (const [id, c] of Object.entries(tab)) {
       const t = deckType(id);
       if (!t || !c.games) continue;
-      const r = row(t), e = c.expected + aHuman * c.games;
+      const r = row(t), e = c.expected + aBand[band] * c.games;
       add(r.all, c.games, c.score, e); add(r.human, c.games, c.score, e); build(r, id, c.games, c.score, e);
       r.players += c.players;
       (bands[band] ??= {})[t] = (bands[band][t] ?? 0) + c.games;

@@ -59,11 +59,17 @@ async function post<T>(path: string, body: unknown): Promise<T | null> {
 
 // ---- 1. read
 let env: EnvRes | null, lists: ListRow[], book: DeckBook;
+let envTier: EnvRes | null = null;
+/** The first day the environment tables classify players' lists to the roster's decks. */
+const TIER_FROM = '2026-10-14';
 if (E.FAKE) {
   const f = JSON.parse(readFileSync(E.FAKE, 'utf8')) as { env: EnvRes; lists: ListRow[]; book?: DeckBook };
   env = f.env; lists = f.lists; book = cleanBook(f.book ?? EMPTY_BOOK);
 } else {
   env = await post<EnvRes>('/api/env', { days: 7 });
+  // 環境Tier: the players' lists were classified to the roster's decks from 2026-10-14 on (before, most of them went
+  // to the older archetypes), so the tier list reads only the days since then until a whole week has passed
+  envTier = await post<EnvRes>('/api/env', { days: Math.max(1, Math.min(7, 1 + Math.floor((Date.parse(today) - Date.parse(TIER_FROM)) / 86_400_000))) });
   lists = E.ADMIN_TOKEN ? (await post<{ lists: ListRow[] }>('/api/env/lists', { token: E.ADMIN_TOKEN, min: 1 }))?.lists ?? [] : [];
   book = cleanBook(await post<DeckBook>('/api/decks', {}));
 }
@@ -78,7 +84,7 @@ const issues: string[] = [];
   const cur = cleanTier(got?.tier), old = cleanTier(got?.prev);
   // the arrows compare with the last snapshot of another day
   const prev: TierSnapshot | null = cur && cur.date !== today ? cur : old;
-  const tier = computeTier(env, today, prev);
+  const tier = computeTier(envTier ?? env, today, prev);
   writeFileSync(`${OUT}/daily-tier.json`, JSON.stringify(tier, null, 1));
   report.push('## 環境Tier（実戦）', '');
   for (const r of tier.rows) {
