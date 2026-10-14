@@ -76,9 +76,10 @@ export const LV: Record<number, LvParams> = {
   8: { read: 2, deeper: 0, search: S(8, 24, 30), noise: 0, eps: 0.8, plan: 'all', miss: M(0, 1, 1, 0, 0, 0, 0) },
   9: { read: 2, deeper: 0, search: S(10, 32, 30), noise: 0, eps: 0.6, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true },
   10: { read: 2, deeper: 0, search: S(12, 80, 12), noise: 0, eps: 0.5, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true, fresh: true },
-  // 刻神Ⅲ〜Ⅴ: the same brain reading many more worlds (about 2.5× and 6× Lv10's work), up to 20 s a move
-  11: { read: 2, deeper: 0, search: S(14, 170, 12), noise: 0, eps: 0.4, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true, fresh: true, timeMs: 20000 },
-  12: { read: 2, deeper: 0, search: S(16, 360, 12), noise: 0, eps: 0.3, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true, fresh: true, timeMs: 20000 },
+  // 刻神Ⅲ〜Ⅴ: the same brain, reading the close candidates much longer (halve: after `at` worlds the best `keep`
+  // go on alone), up to 20 s a move. Lv11 beat Lv10 60% (40 games).
+  11: { read: 2, deeper: 0, search: S(16, 300, 12), noise: 0, eps: 0.4, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true, fresh: true, halve: { at: 60, keep: 4 }, timeMs: 20000 },
+  12: { read: 2, deeper: 0, search: S(18, 600, 12), noise: 0, eps: 0.3, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true, fresh: true, halve: { at: 80, keep: 4 }, timeMs: 20000 },
 };
 /** For balance tools: change a Lv's parameters. */
 export function tuneLv(lv: number, p: Partial<LvParams>) { Object.assign(LV[lv], p); }
