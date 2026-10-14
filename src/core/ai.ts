@@ -24,18 +24,17 @@ export const LV_OF_LEVEL: Record<AiLevel, number> = { easy: 1, normal: 3, hard: 
  * board; `push` — a hidden pin that may push the clock counts as
  * another round of attacks in the danger check; `rush` — the 急襲 discount in hand is worth something (rushValue).
  */
-export const AI_FIX = { reach: true, fade: true, fizzle: true, push: true, rush: true, soon: true, crn: true };
+export const AI_FIX = { reach: true, fade: true, fizzle: true, push: true, rush: true, soon: false, crn: true };
 /**
  * `crn` (common random numbers): every candidate of a move is played out in the same guessed worlds with the same
  * random choices, so the comparison is not swamped by luck. Without it a game-ending rollout (±1000) made two
  * candidates differ by ±150 on noise alone and the choice among the shortlist was close to random.
- * ROLL.end: what a won or lost game counts for at the end of a rollout (1000 = the full win; lower = less noise).
+ * `end`: what a won or lost game counts for at the end of a rollout (1000 = the full win; lower = less noise, see
+ * LvParams.fresh).
  */
-export const ROLL = { end: 60 };
-/** The score a rollout ends with. */
-export function rollScore(s: GameState, pi: PlayerIndex, W: Weights): number {
+export function rollScore(s: GameState, pi: PlayerIndex, W: Weights, end = 1000): number {
   const v = evaluate(s, pi, W);
-  return s.over && ROLL.end !== 1000 ? (v / 1000) * ROLL.end + (s.players[pi].hp - s.players[other(pi)].hp) : v;
+  return s.over && end !== 1000 ? (v / 1000) * end + (s.players[pi].hp - s.players[other(pi)].hp) : v;
 }
 /**
  * `soon` (from the 0.22.0 review of the top players, who reserve at the earliest time almost always): a pending
@@ -264,7 +263,7 @@ export function chooseChoice(s: GameState, pi: PlayerIndex): Action {
 }
 
 /** Tunables of the 超つよい rollout search (the balance tools may change them). */
-export const EXPERT_SEARCH = { candidates: 6, rollouts: 30, depth: 12 };
+export const EXPERT_SEARCH = { candidates: 6, rollouts: 12, depth: 30 };
 export type SearchCfg = { candidates: number; rollouts: number; depth: number };
 
 /**
@@ -307,7 +306,7 @@ export function determinize(s: GameState, pi: PlayerIndex, ownDeck: string[], ra
   return c;
 }
 /** Plays greedily (with a little noise) for up to `depth` actions and scores the result for `pi`. */
-export function rollout(s: GameState, pi: PlayerIndex, depth: number, rand: () => number): number {
+export function rollout(s: GameState, pi: PlayerIndex, depth: number, rand: () => number, end = 1000): number {
   for (let i = 0; i < depth && !s.over; i++) {
     const q = actor(s);
     if (q === -1) break;
@@ -322,7 +321,7 @@ export function rollout(s: GameState, pi: PlayerIndex, depth: number, rand: () =
     }
     apply(s, best);
   }
-  return rollScore(s, pi, EXPERT_WEIGHTS);
+  return rollScore(s, pi, EXPERT_WEIGHTS, end);
 }
 
 /** A generator so the UI can pause between candidates and keep animating while 超つよい thinks. */

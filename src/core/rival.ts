@@ -43,6 +43,12 @@ export interface LvParams {
   infer?: boolean;
   /** Lv10: keeps the opponent's hidden reservations (their pins) with a guessed spell, tries more reservation times and reserves in its rollouts. */
   pins?: boolean;
+  /**
+   * The search of the 0.22.x review: short rollouts (12 actions) in many more guessed worlds, a won or lost game
+   * counting ±FRESH_END instead of ±1000. The old 30-action rollouts ending in ±1000 were so noisy that Lv10 picked
+   * a different move 70% of the time when asked twice; for the same work this one beats the old Lv10 64%.
+   */
+  fresh?: boolean;
 }
 const M = (attackMiss: number, threatMiss: number, resvShift: number, holdBack: number, misplace: number, missLethal: number, forgetDefend: number): Record<MissKind, number> =>
   ({ attackMiss, threatMiss, resvShift, holdBack, misplace, missLethal, forgetDefend });
@@ -51,20 +57,19 @@ const S = (candidates: number, rollouts: number, depth: number) => ({ candidates
  * Tuned with `npm run sim:rivals` so each Lv beats the one below about 62–66% (the 仕様書's starting values were
  * a little too close together: reading deeper buys less than the noise and mistakes cost).
  */
-// 0.22.x review: rollouts are 12 actions long and won/lost games count ±60 (ROLL), with 2.5× as many guessed worlds
-// for the same work: the old 30-action rollouts ending in ±1000 made Lv10 pick a different move 70% of the time
-// when asked twice, and the new search beats the old one 66% at Lv8.
+/** What a won or lost game counts for at the end of a `fresh` rollout. */
+export const FRESH_END = 60;
 export const LV: Record<number, LvParams> = {
   1: { read: 0, deeper: 0, search: S(0, 0, 0), noise: 14, eps: 3.0, plan: 'half', miss: M(35, 0, 30, 15, 35, 50, 30) },
   2: { read: 0, deeper: 0, search: S(0, 0, 0), noise: 8, eps: 2.5, plan: 'half', miss: M(15, 0, 20, 10, 15, 25, 15) },
   3: { read: 0, deeper: 0.25, search: S(0, 0, 0), noise: 4, eps: 2.0, plan: 'basic', miss: M(10, 15, 15, 8, 8, 10, 8) },
   4: { read: 1, deeper: 0, search: S(0, 0, 0), noise: 1.5, eps: 1.5, plan: 'all', miss: M(6, 10, 10, 5, 4, 0, 0) },
-  5: { read: 1, deeper: 0.5, search: S(4, 15, 12), noise: 0.5, eps: 1.5, plan: 'all', miss: M(4, 6, 6, 3, 2, 0, 0) },
-  6: { read: 2, deeper: 0, search: S(5, 20, 12), noise: 0, eps: 1.2, plan: 'all', miss: M(2, 4, 4, 2, 1, 0, 0) },
-  7: { read: 2, deeper: 0, search: S(6, 30, 12), noise: 0, eps: 1.0, plan: 'all', miss: M(1, 2, 2, 1, 0, 0, 0) },
-  8: { read: 2, deeper: 0, search: S(8, 60, 12), noise: 0, eps: 0.8, plan: 'all', miss: M(0, 1, 1, 0, 0, 0, 0) },
-  9: { read: 2, deeper: 0, search: S(10, 80, 12), noise: 0, eps: 0.6, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true },
-  10: { read: 2, deeper: 0, search: S(12, 100, 12), noise: 0, eps: 0.5, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true },
+  5: { read: 1, deeper: 0.5, search: S(4, 6, 20), noise: 0.5, eps: 1.5, plan: 'all', miss: M(4, 6, 6, 3, 2, 0, 0) },
+  6: { read: 2, deeper: 0, search: S(5, 8, 24), noise: 0, eps: 1.2, plan: 'all', miss: M(2, 4, 4, 2, 1, 0, 0) },
+  7: { read: 2, deeper: 0, search: S(6, 12, 30), noise: 0, eps: 1.0, plan: 'all', miss: M(1, 2, 2, 1, 0, 0, 0) },
+  8: { read: 2, deeper: 0, search: S(8, 24, 30), noise: 0, eps: 0.8, plan: 'all', miss: M(0, 1, 1, 0, 0, 0, 0) },
+  9: { read: 2, deeper: 0, search: S(10, 32, 30), noise: 0, eps: 0.6, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true },
+  10: { read: 2, deeper: 0, search: S(12, 100, 12), noise: 0, eps: 0.5, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true, fresh: true },
 };
 /** For balance tools: change a Lv's parameters. */
 export function tuneLv(lv: number, p: Partial<LvParams>) { Object.assign(LV[lv], p); }
@@ -287,7 +292,7 @@ function fogPins(w: GameState): GameState {
   return w;
 }
 /** Like ai.rollout, but either side may also reserve (at its earliest time or two ticks later): Lv10's 予約の先読み. */
-export function rolloutWithReserves(s: GameState, pi: PlayerIndex, depth: number, rand: () => number): number {
+export function rolloutWithReserves(s: GameState, pi: PlayerIndex, depth: number, rand: () => number, end = 1000): number {
   for (let i = 0; i < depth && !s.over; i++) {
     const q = actor(s);
     if (q === -1) break;
@@ -307,7 +312,7 @@ export function rolloutWithReserves(s: GameState, pi: PlayerIndex, depth: number
     }
     apply(s, best);
   }
-  return rollScore(s, pi, EXPERT_WEIGHTS);
+  return rollScore(s, pi, EXPERT_WEIGHTS, end);
 }
 
 interface Scored { a: Action; v: number; ahead?: number }
@@ -401,8 +406,9 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
       for (let wi = 0; wi < worlds.length; wi++) {
         const c = clone(worlds[wi]);
         try { apply(c, cand.a); } catch { sum -= 1000; continue; }
-        const rr = AI_FIX.crn ? mulberry32(seeds[wi]) : rand;
-        const r = pins ? rolloutWithReserves(c, pi, search.depth, rr) : rollout(c, pi, search.depth, rr);
+        const rr = P.fresh && AI_FIX.crn ? mulberry32(seeds[wi]) : rand;
+        const end = P.fresh ? FRESH_END : 1000;
+        const r = pins ? rolloutWithReserves(c, pi, search.depth, rr, end) : rollout(c, pi, search.depth, rr, end);
         sum += r;
         if (r > 0) ahead++;
       }
