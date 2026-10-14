@@ -1,6 +1,7 @@
 import { artBack, isArtBack } from './looks';
 import { CARD_LIST, cardDef, setOf, type CardDef } from '../core/cards';
 import { CSS, FONTS } from './theme';
+import { FX_COLOR, fxSegments, type FxSeg } from '../core/cardText';
 
 /** Procedural card art and card faces drawn with Canvas2D, shared by the Pixi board and the DOM deck editor. */
 
@@ -211,6 +212,30 @@ export function cardArt(id: string, w = 300, h = 230): HTMLCanvasElement {
 function rr(c: Ctx, x: number, y: number, w: number, h: number, r: number) {
   c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
 }
+/** Like wrapText, keeping each signed number whole and coloured (src/core/cardText.ts). */
+function wrapRich(c: Ctx, text: string, maxW: number): FxSeg[][] {
+  const units: FxSeg[] = fxSegments(text).flatMap((s) => (s.fx ? [s] : s.t.split(/(もう一度)/).flatMap((p) => (p === 'もう一度' ? [{ t: p }] : [...p].map((t) => ({ t }))))));
+  const lines: FxSeg[][] = [];
+  let cur: FxSeg[] = [];
+  const width = (xs: FxSeg[]) => c.measureText(xs.map((x) => x.t).join('')).width;
+  for (const u of units) {
+    if (u.t === '\n') { lines.push(cur); cur = []; continue; }
+    if (cur.length && width([...cur, u]) > maxW) {
+      if (!u.fx && '。、）」'.includes(u.t)) { cur.push(u); lines.push(cur); cur = []; continue; }
+      // nor end one with an opening bracket
+      const carry = cur.length > 1 && !cur[cur.length - 1].fx && '（「'.includes(cur[cur.length - 1].t) ? [cur.pop()!] : [];
+      lines.push(cur); cur = [...carry, u];
+    } else cur.push(u);
+  }
+  if (cur.length) lines.push(cur);
+  // join neighbouring plain characters back into runs
+  return lines.map((l) => l.reduce<FxSeg[]>((a, u) => { const last = a[a.length - 1]; if (last && !last.fx && !u.fx) last.t += u.t; else a.push({ ...u }); return a; }, []));
+}
+/** Draws one line of coloured runs from x (left aligned). */
+function fillRich(c: Ctx, line: FxSeg[], x: number, y: number, base: string) {
+  for (const s of line) { c.fillStyle = s.fx ? FX_COLOR[s.fx] : base; c.fillText(s.t, x, y); x += c.measureText(s.t).width; }
+}
+
 function wrapText(c: Ctx, text: string, maxW: number): string[] {
   const lines: string[] = [];
   let cur = '';
@@ -346,14 +371,14 @@ export function cardFace(id: string): HTMLCanvasElement {
   const kw = (d.keywords ?? []).map((k) => ({ taunt: '挑発', pierce: '貫通', swift: '速攻', shift: '転移' })[k]).join('・');
   const kwOnly = !spell && !!kw && d.text === kw;
   let size = 18;
-  type Block = { lines: string[]; lh: number; font: string; color: string; label?: boolean };
+  type Block = { lines: FxSeg[][]; lh: number; font: string; color: string; label?: boolean };
   let blocks: Block[] = [];
   for (; size >= 13; size--) {
     const lh = Math.round(size * 1.42);
     blocks = [];
     c.font = `500 ${size}px ${FONTS.body}`;
-    if (d.text) blocks.push({ lines: kwOnly ? [kw] : wrapText(c, d.text, tw), lh, font: kwOnly ? `700 ${size}px ${FONTS.body}` : `500 ${size}px ${FONTS.body}`, color: kwOnly ? CSS.brass : CSS.ivory });
-    if (spell && d.resvText) blocks.push({ lines: wrapText(c, d.resvText, tw - size * 3.4), lh, font: `500 ${size}px ${FONTS.body}`, color: '#e9d9ae', label: true });
+    if (d.text) blocks.push({ lines: kwOnly ? [[{ t: kw }]] : wrapRich(c, d.text, tw), lh, font: kwOnly ? `700 ${size}px ${FONTS.body}` : `500 ${size}px ${FONTS.body}`, color: kwOnly ? CSS.brass : CSS.ivory });
+    if (spell && d.resvText) blocks.push({ lines: wrapRich(c, d.resvText, tw - size * 2.6), lh, font: `500 ${size}px ${FONTS.body}`, color: '#e9d9ae', label: true });
     const used = blocks.reduce((n, b) => n + b.lines.length * b.lh, 0) + (blocks.length > 1 ? 4 : 0);
     if (top + used <= bottom) break;
   }
@@ -361,9 +386,9 @@ export function cardFace(id: string): HTMLCanvasElement {
   c.textBaseline = 'middle';
   blocks.forEach((b, bi) => {
     if (bi) y += 4;
-    if (b.label) { c.font = `700 ${size}px ${FONTS.body}`; c.fillStyle = CSS.brass; c.fillText('予約時', tx, y); }
-    c.font = b.font; c.fillStyle = b.color;
-    b.lines.forEach((l, i) => c.fillText(l, b.label ? tx + size * 3.4 : tx, y + i * b.lh));
+    if (b.label) { c.font = `700 ${size}px ${FONTS.body}`; c.fillStyle = CSS.brass; c.fillText('予約', tx, y); }
+    c.font = b.font;
+    b.lines.forEach((l, i) => fillRich(c, l, b.label ? tx + size * 2.6 : tx, y + i * b.lh, b.color));
     y += b.lines.length * b.lh;
   });
   // flavor, when there is room

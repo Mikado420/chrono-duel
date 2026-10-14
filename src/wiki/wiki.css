@@ -382,3 +382,6 @@ aside .stier ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4
 aside .stier button { display: flex; gap: 8px; align-items: center; width: 100%; padding: 6px 8px; border: 1px solid var(--line2); border-radius: 4px; background: var(--ink2); text-align: left; font-size: 13px; }
 aside .stier button:hover { border-color: var(--brass); }
 aside .stier span { flex: 1; }
+
+.fx-plus { color: #7cc8ff; font-weight: 700; } .fx-minus { color: #ff6b3d; font-weight: 700; }
+td.eff small.resv { color: var(--mute); }

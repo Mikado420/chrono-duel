@@ -16,6 +16,7 @@ import { META } from './meta';
 import { serverUrl } from '../net/server';
 import { impacts, type StatsAgg, type StoredLog } from '../server/statsCore';
 import { narrate } from '../core/narrate';
+import { fxSegments } from '../core/cardText';
 import { ROSTER_DECKS, type RosterDeck } from '../sim/rosterDecks';
 import { DECK_TYPES, TIER_CUTS, TIER_MARKS, TIER_MIN_GAMES, TIER_SHRINK, cleanTier, type TierMark, type TierRow, type TierSnapshot } from '../meta/envtier';
 import { SEASONS, SEASON_REWARDS, TIERS as RANKS, jstDay, seasonAt } from '../meta/ranks';
@@ -32,6 +33,8 @@ const store = {
   get: (k: string) => { try { return localStorage.getItem(k); } catch { return null; } },
   set: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* storage blocked */ } },
 };
+/** Card text with its signed numbers coloured. */
+const fx = (t: string | undefined) => fxSegments(t ?? '').map((x) => (x.fx ? `<span class="fx-${x.fx}">${esc(x.t)}</span>` : esc(x.t))).join('');
 const setShort = (s: CardSet) => (s === 'base' ? '基本' : SET_NAMES[s].replace(/「.*」/, ''));
 
 // ------------------------------------------------------------------ numbers from the game
@@ -297,7 +300,7 @@ function renderCards() {
   out.innerHTML = F.view === 'grid'
     ? `<div class="thumbs">${list.map((c) => `<button type="button" class="thumb" data-card="${c.id}">${img(c.id)}<span class="nm">${esc(c.name)}</span></button>`).join('')}</div>`
     : `<div class="tw"><table class="gt list"><tr><th>カード</th><th class="num">コスト</th><th>攻/体/間</th><th class="wide">効果</th><th>評価</th></tr>${list.map((c) =>
-      `<tr data-card="${c.id}" tabindex="0"><td>${cname(c)}</td><td class="num"><span class="costb">${c.cost}</span></td><td>${stat(c)}</td><td class="eff wide">${esc(c.text) || '<span class="mute">（効果なし）</span>'}</td><td>${tierBadge(c.id)}</td></tr>`).join('')}</table></div>`;
+      `<tr data-card="${c.id}" tabindex="0"><td>${cname(c)}</td><td class="num"><span class="costb">${c.cost}</span></td><td>${stat(c)}</td><td class="eff wide">${fx(c.text) || '<span class="mute">（効果なし）</span>'}${c.resvText ? `<br><small class="resv">予約 ${fx(c.resvText)}</small>` : ''}</td><td>${tierBadge(c.id)}</td></tr>`).join('')}</table></div>`;
   hydrate(out);
 }
 function initCards() {
@@ -776,7 +779,7 @@ function renderDetail(id: string) {
         <div class="m-sub">${kws.map((k) => `<span class="rar C">${k}</span>`).join('')}</div>
         <div class="m-eval">${tierBadge(id)}<div>${SCORE[id] != null ? `影響 <b>${sign(SCORE[id])}</b>（全${RANKED.length}種中 ${RANK[id]}位）<br>` : ''}${w != null ? `AI「ふつう」での採用時勝率 ${w}% ／ 1試合あたり 使用 ${u?.[0].toFixed(2) ?? '0'}回${u?.[1] ? ` ／ 予約 ${u[1].toFixed(2)}回` : ''}` : ''}${SCORE[id] == null && w == null ? 'このカードはまだ評価データがありません。' : ''}</div></div>
         <div class="tw"><table class="gt spec">${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table></div>
-        <div class="m-sec"><h4>効果</h4><p>${esc(c.text) || '<span class="mute">（効果なし）</span>'}</p>${c.resvText ? `<p class="resv"><b>予約時</b>${esc(c.resvText)}</p>` : ''}</div>
+        <div class="m-sec"><h4>効果</h4><p>${fx(c.text) || '<span class="mute">（効果なし）</span>'}</p>${c.resvText ? `<p class="resv"><b>予約</b>${fx(c.resvText)}</p>` : ''}</div>
         ${MEMO[id] ? `<div class="m-sec"><h4>攻略メモ</h4><p>${esc(MEMO[id])}</p></div>` : ''}
         ${kws.length ? `<div class="m-sec"><h4>キーワード</h4><div class="m-kw">${kws.map((k) => `<div><b>${k}</b>${esc(KEYWORD_HELP[k] ?? '')}</div>`).join('')}</div></div>` : ''}
         <div class="m-sec"><h4>このカードが入っているデッキ</h4>${ds.length ? `<div class="m-decks">${ds.map((b) => `<button type="button" data-type="${b.type}" data-build="${b.d.id}">${esc(b.d.name)}<small>×${b.count[id]}</small></button>`).join('')}</div>` : '<p class="small mute">解説しているデッキには入っていません。</p>'}</div>

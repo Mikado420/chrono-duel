@@ -2,6 +2,7 @@ import { CARDS, CARD_LIST, RARITY_NAMES, SET_NAMES, cardDef, keywordsOf, KEYWORD
 import { maxCopies, PRESET_DECKS, validateDeck, type DeckDef } from '../core/decks';
 import { NET, cleanName, normalizeCode, type Presence } from '../core/net';
 import { RULES } from '../core/rules';
+import { fxSegments } from '../core/cardText';
 import { inviteLink, myRoomCode } from '../net/config';
 import type { OnlineFlow } from '../net/flow';
 import { audio } from '../render/audio';
@@ -43,6 +44,8 @@ function setProgressAll() {
   const kinds = CARD_LIST.filter((c) => ownedCount(store.wallet, c.id) > 0).length;
   return { kinds, total: CARD_LIST.length, pct: Math.round((kinds / CARD_LIST.length) * 100) };
 }
+/** Card text with its signed numbers coloured (src/core/cardText.ts). */
+const fxText = (t: string) => fxSegments(t).map((x) => (x.fx ? h('span', { class: `fx-${x.fx}` }, x.t) : x.t));
 /** Opens the strategy wiki (built as a second page at ./wiki/) in a new tab. */
 const openWiki = () => window.open('./wiki/', '_blank', 'noopener');
 const RANK = { C: 0, R: 1, E: 2, L: 3 } as const;
@@ -868,7 +871,7 @@ export class Screens {
       const cost = CRAFT_COST[d.rarity];
       const dk = opts.deck;
       const textBox = tab === 'text'
-        ? h('div', { class: 'cdx-text' }, h('div', {}, d.text || '能力なし'), d.resvText ? h('div', { class: 'resv' }, `予約時：${d.resvText}`) : null,
+        ? h('div', { class: 'cdx-text' }, h('div', {}, ...(d.text ? fxText(d.text) : ['能力なし'])), d.resvText ? h('div', { class: 'resv' }, h('b', {}, '予約'), ...fxText(d.resvText)) : null,
             ...kws.map((k) => h('div', { class: 'kwnote' }, h('b', {}, k), ` … ${KEYWORD_HELP[k]}`)))
         : h('div', { class: 'cdx-text' }, d.flavor ? h('div', { class: 'flavor' }, d.flavor) : null,
             h('div', { class: 'kwnote' }, `収録：${SET_NAMES[setOf(d)]} ・ ${RARITY_NAMES[d.rarity]}`),
@@ -1244,7 +1247,13 @@ export class Screens {
             h('li', { html: '攻撃すると<span class="key">間隔</span>の分だけ、次の攻撃まで待ちます。右上の丸が緑になれば攻撃できます。' }),
             h('li', { html: '<span class="key">挑発</span>：隣の空いたレーンへの攻撃も受け止める。<span class="key">貫通</span>：倒した相手の体力を超えた分が拠点に届く。' }))),
         h('section', {}, h('h3', {}, '未来予約'),
-          h('p', { html: `術カードは、時計の上に重ねて離すと<span class="key">未来の時刻に予約</span>できます（各${RULES.MAX_RESV}枚まで）。支払いは今すぐですが、発動するときは<span class="key">効果が強化</span>されます。両者の時計がその時刻に達した瞬間に発動します。相手には時刻しか見えません。` })),
+          h('p', { html: `術カードは、時計の上に重ねて離すと<span class="key">未来の時刻に予約</span>できます（各${RULES.MAX_RESV}枚まで）。支払いは今すぐですが、発動するときは<span class="key">効果が強化</span>されます。両者の時計がその時刻に達した瞬間に発動します。相手には時刻しか見えません。強化の値はカードの「予約」の行で、強化されるのは最初の効果だけです（残響は予約が発動した時刻から数えます）。` })),
+        h('section', {}, h('h3', {}, 'カードの書き方'),
+          h('ul', {},
+            h('li', { html: '<span class="fx-minus">−3</span> はダメージ（朱色）、<span class="fx-plus">+3</span> は回復や強化（空色）。例：敵拠点<span class="fx-minus">−4</span>、自拠点<span class="fx-plus">+3</span>' }),
+            h('li', { html: '相手の時計<span class="fx-plus">+2</span>＝相手の時計を2進める。自分の時計<span class="fx-minus">−1</span>＝1戻す。準備<span class="fx-plus">+6</span>＝攻撃できるまで6刻遅らせる。' }),
+            h('li', { html: '<span class="fx-plus">+1/+1</span>＝攻撃と体力が上がる。<span class="fx-plus">+1/-</span>＝攻撃だけ上がる。' }),
+            h('li', {}, '残響3：もう一度＝3刻後に同じ効果がもう一度起きる。'))),
         h('section', {}, h('h3', {}, '第1弾「残響の刻」のキーワード'),
           h('ul', {}, ...['残響', '共鳴', '急襲', '充填'].map((k) => h('li', { html: `<span class="key">${k}</span>：${KEYWORD_HELP[k]}` }))),
           h('p', { html: `残響は時計に丸いピンで表示され、相手にも中身が見えます（同時に${RULES.MAX_ECHO}つまで）。「破約の刃」や「刻壊し」で消すこともできます。` })),

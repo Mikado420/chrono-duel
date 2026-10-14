@@ -553,6 +553,8 @@ body.reduced .ttl, body.reduced .ttl > b::before, body.reduced .ttl > b::after {
 .cdx-tabs button[aria-pressed="true"] { color: var(--gold-ink); background: linear-gradient(180deg, var(--gold-hi), var(--gold-lo)); }
 .cdx-text { margin: 0 12px 12px; padding: 10px 12px; border: 1px solid var(--brass-deep); background: rgba(8, 20, 28, .85); min-height: 92px; font-size: 14px; line-height: 1.6; }
 .cdx-text .resv { margin-top: 6px; font-size: 13px; color: var(--gold); }
+.cdx-text .resv b { margin-right: .5em; }
+.fx-plus { color: #7cc8ff; font-weight: 700; } .fx-minus { color: #ff6b3d; font-weight: 700; }
 .cdx-text .kwnote { margin-top: 8px; padding: 6px 8px; border-radius: 6px; background: #0f2a32; font-size: 11.5px; line-height: 1.5; color: #c2d2d4; }
 .cdx-text .kwnote b { color: var(--gold-hi); }
 .cdx-text .flavor { font: italic 500 13px var(--f-display); color: #c2d2d4; }
