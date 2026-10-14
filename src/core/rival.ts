@@ -331,7 +331,7 @@ export const PLAN_ROLL = { k: 1, noise: 1.5, pre: 0.25 };
 
 interface Scored { a: Action; v: number; ahead?: number }
 /** For analysis tools: the last move's shortlist (pre) and final scores. */
-export const RIVAL_DEBUG: { on: boolean; pre: { a: Action; v: number }[]; scored: Scored[] } = { on: false, pre: [], scored: [] };
+export const RIVAL_DEBUG: { on: boolean; pre: { a: Action; v: number }[]; scored: Scored[]; force?: Action } = { on: false, pre: [], scored: [] };
 
 
 /** A generator so the battle scene can keep animating between rollouts. */
@@ -390,6 +390,8 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
     const pinBase = pins && guess ? fogPins(guessWorld(real, pi, guess, mind.seen, true, rand)) : base;
     const pre = acts.map((a) => { const c = clone(pinBase); try { apply(c, a); } catch { return { a, v: -1e9 }; } return { a, v: deepValue(c, pi, 2, 2) + bonus(a) }; }).sort((x, y) => y.v - x.v);
     const short = pre.slice(0, search.candidates);
+    // analysis tools: make sure a given move is read too
+    if (RIVAL_DEBUG.force) { const f = JSON.stringify(RIVAL_DEBUG.force); if (!short.some((x) => JSON.stringify(x.a) === f)) { const x = pre.find((y) => JSON.stringify(y.a) === f); if (x) short.push(x); } }
     if (RIVAL_DEBUG.on) RIVAL_DEBUG.pre = pre;
     const worlds = Array.from({ length: search.rollouts }, () => (guess ? guessWorld(real, pi, guess, mind.seen, pins, rand) : determinize(real, pi, real.players[pi].deck.slice(), rand)));
     const seeds = worlds.map(() => Math.floor(rand() * 2 ** 32));
