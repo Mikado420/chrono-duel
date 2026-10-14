@@ -301,7 +301,7 @@ function fogPins(w: GameState): GameState {
   return w;
 }
 /** Like ai.rollout, but either side may also reserve (at its earliest time or two ticks later): Lv10's 予約の先読み. */
-export function rolloutWithReserves(s: GameState, pi: PlayerIndex, depth: number, rand: () => number, end = 1000): number {
+export function rolloutWithReserves(s: GameState, pi: PlayerIndex, depth: number, rand: () => number, end = 1000, decks?: [string | null, string | null]): number {
   for (let i = 0; i < depth && !s.over; i++) {
     const q = actor(s);
     if (q === -1) break;
@@ -314,6 +314,9 @@ export function rolloutWithReserves(s: GameState, pi: PlayerIndex, depth: number
         if (!r || (a.T !== r[0] && a.T !== r[0] + 2)) continue;
         extra = intentBonus(s, q, a);
       }
+      // AI_FIX.planRoll: each side plays its deck's plan in the rollout too (decks[0] is pi's, decks[1] the guess of the other)
+      const deck = decks ? decks[q === pi ? 0 : 1] : null;
+      if (deck && AI_FIX.planRoll) extra += planBonus(deck, 'all', s, s, q, a) * PLAN_ROLL.k;
       const c = clone(s);
       apply(c, a);
       const v = evaluate(c, q, EXPERT_WEIGHTS) + extra + (rand() - 0.5) * 1.5;
@@ -323,6 +326,8 @@ export function rolloutWithReserves(s: GameState, pi: PlayerIndex, depth: number
   }
   return rollScore(s, pi, EXPERT_WEIGHTS, end);
 }
+/** How much the deck plans count in rollouts (AI_FIX.planRoll). */
+export const PLAN_ROLL = { k: 1 };
 
 interface Scored { a: Action; v: number; ahead?: number }
 /** For analysis tools: the last move's shortlist (pre) and final scores. */
@@ -394,7 +399,7 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
       const c = clone(worlds[wi]);
       try { apply(c, cand.a); } catch { return null; }
       const rr = P.fresh && AI_FIX.crn ? mulberry32(seeds[wi]) : rand;
-      return pins ? rolloutWithReserves(c, pi, search.depth, rr, end) : rollout(c, pi, search.depth, rr, end);
+      return pins ? rolloutWithReserves(c, pi, search.depth, rr, end, [cfg.deck, oppDeck]) : rollout(c, pi, search.depth, rr, end);
     };
     if (P.fresh) {
       // world by world for every candidate, so a time limit (P.timeMs) leaves every candidate read in the same worlds
