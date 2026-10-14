@@ -8,6 +8,7 @@
  */
 import { BLUEPRINTS, classify } from '../meta/blueprints';
 import { archeOf, cleanBook, EMPTY_BOOK, type DeckBook } from '../meta/deckbook';
+import { cleanTier, type TierSnapshot } from '../meta/envtier';
 import { expected, tierOf, TIERS } from '../meta/rating';
 import { rivalById } from '../meta/roster';
 import type { GameLog } from '../core/gamelog';
@@ -156,6 +157,26 @@ export class EnvStats {
       if (r && r.ids.length >= min) { const { ids, ...rest } = r; out.push({ ...rest, players: ids.length }); }
     }
     return { status: 200, body: { lists: out.sort((a, b) => b.g - a.g) } };
+  }
+
+  /** POST /api/wiki → the strategy wiki's 環境Tier: the newest snapshot and the one of the day before (null until the daily tools publish one). Public. */
+  async wiki(): Promise<ApiResult> {
+    return { status: 200, body: { tier: (await this.kv.get<TierSnapshot>('wiki:tier')) ?? null, prev: (await this.kv.get<TierSnapshot>('wiki:tier:prev')) ?? null } };
+  }
+
+  /**
+   * POST /api/wiki/publish { token, tier } → stores today's 環境Tier (src/meta/envtier.ts). Admin only. A snapshot of
+   * a new day moves the current one to wiki:tier:prev; publishing again on the same day only replaces it.
+   */
+  async publishWiki(body: { token?: unknown; tier?: unknown }): Promise<ApiResult> {
+    if (!this.adminToken || body.token !== this.adminToken) return bad(403, 'forbidden');
+    const t = cleanTier(body.tier);
+    if (!t) return bad(400, 'refused: not a tier snapshot');
+    const cur = await this.kv.get<TierSnapshot>('wiki:tier');
+    if (cur && cur.date > t.date) return bad(409, `older than ${cur.date}`);
+    if (cur && cur.date !== t.date) await this.kv.put('wiki:tier:prev', cur);
+    await this.kv.put('wiki:tier', t);
+    return { status: 200, body: { ok: true, date: t.date } };
   }
 
   /** POST /api/decks → the current deck book (empty until the daily tools publish one). */

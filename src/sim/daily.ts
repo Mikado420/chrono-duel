@@ -7,6 +7,7 @@
  *   3. improves a few book entries (rotating every day) by simulation: Lv8–10 for strength, Lv1–7 for variety
  *   4. finds new decks and 型 in the players' lists, and decks that may need a balance change
  *   5. publishes the new book (new lists go on trial in half of the games) and writes a report
+ *   0. first of all, works out the 環境Tier of the strategy wiki from the real games (src/meta/envtier.ts) and publishes it
  *
  * Settings (environment): SERVER (wss:// or https:// of the online server), ADMIN_TOKEN, ORIGIN (an allowed origin,
  * default https://mikado420.github.io), PUBLISH=1 to write the book, ENTRIES (book entries to improve per day,
@@ -20,6 +21,7 @@ import { tierOf, TIERS } from '../meta/rating';
 import { ROSTER, deckAvailable, rivalDeckName } from '../meta/roster';
 import { findNewDecks, findVariants, improve, type ListRow, type Opp } from './evolve';
 import { cardDef } from '../core/cards';
+import { computeTier, cleanTier, type TierSnapshot } from '../meta/envtier';
 
 const proc = process as unknown as { env: Record<string, string | undefined>; exit(c: number): never; stdout: { write(s: string): void } };
 const E = proc.env;
@@ -66,8 +68,30 @@ if (E.FAKE) {
   book = cleanBook(await post<DeckBook>('/api/decks', {}));
 }
 if (!env) { log('サーバーから集計を読めませんでした（SERVER を確かめてください）。シミュレーションだけで進めます。'); env = { days: [today, today], bands: {}, rivals: {}, friends: {} }; }
+mkdirSync(OUT, { recursive: true });
 const report: string[] = [`# 環境レポート ${today}`, '', `集計期間：${env.days[0]}〜${env.days[1]}（7日）`, ''];
 const issues: string[] = [];
+
+// ---- 0. 環境Tier for the wiki (real games only; done first so a long simulation never holds it up)
+{
+  const got = E.FAKE ? null : await post<{ tier: unknown; prev: unknown }>('/api/wiki', {});
+  const cur = cleanTier(got?.tier), old = cleanTier(got?.prev);
+  // the arrows compare with the last snapshot of another day
+  const prev: TierSnapshot | null = cur && cur.date !== today ? cur : old;
+  const tier = computeTier(env, today, prev);
+  writeFileSync(`${OUT}/daily-tier.json`, JSON.stringify(tier, null, 1));
+  report.push('## 環境Tier（実戦）', '');
+  for (const r of tier.rows) {
+    const move = r.was === undefined ? '' : r.was === r.tier ? '' : ` （前回 ${r.was ?? '集計中'}）`;
+    report.push(`- ${r.tier ?? '集計中'}：${r.type}　${r.all[0]}試合（人 ${r.human[0]}・AI ${r.ai[0]}）、期待との差 ${r.perf >= 0 ? '+' : ''}${r.perf.toFixed(1)}${move}`);
+  }
+  if (E.PUBLISH === '1' && E.ADMIN_TOKEN && base) {
+    const r = await post<{ ok: boolean }>('/api/wiki/publish', { token: E.ADMIN_TOKEN, tier });
+    report.push('', r?.ok ? '攻略wikiに公開しました。' : '攻略wikiに公開できませんでした。');
+    if (!r?.ok) issues.push('攻略wikiの環境Tierを公開できませんでした。サーバーの状態を確かめてください。');
+  } else report.push('', '（公開はしていません：PUBLISH=1 と ADMIN_TOKEN が必要）');
+  report.push('');
+}
 
 // ---- the book's entries: which archetypes the rivals use, at which strength
 interface Entry { key: string; arche: string; mode: 'hi' | 'lo'; bands: Set<string>; rivals: string[] }

@@ -95,11 +95,7 @@ export function applyRatingReset(r: { rating: number; reset?: string; streak?: n
 // ------------------------------------------------------------------ seasons (one per card set)
 export interface SeasonResult { season: number; peak: number; tier: string; games: number; wins: number; /** the rating it ended with (for the final standings) */ final?: number; /** final place among the season's rated players (from the ranking server) */ place?: number }
 /** What the best rank of a season pays (as a present when the next season starts). */
-export const SEASON_REWARDS: Record<string, { coins: number; tickets: number }> = {
-  novice: { coins: 100, tickets: 0 }, shi: { coins: 200, tickets: 1 }, sho: { coins: 300, tickets: 2 },
-  go: { coins: 400, tickets: 3 }, sei: { coins: 500, tickets: 4 }, shin: { coins: 800, tickets: 5 },
-  shin2: { coins: 900, tickets: 5 }, shin3: { coins: 1000, tickets: 6 }, shin4: { coins: 1100, tickets: 6 }, shin5: { coins: 1200, tickets: 7 },
-};
+export { SEASON_REWARDS } from './ranks';
 /** A new season starts at the beginning of the rank below the one held (見習い stays at 1000; every 刻神 step at 刻聖). */
 export function seasonStartRating(rating: number): number {
   if (rating >= 2000) return 1800;

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#08141c" />
-    <meta name="description" content="クロノ・デュエルの攻略wiki。最強カードランキング、全カードの評価と攻略メモ、デッキと相性表、ルール、立ち回り、パックの提供割合をまとめています。" />
+    <meta name="description" content="クロノ・デュエルの攻略wiki。実戦データで毎日更新する環境Tier、全37型のデッキ解説、レート戦のランクと報酬、全カードの評価と攻略メモ、ルール、立ち回り、テーマ一覧をまとめています。" />
     <title>クロノ・デュエル攻略wiki</title>
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
     <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
@@ -36,7 +36,7 @@
 
     <footer class="site-foot">
       <div class="in">
-        <p>カードの数値・効果文とルールの数値は、ゲーム本体と同じデータから表示しています。ランキングと相性表はいちばん強いAI同士<span data-v="META_GAMES"></span>戦のシミュレーション結果（<span data-v="META_DATE"></span>集計）で、人同士の対戦とは傾向が違うことがあります。カード詳細の採用時勝率はAI「ふつう」同士<span data-v="STATS_GAMES"></span>戦（<span data-v="STATS_DATE"></span>集計）です。</p>
+        <p>カードの数値・効果文とルールの数値は、ゲーム本体と同じデータから表示しています。環境Tierは実際の対戦の集計（毎日更新）です。カードランキングはいちばん強いAI同士<span data-v="META_GAMES"></span>戦のシミュレーション結果（<span data-v="META_DATE"></span>集計）で、人同士の対戦とは傾向が違うことがあります。カード詳細の採用時勝率はAI「ふつう」同士<span data-v="STATS_GAMES"></span>戦（<span data-v="STATS_DATE"></span>集計）です。</p>
         <p>クロノ・デュエル Ver. <span data-v="VERSION"></span></p>
       </div>
     </footer>
@@ -48,29 +48,36 @@
 
     <!-- ===================================================== 各ページの本文 -->
     <template id="t-home">
+      <div class="pins" id="home-pins" aria-label="注目の記事"></div>
       <section class="kv">
         <div class="kv-txt">
           <div class="en">TIME IS YOUR ONLY RESOURCE</div>
           <p class="kv-h">ターンのない対戦カードゲーム</p>
-          <p>すべての行動は「刻」を払い、時計が遅れている方が次に動く。全<span data-v="CARD_COUNT"></span>種のカード評価、デッキ、立ち回りをまとめた攻略wikiです。</p>
+          <p>すべての行動は「刻」を払い、時計が遅れている方が次に動く。毎日更新の環境Tier、全<span data-v="TYPE_COUNT"></span>タイプ・<span data-v="BUILD_COUNT"></span>型のデッキ解説、全<span data-v="CARD_COUNT"></span>種のカード評価、レート戦のランクと報酬をまとめた攻略wikiです。</p>
         </div>
         <div class="kv-cards" id="kv-cards" aria-hidden="true"></div>
       </section>
+      <nav class="tocgrid" id="home-toc" aria-label="このページの目次"></nav>
 
-      <h2 id="h-news">新着情報</h2>
+      <h2 id="h-news">最新情報</h2>
       <ul class="news" id="home-news"></ul>
+      <p class="more"><a href="#history" data-go="history">更新履歴をすべて見る</a></p>
 
-      <h2 id="h-menu">攻略メニュー</h2>
-      <div class="tiles" id="home-tiles"></div>
+      <h2 id="h-season">開催中の季</h2>
+      <div id="home-season"></div>
+      <p class="more"><a href="#rated" data-go="rated">ランクと季の報酬を見る</a></p>
 
-      <h2 id="h-rank">最強カードランキング</h2>
-      <p class="lead-s">AI同士の対戦で、使ったときに勝ちやすかったカードです。上位2ランクを表示しています。</p>
+      <h2 id="h-tier">環境Tier（実戦データ）</h2>
+      <p class="lead-s" id="home-tier-when">読み込み中…</p>
       <div id="home-tier"></div>
-      <p class="more"><a href="#ranking" data-go="ranking">ランキングをすべて見る</a></p>
+      <p class="more"><a href="#tier" data-go="tier">Tier表をすべて見る（B・C・集計中）</a></p>
 
-      <h2 id="h-deck">おすすめデッキ</h2>
-      <div id="home-decks"></div>
-      <p class="more"><a href="#decks" data-go="decks">デッキと相性表をすべて見る</a></p>
+      <h2 id="h-rank">ランキング</h2>
+      <div class="tiles" id="home-ranks"></div>
+
+      <h2 id="h-decks">デッキ解説</h2>
+      <p class="lead-s">レート戦で使われている<span data-v="TYPE_COUNT"></span>タイプ。タップするとレシピと立ち回りへ移ります。</p>
+      <div class="tchips grid" id="home-types"></div>
 
       <h2 id="h-begin">はじめての人へ</h2>
       <div class="box">
@@ -78,9 +85,78 @@
           <li><a href="#rules" data-go="rules">基本ルール</a>の「時計」と「行動コスト」の表を読む。これだけで対戦はできます。</li>
           <li>最初のデッキは「均衡の刻」がおすすめ。攻守のバランスがよく、どの相手にも大きく負け越しません。</li>
           <li>パックのカードを手に入れたら、<a href="#keywords" data-go="keywords">キーワード</a>で残響・共鳴・急襲・充填を確認する。</li>
+          <li>レート戦に挑むなら<a href="#tier" data-go="tier">環境Tier</a>と<a href="#decks" data-go="decks">デッキ解説</a>で、今勝っているデッキと立ち回りを確認する。</li>
           <li>勝てなくなってきたら<a href="#tips" data-go="tips">立ち回り</a>へ。鐘と終焉の使い方で勝率が変わります。</li>
         </ol>
       </div>
+
+      <h2 id="h-theme">テーマ</h2>
+      <div class="themestrip" id="home-themes"></div>
+
+      <h2 id="h-cards">カードリスト</h2>
+      <div class="tw"><table class="gt" id="home-sets"></table></div>
+    </template>
+
+    <template id="t-tier">
+      <p class="lead-s" id="tier-when">読み込み中…</p>
+      <h2 id="h-tierlist">Tier表</h2>
+      <div id="tierlist2"></div>
+      <h2 id="h-tiertable">デッキタイプ別の成績</h2>
+      <p class="lead-s">試合はレート戦（人とAIの両方の側）とフレンド対戦の合計。「人／AI」はそのタイプを人が使った試合とレート戦のAIが使った試合です。</p>
+      <div class="tw"><table class="gt" id="tiertable"></table></div>
+      <h2 id="h-buildtable">型ごとの成績</h2>
+      <div class="tw"><table class="gt" id="buildtable"></table></div>
+      <h2 id="h-bands">ランクごとの使用率（プレイヤー）</h2>
+      <p class="lead-s">レート戦で、そのランクのプレイヤーが使ったデッキの割合（上位3つ）。</p>
+      <div class="tw"><table class="gt" id="bandtable"></table></div>
+      <h2 id="h-how">Tierの決め方</h2>
+      <div class="box">
+        <ul class="dots">
+          <li>直近7日の実際の試合を、デッキタイプごとに集計します。プレイヤーのデッキは、いちばん近いレシピのタイプに分けています。</li>
+          <li>強さは「期待との差」で見ます。レート戦は相手とのレート差から勝つ見込み（期待）が決まるので、実際の結果がそれをどれだけ上回ったかを数えます。フレンド対戦の期待は50%です。格上ばかりと当たったデッキが不利にならないための工夫です。</li>
+          <li>試合が少ないタイプほど0に寄せて計算します（試合数に<span data-v="TIER_SHRINK"></span>を足して割る）。偶然の連勝で上位に出ないようにするためです。</li>
+          <li>S＝<span data-v="TIER_S"></span>以上、A＝<span data-v="TIER_A"></span>以上、B＝<span data-v="TIER_B"></span>以上、C＝それ未満（ポイント）。<span data-v="TIER_MIN"></span>試合に満たないタイプは「集計中」です。</li>
+          <li>毎日4:30ごろ（日本時間）に自動で更新します。矢印は前回の更新との比較です。</li>
+        </ul>
+      </div>
+    </template>
+
+    <template id="t-rated">
+      <div id="season-box"></div>
+      <h2 id="h-ranks">ランク一覧</h2>
+      <p class="lead-s">レートが上がるとランクも上がり、対戦相手のAIも強くなります。季末の報酬は、その季でいちばん高かったランクで決まります。</p>
+      <div class="tw"><table class="gt" id="ranktable2"></table></div>
+      <h2 id="h-shin">刻神Ⅰ〜Ⅴ</h2>
+      <div class="box">
+        <ul class="dots">
+          <li>最高ランクの刻神は、レート2000から100ごとに刻神Ⅰ〜Ⅴの5段階です。</li>
+          <li>刻神Ⅰ・Ⅱの相手はLv10、刻神Ⅲ・Ⅳの相手はLv11、刻神Ⅴの相手はLv12だけになります。</li>
+          <li>Lv11とLv12は、1手に最大20秒考えます。AIにハンデや特別なルールはなく、強さは読みの深さだけです。</li>
+          <li>刻神Ⅲ（2200）と刻神Ⅴ（2400）に届くと、それぞれ専用の称号がもらえます。</li>
+        </ul>
+      </div>
+      <h2 id="h-season">季（シーズン）</h2>
+      <div class="box">
+        <ul class="dots">
+          <li>新しい弾が出るたびに1つの季が終わり、次の季が始まります。</li>
+          <li>季が変わると、レートは今のランクの1つ下のはじめに戻ります（見習いは1000のまま）。刻神Ⅰ〜Ⅴはどの段階でも刻聖（1800）からのスタートです。</li>
+          <li>季の最高ランクに応じた報酬と、季の称号がもらえます。称号の端には、その季の最終順位が表示されます。</li>
+        </ul>
+      </div>
+      <h2 id="h-lv">相手のAIのLv</h2>
+      <div class="tw"><table class="gt" id="lvtable"></table></div>
+      <h2 id="h-banddecks">ランクごとの相手のデッキ</h2>
+      <p class="lead-s">そのランクの相手のAIが使うデッキタイプです（多い順）。タップするとデッキ解説へ移ります。</p>
+      <div id="banddecks"></div>
+    </template>
+
+    <template id="t-themes">
+      <p class="lead-s">価格：文字盤 <span data-v="THEME_DIAL"></span>コイン、スリーブ <span data-v="THEME_BACK"></span>コイン、プレイマット <span data-v="THEME_MAT"></span>コイン。3つまとめて <span data-v="THEME_SET"></span>コイン。</p>
+      <div id="themelist"></div>
+    </template>
+
+    <template id="t-history">
+      <div id="historylist"></div>
     </template>
 
     <template id="t-ranking">
@@ -120,13 +196,12 @@
     </template>
 
     <template id="t-decks">
-      <p class="lead-s">カードの画像をタップすると、ページを移らずにその場で詳しい性能を見られます。詳細の「前へ／次へ」で、同じデッキのカードを順番に確認できます。</p>
-      <h2 id="h-drank">最強デッキランキング</h2>
-      <p class="lead-s">いちばん強いAI同士の総当たり（各組み合わせ<span data-v="META_PER"></span>戦・合計<span data-v="META_GAMES"></span>戦、<span data-v="META_DATE"></span>）で、他の全デッキに対する平均勝率の高い順です。Tier1＝70%以上、Tier2＝57%以上、Tier3＝44%以上、Tier4＝それ未満。1組み合わせの試合数が少ないので、±5%程度は誤差として見てください。</p>
-      <div id="decklist"></div>
-      <h2 id="h-matrix">相性表</h2>
-      <p class="lead-s">行のデッキが列のデッキに勝った割合（%）。いちばん強いAI同士、各組み合わせ<span data-v="META_PER"></span>戦、先手後手は半々。並びはランキング順。60%以上を緑、40%以下を赤にしています。</p>
-      <div class="tw"><table class="gt mx" id="matrix"></table></div>
+      <div class="box note"><b>このページの数字</b>レシピは、レート戦のAIが使う元のリストです。毎日の自動改良でAIのリストが変わっているときは、各レシピの下に変わったカードを表示します。Tierと試合数は<a href="#tier" data-go="tier">環境Tier</a>と同じ実戦データ（毎日更新）です。</div>
+      <h2 id="h-basics">全デッキ共通の考え方</h2>
+      <ul class="dots" id="basics"></ul>
+      <h2 id="h-types">タイプ一覧</h2>
+      <div id="typegrid"></div>
+      <div id="typelist"></div>
     </template>
 
     <template id="t-rules">

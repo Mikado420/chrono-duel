@@ -36,6 +36,12 @@ export function seasonAt(day: string): Season {
   for (const s of SEASONS) if (s.start <= day) cur = s;
   return cur;
 }
+/** What each rank pays at the end of a season (the rank of the season's peak). */
+export const SEASON_REWARDS: Record<string, { coins: number; tickets: number }> = {
+  novice: { coins: 100, tickets: 0 }, shi: { coins: 200, tickets: 1 }, sho: { coins: 300, tickets: 2 },
+  go: { coins: 400, tickets: 3 }, sei: { coins: 500, tickets: 4 }, shin: { coins: 800, tickets: 5 },
+  shin2: { coins: 900, tickets: 5 }, shin3: { coins: 1000, tickets: 6 }, shin4: { coins: 1100, tickets: 6 }, shin5: { coins: 1200, tickets: 7 },
+};
 /** 刻神 and its steps. */
 export const isShin = (tierId: string) => tierId.startsWith('shin');
 /** The rival Lv a player of this rating meets from 刻神 up (null below 刻神). */

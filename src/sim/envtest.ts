@@ -9,6 +9,7 @@ import { ROSTER, rivalId } from '../meta/roster';
 import { candidates, findNewDecks, findVariants, flexCards, oneSwaps, paired, type ListRow } from './evolve';
 import { archeOf, bookKey } from '../meta/deckbook';
 import { ROSTER_DECKS } from './rosterDecks';
+import { DECK_TYPES, cleanTier, computeTier, deckType } from '../meta/envtier';
 
 const base = Object.keys(BLUEPRINTS).filter((id) => !id.startsWith('g_'));
 // every built-in list passes its own 設計図 and belongs to its own archetype
@@ -106,6 +107,40 @@ assert.equal((await env.publish({ token: 'secret', book: good })).status, 200);
 assert.equal((await env.publish({ token: 'secret', book: good })).status, 409, 'the version must go up');
 assert.equal(((await env.book()).body as DeckBook).version, 1);
 assert.ok(mem.has('book:prev'));
+// 環境Tier for the wiki: every type listed, marks only with enough games, arrows against the day before, admin-only publish
+{
+  assert.equal(DECK_TYPES.length, 15);
+  assert.equal(deckType('tempo_haste'), '急襲 テンポ', 'old ids count for their type');
+  assert.equal(deckType('rush'), '秒針 アグロ', 'the starter decks count for a type');
+  assert.equal(deckType('g_maze'), null);
+  const tab = (s: number, g = 100) => ({ games: g, players: 4, score: s, expected: g / 2 });
+  const day1 = computeTier({ days: ['20261001', '20261007'], bands: { sei: { raid_tempo_haste: tab(70), other: tab(50) } }, rivals: { 'verna_loop_guard@2': tab(30), 'rush_haste@1': tab(4.5, 9) }, friends: { 'rush|verna': [10, 6] } }, '2026-10-07');
+  assert.equal(day1.rows.length, 15);
+  const row = (t: string, s = day1) => s.rows.find((r) => r.type === t)!;
+  assert.equal(row('急襲 テンポ').tier, 'S');
+  assert.equal(row('ヴェルナ ループ').tier, 'C');
+  assert.equal(row('秒針 アグロ').tier, null, 'under 20 games: 集計中');
+  assert.deepEqual(row('秒針 アグロ').all, [19, 10.5, 9.5], 'the old rival id and the online game both count');
+  assert.equal(row('急襲 テンポ').builds.raid_tempo_haste[0], 100);
+  assert.equal(day1.rows[0].type, '急襲 テンポ', 'strongest first');
+  assert.equal(row('急襲 テンポ').was, undefined);
+  const day2 = computeTier({ days: ['20261002', '20261008'], bands: { sei: { raid_tempo_haste: tab(50) } }, rivals: {}, friends: {} }, '2026-10-08', day1);
+  assert.equal(row('急襲 テンポ', day2).was, 'S');
+  assert.equal(row('急襲 テンポ', day2).tier, 'B');
+  assert.ok(cleanTier(JSON.parse(JSON.stringify(day2))));
+  assert.equal(cleanTier({ ...day2, rows: [{ ...day2.rows[0], type: 'たっくん' }] }), null, 'only deck types');
+  assert.ok(!JSON.stringify(day2).includes('rv:'), 'nothing about the rivals but their decks');
+  assert.deepEqual((await env.wiki()).body, { tier: null, prev: null });
+  assert.equal((await env.publishWiki({ token: 'nope', tier: day1 })).status, 403);
+  assert.equal((await env.publishWiki({ token: 'secret', tier: { v: 1 } })).status, 400);
+  assert.equal((await env.publishWiki({ token: 'secret', tier: day1 })).status, 200);
+  assert.equal((await env.publishWiki({ token: 'secret', tier: day1 })).status, 200, 'the same day again replaces it');
+  assert.equal(((await env.wiki()).body as { prev: unknown }).prev, null);
+  assert.equal((await env.publishWiki({ token: 'secret', tier: day2 })).status, 200);
+  const w = (await env.wiki()).body as { tier: { date: string }; prev: { date: string } };
+  assert.equal(w.tier.date, '2026-10-08'); assert.equal(w.prev.date, '2026-10-07');
+  assert.equal((await env.publishWiki({ token: 'secret', tier: day1 })).status, 409, 'an older day is refused');
+}
 // a rated report reaches the 環境 through /api/match; older clients without the fields still count for the cards
 const ps = new PlayStats(kv, () => now);
 const rep = { gid: 'g-rated-1', id: 'device-0000000003', v: '0.15.0', mode: 'rated' as const, ai: 'easy' as const, deck: myRush, played: ['scout'], score: 1 as const, reason: 'ko', actions: 12, ms: 60000 };
