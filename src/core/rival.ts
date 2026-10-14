@@ -319,15 +319,15 @@ export function rolloutWithReserves(s: GameState, pi: PlayerIndex, depth: number
       if (deck && AI_FIX.planRoll) extra += planBonus(deck, 'all', s, s, q, a) * PLAN_ROLL.k;
       const c = clone(s);
       apply(c, a);
-      const v = evaluate(c, q, EXPERT_WEIGHTS) + extra + (rand() - 0.5) * 1.5;
+      const v = evaluate(c, q, EXPERT_WEIGHTS) + extra + (rand() - 0.5) * PLAN_ROLL.noise;
       if (v > bv) { bv = v; best = a; }
     }
     apply(s, best);
   }
   return rollScore(s, pi, EXPERT_WEIGHTS, end);
 }
-/** How much the deck plans count in rollouts (AI_FIX.planRoll). */
-export const PLAN_ROLL = { k: 1 };
+/** How much the deck plans count in rollouts (AI_FIX.planRoll); the rollout policy's noise; how much the shortlist score adds to a `fresh` result. */
+export const PLAN_ROLL = { k: 1, noise: 1.5, pre: 0.25 };
 
 interface Scored { a: Action; v: number; ahead?: number }
 /** For analysis tools: the last move's shortlist (pre) and final scores. */
@@ -414,7 +414,7 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
       }
       const kept = new Set(live);
       // a candidate dropped halfway keeps its score but can no longer be chosen over one read to the end
-      short.forEach((cand, k) => scored.push({ a: cand.a, v: sum[k] / Math.max(1, seen[k]) + cand.v * 0.25 + noise() - (kept.has(k) ? 0 : 1e6), ahead: ahead[k] / Math.max(1, seen[k]) }));
+      short.forEach((cand, k) => scored.push({ a: cand.a, v: sum[k] / Math.max(1, seen[k]) + cand.v * PLAN_ROLL.pre + noise() - (kept.has(k) ? 0 : 1e6), ahead: ahead[k] / Math.max(1, seen[k]) }));
     } else for (const cand of short) {
       yield;
       let sum = 0, ahead = 0;
