@@ -36,6 +36,8 @@ jobs:
           # the ranking (public) next to the records
           base=$(echo "$SERVER" | sed -e 's#^ws#http#' -e 's#/$##')
           curl -sS -X POST "$base/api/ranking" -H 'content-type: application/json' -H 'origin: https://mikado420.github.io' -d '{}' > logs/ranking.jsonl
+          # the wiki's 環境Tier (public) too
+          curl -sS -X POST "$base/api/wiki" -H 'content-type: application/json' -H 'origin: https://mikado420.github.io' -d '{}' > logs/wiki.jsonl
       - name: Encrypt and push
         run: |
           set -e
