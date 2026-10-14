@@ -80,10 +80,11 @@ export const LV: Record<number, LvParams> = {
   9: { read: 2, deeper: 0, search: S(10, 32, 30), noise: 0, eps: 0.6, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true },
   10: { read: 2, deeper: 0, search: S(12, 80, 12), noise: 0, eps: 0.5, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true, fresh: true },
   // 刻神Ⅲ〜Ⅴ: the same brain, reading the close candidates much longer (halve: after `at` worlds the best `keep`
-  // go on alone), up to 20 s a move. Lv11 beat Lv10 60% (40 games). Lv12 reads as Lv11 for now: twice the work
-  // (S(18, 600, 12), keep 4 after 80) only drew with it (50%, 40 games); its roster is rated just above 2400 to match.
+  // go on alone), up to 20 s a move. Lv11 beat Lv10 60% (40 games). Lv12 reads as Lv11 and, from 30 刻 on, plays its
+  // rollouts to the end (endgame) with both decks' plans in them (planRoll): 60% against Lv11 (30 games). Only more
+  // work (S(18, 600, 12), or keep 2 of more worlds) did not help (50%, 57%).
   11: { read: 2, deeper: 0, search: S(16, 300, 12), noise: 0, eps: 0.4, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true, fresh: true, halve: { at: 60, keep: 4 }, timeMs: 20000 },
-  12: { read: 2, deeper: 0, search: S(16, 300, 12), noise: 0, eps: 0.4, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true, fresh: true, halve: { at: 60, keep: 4 }, timeMs: 20000 },
+  12: { read: 2, deeper: 0, search: S(16, 300, 12), noise: 0, eps: 0.4, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true, fresh: true, halve: { at: 60, keep: 4 }, timeMs: 20000, endgame: true, planRoll: true },
 };
 /** For balance tools: change a Lv's parameters. */
 export function tuneLv(lv: number, p: Partial<LvParams>) { Object.assign(LV[lv], p); }
