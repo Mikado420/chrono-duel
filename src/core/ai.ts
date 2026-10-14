@@ -1,7 +1,7 @@
 import { CARD_LIST, cardDef } from './cards';
 import { RULES } from './rules';
 import {
-  actor, apply, attackTarget, cardCost, clone, legalActions, other, rushActive, worldTime,
+  actor, apply, attackTarget, cardCost, clone, mulberry32, legalActions, other, rushActive, worldTime,
   type Action, type GameState, type PlayerIndex, type PlayerState,
 } from './engine';
 
@@ -24,7 +24,19 @@ export const LV_OF_LEVEL: Record<AiLevel, number> = { easy: 1, normal: 3, hard: 
  * board; `push` — a hidden pin that may push the clock counts as
  * another round of attacks in the danger check; `rush` — the 急襲 discount in hand is worth something (rushValue).
  */
-export const AI_FIX = { reach: true, fade: true, fizzle: true, push: true, rush: true, soon: true };
+export const AI_FIX = { reach: true, fade: true, fizzle: true, push: true, rush: true, soon: true, crn: true };
+/**
+ * `crn` (common random numbers): every candidate of a move is played out in the same guessed worlds with the same
+ * random choices, so the comparison is not swamped by luck. Without it a game-ending rollout (±1000) made two
+ * candidates differ by ±150 on noise alone and the choice among the shortlist was close to random.
+ * ROLL.end: what a won or lost game counts for at the end of a rollout (1000 = the full win; lower = less noise).
+ */
+export const ROLL = { end: 1000 };
+/** The score a rollout ends with. */
+export function rollScore(s: GameState, pi: PlayerIndex, W: Weights): number {
+  const v = evaluate(s, pi, W);
+  return s.over && ROLL.end !== 1000 ? (v / 1000) * ROLL.end + (s.players[pi].hp - s.players[other(pi)].hp) : v;
+}
 /**
  * `soon` (from the 0.22.0 review of the top players, who reserve at the earliest time almost always): a pending
  * reservation is worth less the longer it waits (it does nothing until then and holds one of the two slots), and a
@@ -310,7 +322,7 @@ export function rollout(s: GameState, pi: PlayerIndex, depth: number, rand: () =
     }
     apply(s, best);
   }
-  return evaluate(s, pi, EXPERT_WEIGHTS);
+  return rollScore(s, pi, EXPERT_WEIGHTS);
 }
 
 /** A generator so the UI can pause between candidates and keep animating while 超つよい thinks. */
@@ -329,14 +341,15 @@ function* expertSteps(s: GameState, pi: PlayerIndex, rand: () => number, search:
   // 2) settle it by playing each candidate out against several guesses of the hidden cards
   const ownDeck = s.players[pi].deck.slice();
   const worlds = Array.from({ length: search.rollouts }, () => determinize(s, pi, ownDeck, rand));
+  const seeds = worlds.map(() => Math.floor(rand() * 2 ** 32));
   let best = short[0].a, bestV = -Infinity;
   for (const cand of short) {
     yield;
     let sum = 0;
-    for (const w of worlds) {
-      const c = clone(w);
+    for (let wi = 0; wi < worlds.length; wi++) {
+      const c = clone(worlds[wi]);
       try { apply(c, cand.a); } catch { sum -= 1000; continue; }
-      sum += rollout(c, pi, search.depth, rand);
+      sum += rollout(c, pi, search.depth, AI_FIX.crn ? mulberry32(seeds[wi]) : rand);
     }
     // keep a little of the search score: it knows about reservations that rollouts do not play
     const v = sum / worlds.length + cand.v * 0.25;

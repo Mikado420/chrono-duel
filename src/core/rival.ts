@@ -9,12 +9,12 @@
  *   5. quirks break ties                                  6. the battle scene waits a human-like time and plays it
  */
 import {
-  AI_FIX, BASE_WEIGHTS, resvWorth, EXPERT_WEIGHTS, bestReply, handWorth, rushValue, breakBonus, chooseChoice, deepValue, determinize, evaluate, fogged,
+  AI_FIX, BASE_WEIGHTS, resvWorth, rollScore, EXPERT_WEIGHTS, bestReply, handWorth, rushValue, breakBonus, chooseChoice, deepValue, determinize, evaluate, fogged,
   intentBonus, pruneReserves, rollout, type Weights,
 } from './ai';
 import { cardDef } from './cards';
 import {
-  actor, apply, attackTarget, clone, legalActions, other, resvRange, timeCost, worldTime,
+  actor, apply, attackTarget, clone, legalActions, mulberry32, other, resvRange, timeCost, worldTime,
   type Action, type GameState, type PlayerIndex, type PlayerState,
 } from './engine';
 import { guessDecks, guessWorld, knownDecks, likelyDeck, moreReserveTimes, observe, type Guess, type Seen } from './infer';
@@ -304,10 +304,12 @@ export function rolloutWithReserves(s: GameState, pi: PlayerIndex, depth: number
     }
     apply(s, best);
   }
-  return evaluate(s, pi, EXPERT_WEIGHTS);
+  return rollScore(s, pi, EXPERT_WEIGHTS);
 }
 
 interface Scored { a: Action; v: number; ahead?: number }
+/** For analysis tools: the last move's shortlist (pre) and final scores. */
+export const RIVAL_DEBUG: { on: boolean; pre: { a: Action; v: number }[]; scored: Scored[] } = { on: false, pre: [], scored: [] };
 
 /**
  * The top players' habits (0.22.0 review, experimental): clock pushers and draws reserved at the earliest time,
@@ -386,15 +388,18 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
     const pinBase = pins && guess ? fogPins(guessWorld(real, pi, guess, mind.seen, true, rand)) : base;
     const pre = acts.map((a) => { const c = clone(pinBase); try { apply(c, a); } catch { return { a, v: -1e9 }; } return { a, v: deepValue(c, pi, 2, 2) + bonus(a) }; }).sort((x, y) => y.v - x.v);
     const short = pre.slice(0, search.candidates);
+    if (RIVAL_DEBUG.on) RIVAL_DEBUG.pre = pre;
     const worlds = Array.from({ length: search.rollouts }, () => (guess ? guessWorld(real, pi, guess, mind.seen, pins, rand) : determinize(real, pi, real.players[pi].deck.slice(), rand)));
+    const seeds = worlds.map(() => Math.floor(rand() * 2 ** 32));
     scored = [];
     for (const cand of short) {
       yield;
       let sum = 0, ahead = 0;
-      for (const w of worlds) {
-        const c = clone(w);
+      for (let wi = 0; wi < worlds.length; wi++) {
+        const c = clone(worlds[wi]);
         try { apply(c, cand.a); } catch { sum -= 1000; continue; }
-        const r = pins ? rolloutWithReserves(c, pi, search.depth, rand) : rollout(c, pi, search.depth, rand);
+        const rr = AI_FIX.crn ? mulberry32(seeds[wi]) : rand;
+        const r = pins ? rolloutWithReserves(c, pi, search.depth, rr) : rollout(c, pi, search.depth, rr);
         sum += r;
         if (r > 0) ahead++;
       }
@@ -410,6 +415,7 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
     if (d >= 0) x.v -= (d + 1) * 3;
   }
   scored.sort((x, y) => y.v - x.v);
+  if (RIVAL_DEBUG.on) RIVAL_DEBUG.scored = scored;
   const best = scored[0];
   const second = scored[1];
   const alt = second ? handOf(second.a) : undefined;
