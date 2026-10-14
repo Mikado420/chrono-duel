@@ -1,6 +1,6 @@
 /* Rated play and the friends' ranking: `npm run test:rating` */
 import assert from 'node:assert/strict';
-import { AI_RATING, NEW_RATED, SEASONS, rollSeason, seasonStartRating, RATING_RESET, applyRatingReset, resetRating, RATED_FOES, START_RATING, finishRated, foeById, makeOpponent, nextRating, opponentPool, pickOpponent, rivalPool, startRated, tierOf } from '../meta/rating';
+import { AI_RATING, NEW_RATED, SEASONS, rollSeason, seasonStartRating, RATING_RESET, applyRatingReset, applyRatingResets, resetRating, RATED_FOES, START_RATING, finishRated, foeById, makeOpponent, nextRating, opponentPool, pickOpponent, rivalPool, startRated, tierOf } from '../meta/rating';
 import { ROSTER, deckAvailable, rivalById, rivalDeck, rivalId } from '../meta/roster';
 import { Leaderboard, MIN_GAME_MS, rankDay, type KV } from '../server/leaderboard';
 import { mulberry32 } from '../core/engine';
@@ -8,12 +8,13 @@ import { mulberry32 } from '../core/engine';
 // tiers and matchmaking
 assert.equal(tierOf(START_RATING).tier.name, '見習い');
 assert.equal(tierOf(0).tier.id, 'novice');
-assert.equal(tierOf(99999).tier.id, 'shin');
+assert.equal(tierOf(99999).tier.id, 'shin5');
 assert.equal(tierOf(1000).tier.name, '見習い');
 assert.equal(tierOf(1199).tier.name, '見習い');
 assert.equal(tierOf(1200).tier.name, '刻士');
 assert.equal(tierOf(1999).tier.name, '刻聖');
-assert.equal(tierOf(2000).tier.name, '刻神');
+assert.equal(tierOf(2000).tier.name, '刻神Ⅰ');
+assert.deepEqual([2099, 2100, 2250, 2399, 2400].map((r) => tierOf(r).tier.name), ['刻神Ⅰ', '刻神Ⅱ', '刻神Ⅲ', '刻神Ⅳ', '刻神Ⅴ']);
 const top = RATED_FOES[RATED_FOES.length - 1].rating, bottom = RATED_FOES[0].rating;
 for (let r = 0; r < 2200; r += 25) {
   const pool = opponentPool(r);
@@ -58,9 +59,12 @@ for (let r = 900; r <= 2200; r += 50) {
   const pool = rivalPool(r);
   assert.ok(Math.abs(pool.reduce((a, [, w]) => a + w, 0) - 1) < 1e-9);
   const gap = pool.reduce((a, [id, w]) => a + w * Math.abs(foeById(id)!.rating - r), 0);
-  if (r >= 1000 && r <= 2100) assert.ok(gap <= 90, `rivals near ${r} (average gap ${gap.toFixed(0)})`);
+  if (r >= 1000 && r <= 2100 && r !== 2000) assert.ok(gap <= 90, `rivals near ${r} (average gap ${gap.toFixed(0)})`);
 }
-assert.equal(ROSTER.length, 120);
+assert.equal(ROSTER.length, 140);
+assert.equal(new Set(ROSTER.map((x) => x.name)).size, ROSTER.length, 'every name once');
+// from 刻神 up only the rivals of that step: Ⅰ〜Ⅱ Lv10, Ⅲ〜Ⅳ Lv11, Ⅴ Lv12
+for (const [r, lv] of [[2000, 10], [2150, 10], [2199, 10], [2200, 11], [2399, 11], [2400, 12], [2700, 12]] as const) assert.ok(rivalPool(r).every(([id]) => rivalById(id)!.lv === lv), `${r} meets Lv${lv}`);
 assert.ok(ROSTER.every((x) => rivalById(rivalId(x)) === x && foeById(rivalId(x))!.rating === x.rating), 'every rival id resolves');
 // 第2弾 is not out: a rival whose main deck is 第2弾 brings its second deck
 const g2 = { ...ROSTER[0], deck: 'g_mid' };
@@ -129,7 +133,7 @@ assert.ok(!JSON.stringify(res.body).includes(A.id) && !JSON.stringify(res.body).
 // titles and featured cards: only real ones are kept; places of the day before come back as `prev`
 await lb.submit({ ...A, title: 'first', fav: 'dragon', games: [] });
 await lb.submit({ ...B, title: 'fake', fav: 'not-a-card', games: [] });
-type Row = { name: string; rating?: number; title?: string; fav?: string; prev?: number | null };
+type Row = { name: string; rating?: number; title?: string; fav?: string; prev?: number | null; games?: number };
 let rows = ((await lb.ranking({})).body as { top: Row[] }).top;
 assert.equal(rows.find((r) => r.name === 'アリス')!.title, 'first');
 assert.equal(rows.find((r) => r.name === 'アリス')!.fav, 'dragon');
@@ -174,7 +178,7 @@ assert.deepEqual([1000, 1199, 1250, 1450, 1700, 1900, 2100].map(seasonStartRatin
   try {
     assert.equal(rollSeason(r, '2026-12-31'), null, 'not before the new set');
     const res = rollSeason(r, '2027-01-02')!;
-    assert.deepEqual(res, { season: 1, peak: 1820, tier: 'sei', games: 12, wins: 7 });
+    assert.deepEqual(res, { season: 1, peak: 1820, tier: 'sei', games: 12, wins: 7, final: 1500 });
     assert.equal(r.rating, 1200, 'starts one rank lower');
     assert.equal(r.season, 2); assert.equal(r.sGames, 0);
     assert.equal(r.seasons?.[0].tier, 'sei');
@@ -183,6 +187,19 @@ assert.deepEqual([1000, 1199, 1250, 1450, 1700, 1900, 2100].map(seasonStartRatin
     assert.equal(rollSeason(idle, '2027-01-02'), null, 'no result for a season not played');
     assert.equal(idle.rating, 1000, '刻士 goes back to 見習い');
   } finally { SEASONS.pop(); }
+}
+// 刻神Ⅰ〜Ⅴ: every 刻神 step starts the next season at 刻聖; the one-time reset takes everyone above 2000 back to 2000
+assert.deepEqual([2000, 2150, 2450, 1999, 1850].map(seasonStartRating), [1800, 1800, 1800, 1600, 1600]);
+{
+  const top = { rating: 2404, sPeak: 2404, reset: '2026-10-ranks' } as { rating: number; sPeak?: number; reset?: string };
+  assert.deepEqual(applyRatingResets(top), { before: 2404, shinCut: 404 });
+  assert.equal(top.rating, 2000); assert.equal(top.sPeak, 2000, 'the season best counts as 刻神Ⅰ'); assert.equal(top.reset, RATING_RESET);
+  assert.equal(applyRatingResets(top), null, 'only once');
+  const low = { rating: 1720, reset: '2026-10-ranks' } as { rating: number; reset?: string };
+  assert.deepEqual(applyRatingResets(low), { before: 1720, shinCut: 0 }); assert.equal(low.rating, 1720);
+  const older = { rating: 2300 } as { rating: number; reset?: string };
+  assert.deepEqual(applyRatingResets(older), { before: 2300, shinCut: 0 }, 'a record from before both resets: 1400 first, nothing left to cut');
+  assert.equal(older.rating, 1400);
 }
 console.log(`rating after one hard win: ${r1}; ranking ok`);
 // two sends at once (a slow store between the reads): the second must not count its games on an older copy
@@ -211,5 +228,30 @@ console.log(`rating after one hard win: ${r1}; ranking ok`);
   assert.deepEqual(gp.gifts.map((g) => g.id), ['pg-archive-sakaphone']);
   assert.equal(gq.gifts.length, 0, 'a later player with the same name gets nothing');
   assert.equal(((await lb4.gifts({ ...P, secret: 'wrongwrongwrongwrong' })).body as { gifts: unknown[] }).gifts.length, 0);
+}
+// 季の順位: when a season ends, the final standings are fixed once (by the rating each player ended with) and every
+// player hears their place; the ranking shows it next to a 季の称号
+{
+  const m2 = new Map<string, unknown>();
+  const kv2: KV = { get: async (k) => structuredClone(m2.get(k)) as never, put: async (k, v) => { m2.set(k, structuredClone(v)); }, list: async (p) => [...m2.entries()].filter(([k]) => k.startsWith(p)).map(([, v]) => structuredClone(v)) as never };
+  let t = Date.UTC(2026, 9, 20);
+  const lb5 = new Leaderboard(kv2, () => t);
+  const P = [0, 1, 2].map((i) => ({ id: `plc${i}`.padEnd(20, String(i)), secret: `sec${i}`.padEnd(20, 'x'), name: `p${i}` }));
+  for (const [i, p] of P.entries()) {
+    for (let k = 0; k <= i; k++) { t += 2 * MIN_GAME_MS; await lb5.submit({ ...p, games: [game(`${p.name}-${k}`, 1, t)] }); }
+  }
+  SEASONS.push({ id: 2, name: '第2期', set: 'テスト', start: '2027-01-01' });
+  try {
+    t = Date.UTC(2027, 0, 2);
+    const rk = (await lb5.ranking({})).body as { top: Row[] };
+    assert.ok(rk.top.length === 0 || rk.top.every((r) => r.games === 0), 'the new season starts empty');
+    assert.deepEqual(m2.get('splace:1'), { [P[2].id]: 1, [P[1].id]: 2, [P[0].id]: 3 }, 'more wins, higher rating, higher place');
+    const back = (await lb5.submit({ ...P[1], title: 'season1-novice', games: [] })).body as { places: Record<number, number> };
+    assert.deepEqual(back.places, { 1: 2 });
+    t += 2 * MIN_GAME_MS;
+    await lb5.submit({ ...P[1], games: [game('p1-new', 1, t)] });
+    const row = ((await lb5.ranking({})).body as { top: (Row & { tp?: number })[] }).top.find((r) => r.name === 'p1');
+    assert.equal(row?.tp, 2, 'the place shows next to the season title');
+  } finally { SEASONS.pop(); }
 }
 console.log('all rating tests passed');

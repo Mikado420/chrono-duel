@@ -24,7 +24,7 @@ export interface KV {
 }
 export interface PlayerRec { id: string; key: string; name: string; rating: number; games: number; wins: number; peak: number; lastAt: number; lastGids: string[]; created: number; reset?: string; season?: number; sPeak?: number; sGames?: number; sWins?: number; seasons?: SeasonResult[]; title?: string; fav?: string }
 /** `prev`: the place at the end of the previous day the ranking was looked at (null: was not ranked then). */
-export interface RankRow { name: string; rating: number; tier: string; games: number; wins: number; peak: number; me?: boolean; title?: string; fav?: string; prev?: number | null }
+export interface RankRow { name: string; rating: number; tier: string; games: number; wins: number; peak: number; me?: boolean; title?: string; fav?: string; prev?: number | null; /** the final place of the season of a 季の称号 shown as `title` */ tp?: number }
 /** Places by player id for one day (Japan time), kept to show how places moved since the day before. */
 interface PlaceSnap { day: string; prev: Record<string, number>; cur: Record<string, number> }
 /** The ranking's day, in Japan time (the players' day). */
@@ -57,8 +57,39 @@ export class Leaderboard {
   /** Submissions run one after another: two at once could both read the same record and one would undo the other. */
   private queue: Promise<unknown> = Promise.resolve();
 
+  /**
+   * 季の順位: the first time anything is asked after a season has ended (before any record moves into the new season),
+   * the final standings of that season are fixed by the rating each player ended it with and kept as
+   * `splace:<season>` (player id → place). Only players who played rated games in that season are placed.
+   */
+  private async finalizeSeason(day: string): Promise<void> {
+    const cur = seasonAt(day).id;
+    if (cur <= 1) return;
+    const prev = cur - 1;
+    if (await this.kv.get(`splace:${prev}`)) return;
+    const rows: { id: string; rating: number; wins: number; created: number }[] = [];
+    for (const p of await this.kv.list<PlayerRec>('p:')) {
+      const q = { ...p };
+      applyRatingReset(q);
+      if ((q.season ?? prev) === prev && (q.sGames ?? 0) > 0) rows.push({ id: p.id, rating: q.rating, wins: q.sWins ?? 0, created: p.created });
+      else { const r = q.seasons?.find((x) => x.season === prev); if (r?.final !== undefined) rows.push({ id: p.id, rating: r.final, wins: r.wins, created: p.created }); }
+    }
+    rows.sort((a, b) => b.rating - a.rating || b.wins - a.wins || a.created - b.created);
+    await this.kv.put(`splace:${prev}`, Object.fromEntries(rows.map((r, i) => [r.id, i + 1])));
+  }
+  /** A player's final place in each finished season (season id → place). */
+  private async placesOf(id: string, day: string): Promise<Record<number, number>> {
+    const out: Record<number, number> = {};
+    for (let se = 1; se < seasonAt(day).id; se++) {
+      const m = await this.kv.get<Record<string, number>>(`splace:${se}`);
+      if (m?.[id]) out[se] = m[id];
+    }
+    return out;
+  }
+
   private async auth(id: unknown, secret: unknown, name?: unknown): Promise<PlayerRec | ApiResult> {
     if (!validId(id) || !validId(secret)) return bad(400, 'bad id');
+    await this.finalizeSeason(jstDay(this.now()));
     const key = await sha(`${id}:${secret}`);
     const rec = await this.kv.get<PlayerRec>(`p:${id}`);
     if (rec) {
@@ -110,7 +141,8 @@ export class Leaderboard {
       accepted.push(g.gid);
     }
     await this.kv.put(`p:${rec.id}`, rec);
-    return { status: 200, body: { rating: rec.rating, games: rec.games, wins: rec.wins, peak: rec.peak, name: rec.name, season: rec.season, sPeak: rec.sPeak, sGames: rec.sGames, sWins: rec.sWins, accepted, refused } };
+    const places = await this.placesOf(rec.id, jstDay(this.now()));
+    return { status: 200, body: { rating: rec.rating, games: rec.games, wins: rec.wins, peak: rec.peak, name: rec.name, season: rec.season, sPeak: rec.sPeak, sGames: rec.sGames, sWins: rec.sWins, places, accepted, refused } };
   }
 
   /** POST /api/gifts: { id, secret } → the gifts meant for this player. */
@@ -132,6 +164,7 @@ export class Leaderboard {
     // the ranking is per season: players who have not been back since the ranks were redrawn or a season turned are
     // shown as they will be when they return (and saved then)
     const today = jstDay(this.now()), season = seasonAt(today);
+    await this.finalizeSeason(today);
     const all = (await this.kv.list<PlayerRec>('p:')).filter((p) => p.games > 0);
     for (const p of all) { applyRatingReset(p); rollSeason(p, today); }
     const live = all.filter((p) => (p.sGames ?? 0) > 0);
@@ -144,7 +177,12 @@ export class Leaderboard {
     const old = await this.kv.get<PlaceSnap>('rk:snap');
     const snap: PlaceSnap = !old ? { day, prev: {}, cur } : old.day === day ? { ...old, cur } : { day, prev: old.cur, cur };
     await this.kv.put('rk:snap', snap);
+    // places of finished seasons, for the 季の称号 shown next to names
+    const seasonPlaces: Record<number, Record<string, number>> = {};
+    for (let se = 1; se < season.id; se++) seasonPlaces[se] = (await this.kv.get<Record<string, number>>(`splace:${se}`)) ?? {};
+    const tpOf = (p: PlayerRec) => { const m = /^season(\d+)-/.exec(p.title ?? ''); const pl = m ? seasonPlaces[+m[1]]?.[p.id] : undefined; return pl ? { tp: pl } : {}; };
     const row = (p: PlayerRec, me: boolean): RankRow => ({
+      ...tpOf(p),
       name: p.name, rating: p.rating, tier: tierOf(p.rating).tier.id, games: p.sGames ?? p.games, wins: p.sWins ?? p.wins, peak: p.peak,
       ...(p.title && titleOpen(p.title, today) ? { title: p.title } : {}), ...(p.fav ? { fav: p.fav } : {}), prev: snap.prev[p.id] ?? null, ...(me ? { me: true } : {}),
     });

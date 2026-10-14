@@ -26,7 +26,7 @@ import { PLACEMENT_GAMES, SEASON_REWARDS, TIERS, seasonAt, tierOf, type Opponent
 import { seasonById } from '../meta/ranks';
 import { fetchRanking, issueTransfer, rankingAvailable, redeemTransfer, syncRated } from '../net/api';
 import { ICON, artImg, artStyle, backImg, svgImg, cardImg, cardName, countBadge, countUp, h, newTag, packImg, pressable, purse, resetZoom, ribbon, svg, tierBadge, tierEmblem, topBar } from './kit';
-import { deckKey, deckLook, favCard, myTitles, newTitles, shownTitle } from './profile';
+import { deckKey, deckLook, favCard, myPlace, myTitles, newTitles, shownTitle } from './profile';
 
 export { h } from './kit';
 
@@ -232,7 +232,7 @@ export class Screens {
           h('span', { class: 'hexmark' }, h('span', {}, h('small', {}, 'RANK'), h('b', {}, String(rk.rank)))),
           h('span', { class: 'me-main' },
             h('span', { class: 'me-lv' }, 'Lv.', h('b', {}, String(rk.rank)), h('span', { class: 'bar' }, h('i', { style: `width:${(rk.into / rk.need) * 100}%` }))),
-            ribbon(shownTitle()?.id),
+            ribbon(shownTitle()?.id, '', myPlace(shownTitle()?.id)),
             h('span', { class: 'me-name' }, store.settings.name || 'プレイヤー'))),
         purse()),
       h('main', { class: 'hub-body' }, body),
@@ -338,7 +338,7 @@ export class Screens {
       return h('div', { class: `vs-plate ${side}` },
         h('b', {}, s.name),
         t ? h('div', { class: 'tr', style: `color:${t.color}` }, tierBadge(t, 'sm', false), t.name, h('span', { class: 'num' }, fmt(s.tierRating!))) : null,
-        ribbon(s.title),
+        ribbon(s.title, '', side === 'you' ? myPlace(s.title) : undefined),
         s.deck ? h('small', {}, `デッキ：${s.deck}`) : null);
     };
     const half = (s: VsSide, side: 'you' | 'foe') => h('div', { class: `half ${side}` },
@@ -368,7 +368,7 @@ export class Screens {
         h('b', {}, g.score === 1 ? '勝' : g.score === 0 ? '敗' : '分'), h('span', { class: 'foe' }, g.foe ? `${g.foe}（${g.foeRating}）` : '対戦相手'), h('span', { class: 'dl' }, `${g.after - g.before >= 0 ? '+' : ''}${g.after - g.before}`), h('span', { class: 'rt' }, String(g.after))));
       const se = seasonAt(localDate());
       const reward = SEASON_REWARDS[tierOf(Math.max(r.sPeak ?? r.rating, r.rating)).tier.id];
-      const past = (r.seasons ?? []).map((x) => { const tt = TIERS.find((y) => y.id === x.tier)!; return h('div', { class: 'season-row' }, h('b', {}, seasonById(x.season)?.name ?? `第${x.season}季`), tierBadge(tt), h('span', { class: 'muted' }, `最高 ${x.peak} ・ ${x.games}戦${x.wins}勝`)); });
+      const past = (r.seasons ?? []).map((x) => { const tt = TIERS.find((y) => y.id === x.tier)!; return h('div', { class: 'season-row' }, h('b', {}, seasonById(x.season)?.name ?? `第${x.season}季`), tierBadge(tt), h('span', { class: 'muted' }, `最高 ${x.peak} ・ ${x.games}戦${x.wins}勝${x.place ? ` ・ 最終${x.place}位` : ''}`)); });
       this.page('レート戦', () => this.battleTab(), [
         h('div', { class: 'season-band' }, h('b', {}, se.name), h('span', {}, `${se.set}のシーズン ・ 次の弾の配信まで`)),
         h('div', { class: 'rated-card', style: `--tier:${t.tier.color}` },
@@ -382,7 +382,8 @@ export class Screens {
           h('li', {}, '自分よりレートの高い相手に勝つほど大きく上がり、低い相手に負けるほど大きく下がります'),
           h('li', {}, `はじめの${PLACEMENT_GAMES}戦は変動が大きくなります`),
           h('li', {}, '1手45秒の持ち時間があります。降参・途中でアプリを閉じた場合は敗北になります'),
-          h('li', {}, 'シーズンは新しい弾が出るたびに切り替わります。そのシーズンの最高ランクに応じてコイン・チケットと、ランクごとに装飾の変わる季の称号がもらえ、次のシーズンは1つ下のランクの最初から始まります')),
+          h('li', {}, 'シーズンは新しい弾が出るたびに切り替わります。そのシーズンの最高ランクに応じてコイン・チケットと、ランクごとに装飾の変わる季の称号（最終順位つき）がもらえ、次のシーズンは1つ下のランクの最初から始まります（刻神Ⅰ〜Ⅴは刻聖から）'),
+          h('li', {}, '刻神はⅠ〜Ⅴの5段階です。刻神Ⅲ・Ⅳでは1手に最大20秒考えるLv11、刻神ⅤではLv12が相手になります')),
         h('div', { class: 'sec-title' }, 'デッキ'), h('div', { class: 'opt-list' }, ...deckOpts),
         h('button', { class: 'hexbtn gold big', disabled: !mine.valid, onclick: () => { store.settings.lastDeck = mine.id; store.saveSettings(); audio.play('summon'); this.host.startRated(mine); } }, 'レート戦を開始'),
         hist.length ? h('div', { class: 'sec-title' }, '最近の結果') : null,
@@ -399,7 +400,7 @@ export class Screens {
     const board = h('div', { class: 'rk2' });
     const pin = h('div', { class: 'rk-pin' });
     const note = h('p', { class: 'shop-note' });
-    const row = (place: number, r: { name: string; rating: number; prev?: number | null; title?: string; fav?: string; me?: boolean }) => {
+    const row = (place: number, r: { name: string; rating: number; prev?: number | null; title?: string; fav?: string; me?: boolean; tp?: number }) => {
       const t = tierOf(r.rating).tier;
       const prev = r.prev ?? null;
       const move = prev === null ? h('small', {}, '前日 ―') : h('small', {}, `前日${prev}位 `, h('em', { class: prev > place ? 'up' : prev < place ? 'down' : 'flat' }, prev > place ? '↑' : prev < place ? '↓' : '→'));
@@ -409,7 +410,7 @@ export class Screens {
         h('div', { class: 'pl' }, String(place), h('sup', {}, sfx), move),
         h('div', { class: 'av', style: artStyle(r.fav && CARDS[r.fav] ? r.fav : 'gear') }),
         h('div', { class: 'nm' }, h('b', {}, r.name, r.me ? h('span', { class: 'you-tag' }, 'あなた') : null),
-          h('div', { class: 'sub' }, tierBadge(t), ribbon(r.title))),
+          h('div', { class: 'sub' }, tierBadge(t), ribbon(r.title, '', r.tp))),
         h('div', { class: 'rt' }, rising ? h('span', { class: 'rise' }, '急上昇') : h('small', {}, 'レート'), h('br', {}), h('span', {}, fmt(r.rating))));
     };
     const load = async () => {
@@ -779,7 +780,7 @@ export class Screens {
             h('button', { class: 'favcard', onclick: () => this.favPicker(render) }, h('img', { src: cardImg(fav), alt: cardDef(fav).name }), h('span', {}, '看板カード')),
             h('div', { class: 'pside' },
               h('div', { class: 'prof-line' }, h('div', { class: 'pname' }, h('small', {}, 'PLAYER NAME'), h('b', {}, store.settings.name || 'プレイヤー')), h('button', { class: 'round-btn', 'aria-label': '名前を変える', onclick: editName, html: ICON.pen })),
-              h('div', { class: 'prof-line' }, title ? ribbon(title.id) : h('span', { class: 'muted', style: 'font-size:12px' }, '称号なし'), h('button', { class: 'round-btn', 'aria-label': '称号を変える', onclick: () => this.titlePicker(render), html: ICON.swap }, newTitles().length ? h('i', { class: 'badge-dot', style: 'top:-2px;right:-2px' }) : null)),
+              h('div', { class: 'prof-line' }, title ? ribbon(title.id, '', myPlace(title.id)) : h('span', { class: 'muted', style: 'font-size:12px' }, '称号なし'), h('button', { class: 'round-btn', 'aria-label': '称号を変える', onclick: () => this.titlePicker(render), html: ICON.swap }, newTitles().length ? h('i', { class: 'badge-dot', style: 'top:-2px;right:-2px' }) : null)),
               h('div', { class: 'prof-line' }, h('div', { class: 'comment' }, m.comment || h('span', { class: 'muted' }, 'ひとことを書けます')), h('button', { class: 'round-btn', 'aria-label': 'ひとことを変える', onclick: editComment, html: ICON.pen }))))),
         h('div', { class: 'two' },
           h('div', { class: 'pn lvbox' }, h('span', { class: 'hd' }, 'プレイヤーランク'),
@@ -828,7 +829,7 @@ export class Screens {
           const has = got.includes(t.id);
           const head = i === 0 || TITLES[i - 1].group !== t.group ? [h('div', { class: 'title-group' }, `${t.group}（${TITLES.filter((x) => x.group === t.group && got.includes(x.id)).length}/${TITLES.filter((x) => x.group === t.group).length}）`)] : [];
           return [...head, h('button', { class: `title-item${has ? '' : ' locked'}`, 'aria-pressed': String(cur === t.id), 'aria-disabled': has ? undefined : 'true', onclick: () => { if (!has) return; m.title = t.id; store.saveMeta(); audio.play('select'); ref.close(); done(); void syncRated(); } },
-            ribbon(t.id), h('small', {}, has ? t.how : `未獲得：${t.how}`), h('span', { class: 'grade' }, TONE_NAMES[t.tone]), fresh.has(t.id) ? newTag() : null)];
+            ribbon(t.id, '', has ? myPlace(t.id) : undefined), h('small', {}, has ? t.how : `未獲得：${t.how}`), h('span', { class: 'grade' }, TONE_NAMES[t.tone]), fresh.has(t.id) ? newTag() : null)];
         })),
     ], [], done);
   }

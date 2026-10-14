@@ -51,6 +51,10 @@ export interface LvParams {
    * 1.3× the old one (phones).
    */
   fresh?: boolean;
+  /** Lv11–12: after `at` guessed worlds, only the best `keep` candidates are read in the rest. */
+  halve?: { at: number; keep: number };
+  /** Lv11–12: stop reading new worlds after this many ms (slow phones; at least 16 worlds are always read). */
+  timeMs?: number;
 }
 const M = (attackMiss: number, threatMiss: number, resvShift: number, holdBack: number, misplace: number, missLethal: number, forgetDefend: number): Record<MissKind, number> =>
   ({ attackMiss, threatMiss, resvShift, holdBack, misplace, missLethal, forgetDefend });
@@ -72,6 +76,11 @@ export const LV: Record<number, LvParams> = {
   8: { read: 2, deeper: 0, search: S(8, 24, 30), noise: 0, eps: 0.8, plan: 'all', miss: M(0, 1, 1, 0, 0, 0, 0) },
   9: { read: 2, deeper: 0, search: S(10, 32, 30), noise: 0, eps: 0.6, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true },
   10: { read: 2, deeper: 0, search: S(12, 80, 12), noise: 0, eps: 0.5, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true, fresh: true },
+  // 刻神Ⅲ〜Ⅴ: the same brain, reading the close candidates much longer (halve: after `at` worlds the best `keep`
+  // go on alone), up to 20 s a move. Lv11 beat Lv10 60% (40 games). Lv12 reads as Lv11 for now: twice the work
+  // (S(18, 600, 12), keep 4 after 80) only drew with it (50%, 40 games); its roster is rated just above 2400 to match.
+  11: { read: 2, deeper: 0, search: S(16, 300, 12), noise: 0, eps: 0.4, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true, fresh: true, halve: { at: 60, keep: 4 }, timeMs: 20000 },
+  12: { read: 2, deeper: 0, search: S(16, 300, 12), noise: 0, eps: 0.4, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true, fresh: true, halve: { at: 60, keep: 4 }, timeMs: 20000 },
 };
 /** For balance tools: change a Lv's parameters. */
 export function tuneLv(lv: number, p: Partial<LvParams>) { Object.assign(LV[lv], p); }
@@ -294,7 +303,7 @@ function fogPins(w: GameState): GameState {
   return w;
 }
 /** Like ai.rollout, but either side may also reserve (at its earliest time or two ticks later): Lv10's 予約の先読み. */
-export function rolloutWithReserves(s: GameState, pi: PlayerIndex, depth: number, rand: () => number, end = 1000): number {
+export function rolloutWithReserves(s: GameState, pi: PlayerIndex, depth: number, rand: () => number, end = 1000, decks?: [string | null, string | null]): number {
   for (let i = 0; i < depth && !s.over; i++) {
     const q = actor(s);
     if (q === -1) break;
@@ -307,25 +316,51 @@ export function rolloutWithReserves(s: GameState, pi: PlayerIndex, depth: number
         if (!r || (a.T !== r[0] && a.T !== r[0] + 2)) continue;
         extra = intentBonus(s, q, a);
       }
+      // AI_FIX.planRoll: each side plays its deck's plan in the rollout too (decks[0] is pi's, decks[1] the guess of the other)
+      const deck = decks ? decks[q === pi ? 0 : 1] : null;
+      if (deck && AI_FIX.planRoll) extra += planBonus(deck, 'all', s, s, q, a) * PLAN_ROLL.k;
       const c = clone(s);
       apply(c, a);
-      const v = evaluate(c, q, EXPERT_WEIGHTS) + extra + (rand() - 0.5) * 1.5;
+      const v = evaluate(c, q, EXPERT_WEIGHTS) + extra + (rand() - 0.5) * PLAN_ROLL.noise;
       if (v > bv) { bv = v; best = a; }
     }
     apply(s, best);
   }
   return rollScore(s, pi, EXPERT_WEIGHTS, end);
 }
+/** How much the deck plans count in rollouts (AI_FIX.planRoll); the rollout policy's noise; how much the shortlist score adds to a `fresh` result. */
+export const PLAN_ROLL = { k: 1, noise: 1.5, pre: 0.25 };
+/** 終盤の読み切り: from this world time, rollouts go on for up to `depth` actions (to the end of the game). */
+export const ENDGAME = { at: 30, depth: 60 };
 
 interface Scored { a: Action; v: number; ahead?: number }
 /** For analysis tools: the last move's shortlist (pre) and final scores. */
-export const RIVAL_DEBUG: { on: boolean; pre: { a: Action; v: number }[]; scored: Scored[] } = { on: false, pre: [], scored: [] };
+export const RIVAL_DEBUG: { on: boolean; pre: { a: Action; v: number }[]; scored: Scored[]; force?: Action } = { on: false, pre: [], scored: [] };
 
 
-/** A generator so the battle scene can keep animating between rollouts. */
+/**
+ * The weights of the static evaluation for `fresh` Lvs, refitted to who actually won (logistic regression on 15,000
+ * positions of 0.22.0 rated play and 19,000 of AI self-play, scaled to hp = 1.5): the old ones counted cards in hand,
+ * reservations and the clock gap at a third to a quarter of what they are worth. With them Lv10 beat the old weights
+ * 54% (160 games) and picked 1位's move more often (37% → 41%), reserving clock pushers and draws over bolts like 1位.
+ */
+export const FRESH_WEIGHTS: Weights = { hp: 1.5, danger: 1.0, atk: 1.6, body: 1.4, open: 0.4, hand: 3.5, handExtra: 2.2, resv: 5.0, tempo: 3.2, ready: 0 };
+/** A generator so the battle scene can keep animating between rollouts (`fresh` Lvs read with FRESH_WEIGHTS). */
 export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, mind: RivalMind, rand: () => number = Math.random): Generator<void, RivalMove> {
+  const P = LV[Math.max(1, Math.min(12, cfg.lv))];
+  const it = rivalStepsInner(real, pi, cfg, mind, rand);
+  if (!P.fresh || !AI_FIX.freshWeights) return yield* it;
+  // the evaluation reads the shared weight objects: swap them in while this move is read (and out while it waits)
+  const keepE = { ...EXPERT_WEIGHTS }, keepB = { ...BASE_WEIGHTS };
+  const on = () => { Object.assign(EXPERT_WEIGHTS, FRESH_WEIGHTS); Object.assign(BASE_WEIGHTS, FRESH_WEIGHTS); };
+  const off = () => { Object.assign(EXPERT_WEIGHTS, keepE); Object.assign(BASE_WEIGHTS, keepB); };
+  try {
+    for (;;) { on(); const r = it.next(); off(); if (r.done) return r.value; yield; }
+  } finally { off(); }
+}
+function* rivalStepsInner(real: GameState, pi: PlayerIndex, cfg: RivalCfg, mind: RivalMind, rand: () => number = Math.random): Generator<void, RivalMove> {
   if (real.pending) return { action: chooseChoice(real, pi), kind: 'obvious', why: 'only' };
-  const P = LV[Math.max(1, Math.min(10, cfg.lv))];
+  const P = LV[Math.max(1, Math.min(12, cfg.lv))];
   const base = fogged(real, pi);
   const me = base.players[pi];
   observe((mind.seen ??= {}), real, pi);
@@ -378,19 +413,41 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
     const pinBase = pins && guess ? fogPins(guessWorld(real, pi, guess, mind.seen, true, rand)) : base;
     const pre = acts.map((a) => { const c = clone(pinBase); try { apply(c, a); } catch { return { a, v: -1e9 }; } return { a, v: deepValue(c, pi, 2, 2) + bonus(a) }; }).sort((x, y) => y.v - x.v);
     const short = pre.slice(0, search.candidates);
+    // analysis tools: make sure a given move is read too
+    if (RIVAL_DEBUG.force) { const f = JSON.stringify(RIVAL_DEBUG.force); if (!short.some((x) => JSON.stringify(x.a) === f)) { const x = pre.find((y) => JSON.stringify(y.a) === f); if (x) short.push(x); } }
     if (RIVAL_DEBUG.on) RIVAL_DEBUG.pre = pre;
     const worlds = Array.from({ length: search.rollouts }, () => (guess ? guessWorld(real, pi, guess, mind.seen, pins, rand) : determinize(real, pi, real.players[pi].deck.slice(), rand)));
     const seeds = worlds.map(() => Math.floor(rand() * 2 ** 32));
     scored = [];
-    for (const cand of short) {
+    const end = P.fresh ? FRESH_END : 1000;
+    // 終盤の読み切り (AI_FIX.endgame): late in the game a `fresh` rollout plays on to the end instead of stopping at 12
+    const depth = P.fresh && AI_FIX.endgame && worldTime(base) >= ENDGAME.at ? ENDGAME.depth : search.depth;
+    const play = (cand: { a: Action }, wi: number): number | null => {
+      const c = clone(worlds[wi]);
+      try { apply(c, cand.a); } catch { return null; }
+      const rr = P.fresh && AI_FIX.crn ? mulberry32(seeds[wi]) : rand;
+      return pins ? rolloutWithReserves(c, pi, depth, rr, end, [cfg.deck, oppDeck]) : rollout(c, pi, depth, rr, end);
+    };
+    if (P.fresh) {
+      // world by world for every candidate, so a time limit (P.timeMs) leaves every candidate read in the same worlds
+      // (P.halve: after `at` worlds only the best `keep` candidates go on, so the close ones are read much more)
+      const sum = short.map(() => 0), ahead = short.map(() => 0), seen = short.map(() => 0);
+      let live = short.map((_, k) => k);
+      const t0 = Date.now();
+      for (let wi = 0; wi < worlds.length; wi++) {
+        if (wi % 2 === 0) { yield; if (P.timeMs && wi >= 16 && Date.now() - t0 > P.timeMs) break; }
+        if (P.halve && wi === P.halve.at) live = [...live].sort((x, y) => (sum[y] / seen[y] + short[y].v * 0.25) - (sum[x] / seen[x] + short[x].v * 0.25)).slice(0, P.halve.keep);
+        for (const k of live) { const r = play(short[k], wi); sum[k] += r ?? -1000; seen[k]++; if (r !== null && r > 0) ahead[k]++; }
+      }
+      const kept = new Set(live);
+      // a candidate dropped halfway keeps its score but can no longer be chosen over one read to the end
+      short.forEach((cand, k) => scored.push({ a: cand.a, v: sum[k] / Math.max(1, seen[k]) + cand.v * PLAN_ROLL.pre + noise() - (kept.has(k) ? 0 : 1e6), ahead: ahead[k] / Math.max(1, seen[k]) }));
+    } else for (const cand of short) {
       yield;
       let sum = 0, ahead = 0;
       for (let wi = 0; wi < worlds.length; wi++) {
-        const c = clone(worlds[wi]);
-        try { apply(c, cand.a); } catch { sum -= 1000; continue; }
-        const rr = P.fresh && AI_FIX.crn ? mulberry32(seeds[wi]) : rand;
-        const end = P.fresh ? FRESH_END : 1000;
-        const r = pins ? rolloutWithReserves(c, pi, search.depth, rr, end) : rollout(c, pi, search.depth, rr, end);
+        const r = play(cand, wi);
+        if (r === null) { sum -= 1000; continue; }
         sum += r;
         if (r > 0) ahead++;
       }

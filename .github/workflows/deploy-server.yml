@@ -9,9 +9,7 @@ on:
       - server/**
       - src/core/**
       - src/server/**
-      - src/meta/rating.ts
-      - src/meta/blueprints.ts
-      - src/meta/deckbook.ts
+      - src/meta/**
       - src/sim/rosterDecks.ts
       - src/sim/metaDecks.ts
       - src/sim/set2Decks.ts

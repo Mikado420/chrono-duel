@@ -20,6 +20,7 @@ export function titleCtx(): TitleCtx {
     themesComplete: THEMES.filter((t) => LOOKS.filter((l) => l.theme === t.id).every((l) => ownsLook(w, l.id))).length,
     ratedGames: r.games,
     ratedPeak: r.peak,
+    shinPeak: r.shinPeak,
     ratedStreak: r.bestStreak ?? 0,
     seasonTiers: Object.fromEntries((r.seasons ?? []).map((x) => [x.season, x.tier])),
   };
@@ -49,6 +50,11 @@ export function shownTitle(): TitleDef | undefined {
   if (store.meta.title && got.includes(store.meta.title)) return titleById(store.meta.title);
   if (store.meta.title === '-') return undefined;
   return titleById(got[got.length - 1]);
+}
+/** My final place in the season of a 季の称号 (undefined for other titles, or before the server has told it). */
+export function myPlace(titleId: string | undefined): number | undefined {
+  const m = /^season(\d+)-/.exec(titleId ?? '');
+  return m ? store.rated.seasons?.find((x) => x.season === +m[1])?.place : undefined;
 }
 /** Titles earned but not yet seen in the title list. */
 export const newTitles = () => myTitles().filter((t) => !store.meta.titlesSeen.includes(t));

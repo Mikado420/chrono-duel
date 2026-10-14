@@ -17,7 +17,7 @@ export const K_PLACEMENT = 40;
 export const K_NORMAL = 24;
 
 export { TIERS, type Tier } from './ranks';
-import { SEASONS, TIERS, seasonAt, type Season, type Tier } from './ranks';
+import { SEASONS, TIERS, seasonAt, shinLv, type Season, type Tier } from './ranks';
 export { SEASONS, seasonAt, type Season };
 
 /**
@@ -51,31 +51,58 @@ export const foeLevel = (id: string): AiLevel => foeById(id)?.spec.level ?? 'nor
 export const MATCH_WIDTH = 90;
 
 /**
- * One-time rating reset when the ranks were redrawn (2026-10): 刻匠 and above go to the start of 刻匠 (1400), 刻士
- * to the start of 刻士 (1200), everyone else to the start of 見習い (1000). Games, wins and the best rating stay.
- * The client and the ranking server both apply it once (a record remembers the reset it has had).
+ * One-time rating resets, oldest first. A record remembers the last one it has had; the client and the ranking server
+ * both apply the ones it has not had yet.
+ *   2026-10-ranks: the ranks were redrawn — 刻匠 and above to the start of 刻匠 (1400), 刻士 to 1200, the rest to 1000.
+ *   2026-10-shin: 刻神 got its five steps — everyone above 2000 goes back to 2000 (刻神Ⅰ) and gets 4 coins for every
+ *   point taken away (paid by the client, SHIN_RESET_COINS).
+ * Games, wins and the best rating stay.
  */
-export const RATING_RESET = '2026-10-ranks';
+export const RATING_RESETS: { id: string; to: (rating: number) => number }[] = [
+  { id: '2026-10-ranks', to: (r) => (r >= 1400 ? 1400 : r >= 1200 ? 1200 : START_RATING) },
+  { id: '2026-10-shin', to: (r) => Math.min(r, 2000) },
+];
+export const RATING_RESET = RATING_RESETS[RATING_RESETS.length - 1].id;
+/** Coins for each rating point the 刻神 reset took away. */
+export const SHIN_RESET_COINS = 4;
 export function resetRating(rating: number): number {
-  return rating >= 1400 ? 1400 : rating >= 1200 ? 1200 : START_RATING;
+  return RATING_RESETS[0].to(rating);
 }
-/** Applies the reset to a record that has not had it yet; true when something changed. */
-export function applyRatingReset(r: { rating: number; reset?: string; streak?: number }): boolean {
-  if (r.reset === RATING_RESET) return false;
+/**
+ * Applies the resets a record has not had yet. Returns null when nothing was due, else the rating before and the
+ * points the 刻神 reset took (for its coins).
+ */
+export function applyRatingResets(r: { rating: number; reset?: string; streak?: number; sPeak?: number }): { before: number; shinCut: number } | null {
+  const done = RATING_RESETS.findIndex((x) => x.id === r.reset);
+  if (done === RATING_RESETS.length - 1) return null;
+  const before = r.rating;
+  let shinCut = 0;
+  for (const x of RATING_RESETS.slice(done + 1)) {
+    const to = x.to(r.rating);
+    // the season's best so far counts as 刻神Ⅰ at most (the steps above are reached against Lv11–12)
+    if (x.id === '2026-10-shin') { shinCut = r.rating - to; if (r.sPeak !== undefined) r.sPeak = Math.min(r.sPeak, 2000); }
+    // the first reset also ended win streaks
+    if (x.id === '2026-10-ranks' && r.streak !== undefined) r.streak = 0;
+    r.rating = to;
+  }
   r.reset = RATING_RESET;
-  r.rating = resetRating(r.rating);
-  if (r.streak !== undefined) r.streak = 0;
-  return true;
+  return { before, shinCut };
+}
+/** Applies the resets a record has not had yet; true when one was due. */
+export function applyRatingReset(r: { rating: number; reset?: string; streak?: number; sPeak?: number }): boolean {
+  return applyRatingResets(r) !== null;
 }
 // ------------------------------------------------------------------ seasons (one per card set)
-export interface SeasonResult { season: number; peak: number; tier: string; games: number; wins: number }
+export interface SeasonResult { season: number; peak: number; tier: string; games: number; wins: number; /** the rating it ended with (for the final standings) */ final?: number; /** final place among the season's rated players (from the ranking server) */ place?: number }
 /** What the best rank of a season pays (as a present when the next season starts). */
 export const SEASON_REWARDS: Record<string, { coins: number; tickets: number }> = {
   novice: { coins: 100, tickets: 0 }, shi: { coins: 200, tickets: 1 }, sho: { coins: 300, tickets: 2 },
   go: { coins: 400, tickets: 3 }, sei: { coins: 500, tickets: 4 }, shin: { coins: 800, tickets: 5 },
+  shin2: { coins: 900, tickets: 5 }, shin3: { coins: 1000, tickets: 6 }, shin4: { coins: 1100, tickets: 6 }, shin5: { coins: 1200, tickets: 7 },
 };
-/** A new season starts at the beginning of the rank below the one held (見習い stays at 1000). */
+/** A new season starts at the beginning of the rank below the one held (見習い stays at 1000; every 刻神 step at 刻聖). */
 export function seasonStartRating(rating: number): number {
+  if (rating >= 2000) return 1800;
   const i = TIERS.indexOf(tierOf(rating).tier);
   return Math.max(START_RATING, TIERS[Math.max(0, i - 1)].min);
 }
@@ -91,7 +118,7 @@ export function rollSeason(r: { rating: number; games?: number; wins?: number; s
   if (r.season === undefined) { r.season = cur.id; r.sPeak = r.rating; r.sGames = r.sGames ?? r.games ?? 0; r.sWins = r.sWins ?? r.wins ?? 0; return null; }
   if (r.season >= cur.id) return null;
   const peak = Math.max(r.sPeak ?? r.rating, r.rating);
-  const res: SeasonResult | null = r.sGames ? { season: r.season, peak, tier: tierOf(peak).tier.id, games: r.sGames, wins: r.sWins ?? 0 } : null;
+  const res: SeasonResult | null = r.sGames ? { season: r.season, peak, tier: tierOf(peak).tier.id, games: r.sGames, wins: r.sWins ?? 0, final: r.rating } : null;
   if (res) r.seasons = [res, ...(r.seasons ?? [])].slice(0, 50);
   r.rating = seasonStartRating(r.rating);
   r.season = cur.id; r.sPeak = r.rating; r.sGames = 0; r.sWins = 0;
@@ -149,9 +176,11 @@ export const PLAYER_NAMES = [
 export interface Opponent { ai: string; name: string; rating: number; deck?: string; card?: string; title?: string }
 /** How likely each rival is to be drawn at a rating: the nearer its rating, the likelier (the same width as before). */
 export function rivalPool(rating: number, exclude: string[] = []): [string, number][] {
-  const raw = ROSTER.filter((r) => !exclude.includes(r.name)).map((r) => [rivalId(r), Math.exp(-(((rating - r.rating) / MATCH_WIDTH) ** 2))] as [string, number]).filter(([, w]) => w > 0.02);
+  // from 刻神 up, only the rivals of that step's Lv (刻神Ⅰ〜Ⅱ Lv10, Ⅲ〜Ⅳ Lv11, Ⅴ Lv12)
+  const lv = shinLv(rating);
+  const raw = ROSTER.filter((r) => !exclude.includes(r.name) && (lv === null || r.lv === lv)).map((r) => [rivalId(r), Math.exp(-(((rating - r.rating) / MATCH_WIDTH) ** 2))] as [string, number]).filter(([, w]) => w > 0.02);
   if (!raw.length) {
-    const near = [...ROSTER].sort((a, b) => Math.abs(a.rating - rating) - Math.abs(b.rating - rating))[0];
+    const near = [...ROSTER].filter((r) => lv === null || r.lv === lv).sort((a, b) => Math.abs(a.rating - rating) - Math.abs(b.rating - rating))[0];
     return [[rivalId(near), 1]];
   }
   const sum = raw.reduce((a, [, w]) => a + w, 0);
@@ -181,6 +210,8 @@ export interface Rated {
   /** Rated wins in a row now, and the longest run so far. */
   streak?: number;
   bestStreak?: number;
+  /** Best rating since 刻神 got its five steps (the 刻神Ⅲ・Ⅴ titles count from then). */
+  shinPeak?: number;
   /** The last one-time reset applied (RATING_RESET). */
   reset?: string;
   /** The season these numbers belong to, and this season's best rating, games and wins. */
@@ -220,6 +251,7 @@ export function finishRated(r: Rated, score: 0 | 0.5 | 1, actions: number, now: 
   r.sPeak = Math.max(r.sPeak ?? after, after);
   r.bestStreak = Math.max(r.bestStreak ?? 0, r.streak);
   r.peak = Math.max(r.peak, after);
+  r.shinPeak = Math.max(r.shinPeak ?? 0, after);
   const g: RatedGame = { at: now, ai: p.ai, score, before, after, deck: p.deck, foe: p.foe ?? '', foeRating: opp };
   r.history.unshift(g);
   r.history = r.history.slice(0, 30);

@@ -809,6 +809,7 @@ body.reduced .ttl, body.reduced .ttl > b::before, body.reduced .ttl > b::after {
 
 /* ---- 季の称号（第1季「残響の刻」：青・鐘・波紋）。kit.ts seasonPlate が組み立てる ---- */
 .stt { position: relative; display: inline-flex; flex: none; align-items: center; vertical-align: middle; height: 22px; font-family: var(--f-display); }
+.stt-place { position: absolute; right: -4px; bottom: -7px; z-index: 4; padding: 0 4px; border-radius: 6px; font: 700 9px/12px var(--f-num, sans-serif); letter-spacing: .02em; color: #fff4c0; background: rgba(8, 10, 24, .88); box-shadow: 0 0 0 1px rgba(255, 220, 140, .65); white-space: nowrap; }
 .stt-pl { position: relative; display: inline-flex; align-items: center; gap: 5px; height: 22px; white-space: nowrap; overflow: hidden; }
 .stt-pl::before { content: ''; position: absolute; z-index: 0; }
 .stt-ki { position: relative; z-index: 2; font-size: 9px; font-weight: 700; letter-spacing: .04em; }
