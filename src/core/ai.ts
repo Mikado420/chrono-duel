@@ -1,7 +1,7 @@
 import { CARD_LIST, cardDef } from './cards';
 import { RULES } from './rules';
 import {
-  actor, apply, attackTarget, clone, legalActions, other, rushActive, worldTime,
+  actor, apply, attackTarget, cardCost, clone, legalActions, other, rushActive, worldTime,
   type Action, type GameState, type PlayerIndex, type PlayerState,
 } from './engine';
 
@@ -24,7 +24,14 @@ export const LV_OF_LEVEL: Record<AiLevel, number> = { easy: 1, normal: 3, hard: 
  * board; `push` — a hidden pin that may push the clock counts as
  * another round of attacks in the danger check; `rush` — the 急襲 discount in hand is worth something (rushValue).
  */
-export const AI_FIX = { reach: true, fade: true, fizzle: true, push: true, rush: true };
+export const AI_FIX = { reach: true, fade: true, fizzle: true, push: true, rush: true, soon: true };
+/**
+ * `soon` (from the 0.22.0 review of the top players, who reserve at the earliest time almost always): a pending
+ * reservation is worth less the longer it waits (it does nothing until then and holds one of the two slots), and a
+ * reservation set later than it could be pays for each extra tick.
+ */
+export const SOON = { full: 4, step: 0.08, floor: 0.35, late: 0.3 };
+export const resvWorth = (T: number, time: number) => (AI_FIX.soon ? Math.max(SOON.floor, Math.min(1, 1 - (T - time - SOON.full) * SOON.step)) : 1);
 /**
  * 急襲の価値: being 2+ ticks behind makes the 急襲 cards in hand cheaper (`rush` — the ticks they would save, counted
  * for the side whose hand is known: our own). The clock gap alone (tempo) does not see that.
@@ -67,7 +74,7 @@ export function evaluate(s: GameState, pi: PlayerIndex, W: Weights = BASE_WEIGHT
     });
     const hc = p.hand.length;
     v += sign * (Math.min(hc, 3) * W.hand + Math.max(0, hc - 3) * W.handExtra) * handWorth(p.time);
-    v += sign * p.resv.filter((r) => !r.decoy).length * W.resv;
+    v += sign * p.resv.reduce((n, r) => n + (r.decoy ? 0 : resvWorth(r.T, p.time)), 0) * W.resv;
   };
   side(me, 1, pi);
   side(op, -1, other(pi));
@@ -160,7 +167,9 @@ export function intentBonus(s: GameState, pi: PlayerIndex, a: Action, card?: str
     // 囮の書 is reserve-only: a card when it fires, and a 4-tick swing if the opponent breaks it
     case 'xDecoy': b = 2.5; break;
   }
-  return b - wait * 0.12;
+  // set later than it could be (the earliest time is the clock after paying + the gap)
+  const late = AI_FIX.soon ? Math.max(0, a.T - (s.players[pi].time + cardCost(s, pi, d.id) + RULES.RESV_MIN_GAP)) * SOON.late : 0;
+  return b - wait * 0.12 - late;
 }
 
 export function bestReply(s: GameState, pi: PlayerIndex, depth = 0, skipLane = -1): number {

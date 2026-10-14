@@ -9,7 +9,7 @@
  *   5. quirks break ties                                  6. the battle scene waits a human-like time and plays it
  */
 import {
-  AI_FIX, BASE_WEIGHTS, EXPERT_WEIGHTS, bestReply, handWorth, rushValue, breakBonus, chooseChoice, deepValue, determinize, evaluate, fogged,
+  AI_FIX, BASE_WEIGHTS, resvWorth, EXPERT_WEIGHTS, bestReply, handWorth, rushValue, breakBonus, chooseChoice, deepValue, determinize, evaluate, fogged,
   intentBonus, pruneReserves, rollout, type Weights,
 } from './ai';
 import { cardDef } from './cards';
@@ -95,7 +95,7 @@ export function evaluatePersona(s: GameState, pi: PlayerIndex, P: PersonaW, W: W
     });
     const hc = p.hand.length;
     v += sign * (Math.min(hc, 3) * W.hand + Math.max(0, hc - 3) * W.handExtra) * P.hand * handWorth(p.time);
-    v += sign * p.resv.filter((r) => !r.decoy).length * W.resv * P.resv;
+    v += sign * p.resv.reduce((n, r) => n + (r.decoy ? 0 : resvWorth(r.T, p.time)), 0) * W.resv * P.resv;
   };
   side(me, 1, pi);
   side(op, -1, other(pi));
