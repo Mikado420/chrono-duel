@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'バージョン（空なら最新）'
+        description: 'バージョン（空なら最新。空白区切りで複数可）'
         default: '0.22.0'
 
 permissions:
@@ -30,21 +30,26 @@ jobs:
           SERVER: ${{ vars.ONLINE_URL }}
           ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
           VER: ${{ inputs.version }}
-        run: npx tsx src/sim/logs.ts "$SERVER" "$ADMIN_TOKEN" $VER > /dev/null
+        run: |
+          for v in $VER; do npx tsx src/sim/logs.ts "$SERVER" "$ADMIN_TOKEN" $v > /dev/null; done
+          [ -n "$VER" ] || npx tsx src/sim/logs.ts "$SERVER" "$ADMIN_TOKEN" > /dev/null
+          # the ranking (public) next to the records
+          base=$(echo "$SERVER" | sed -e 's#^ws#http#' -e 's#/$##')
+          curl -sS -X POST "$base/api/ranking" -H 'content-type: application/json' -H 'origin: https://mikado420.github.io' -d '{}' > logs/ranking.jsonl
       - name: Encrypt and push
         run: |
           set -e
           cat > /tmp/pub.pem <<'EOF'
           -----BEGIN PUBLIC KEY-----
-          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAwC0fuESdXa+LCO1C3/x5
-          1Goyq3lpE1iO2JFSADuxzpVzJ09a17OAJcuZwUBNbgQna/5uG4W4RQogAjbX40Th
-          yVKG+PdVEve852hX1yqaXcppcB3er1xixH7QVda2LS92qfRBDwK+781Utwra0b24
-          1AWQxFgoP4xvjaQtolUnNPmBPdTYvfnTo6YTAy7q3Emop5IMtWz4znmvg3XTPeqO
-          u9841OMxk7yBzvERC04cb+J7ZOQQUfsmsfueOra5/crKGPttQPSi06ixZhKdsQuz
-          1pn7lclgYQEQYMb7a7BG227FP6yEXtbbf1IO7E1d+qydovkxrHN9DCUIhar93qX2
-          swVvsMqifV2YHDhUOHbwLdOB1VdOwz93LJEXxZbAAqv9vIErrA2c8vJbJS6CFFxV
-          SBcmBG6atZVze39YgPqjVc4UmEe6vo0jZ+gtbsVSYlheD4a0NrJsSHUSSitu9gzZ
-          eWFq6eNzHr9ulC8VgXfplb54IOGKRIbXsw6K2jqxcITpAgMBAAE=
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAw8rCezAZRG3qvgptXcnm
+          QXs/GHBzpKQpPPN9BCN67M7Lxu+BdIhQRWXhCr64smcuJTbHAPYBDVqRlAZgy/UJ
+          DArahk51H4Y/g4Hc5d0AEifbyEz15CeK72ggK6BtRF8B+LgbxOY/mqIlsunaUd4G
+          nfjK85VY6DAhISMGrnXj/UxasZaOt+WlDQMRMgOD4RSLQkZeT0FlhITDbMwvsBSf
+          jvrwP0AKj66DEpgHcJHB8pXEM6kbDJrDO8rFhZ5sywZvUjeqEOHZyc0AE5VXgRAO
+          1it/CFGzCgwzrQOSN0dXxTDcamdbaQxgRyWUf89RoVtI70iGOqk9GKTxYGu0UzDQ
+          NDbKrBnGa0WYOaW2asHwV+lJEUXXNh8fa/Gl7DVTgIEtTD68Ew1FVxK8bNzsBe8w
+          jHIv6VudkmjpE5Tge8h8GwOz7GdpVG4uxPlwchrqFCVyYP3Cyt2yGu6/PGERLSdJ
+          O7yVfNDn0m6kcdLmJ1PBQCjn7lILGS1nF5M4p54Nw7fNAgMBAAE=
           -----END PUBLIC KEY-----
           EOF
           sed -i 's/^ *//' /tmp/pub.pem
