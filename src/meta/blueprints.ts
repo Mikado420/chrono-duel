@@ -139,7 +139,8 @@ export const SAME_GROUP = 12;
 /** The archetype a list belongs to: the nearest origin list sharing at least 12 cards, or null (未分類). */
 export function classify(cards: string[]): string | null {
   let best: string | null = null, bn = SAME_GROUP - 1;
-  for (const id of Object.keys(BLUEPRINTS)) {
+  // only the decks of today's environment (the roster's builds); the older archetypes are kept for old records
+  for (const id of ROSTER_DECKS.map((d) => d.id)) {
     const o = originList(id);
     if (!o) continue;
     const n = shared(o, cards);

@@ -21,7 +21,8 @@ import { tierOf, TIERS } from '../meta/rating';
 import { ROSTER, deckAvailable, rivalDeckName } from '../meta/roster';
 import { findNewDecks, findVariants, improve, type ListRow, type Opp } from './evolve';
 import { cardDef } from '../core/cards';
-import { computeTier, cleanTier, type TierSnapshot } from '../meta/envtier';
+import { cardAdoption, computeTier, cleanTier, deckType, type TierSnapshot } from '../meta/envtier';
+import type { StatsAgg } from '../server/statsCore';
 
 const proc = process as unknown as { env: Record<string, string | undefined>; exit(c: number): never; stdout: { write(s: string): void } };
 const E = proc.env;
@@ -85,6 +86,9 @@ const issues: string[] = [];
   // the arrows compare with the last snapshot of another day
   const prev: TierSnapshot | null = cur && cur.date !== today ? cur : old;
   const tier = computeTier(envTier ?? env, today, prev);
+  // the card ranking's daily part: how often the players put each card in their decks
+  const stats = E.FAKE ? null : await post<{ agg: StatsAgg | null }>('/api/stats', {});
+  tier.cards = cardAdoption(stats?.agg);
   writeFileSync(`${OUT}/daily-tier.json`, JSON.stringify(tier, null, 1));
   report.push('## 環境Tier（実戦）', '');
   for (const r of tier.rows) {
@@ -167,12 +171,19 @@ report.push('');
 // ---- 4. the environment, new decks, 型, balance
 report.push('## 段位ごとの使用デッキ', '');
 for (const t of TIERS) {
-  const tab = env.bands[t.id];
-  if (!tab) continue;
+  // by deck type (older archetype ids still in the tables go to their type), from the days the 環境Tier reads
+  const raw = (envTier ?? env).bands[t.id];
+  if (!raw) continue;
+  const tab: Record<string, Cell> = {};
+  for (const [a, c] of Object.entries(raw)) {
+    const k = deckType(a) ?? '未分類';
+    const x = (tab[k] ??= { games: 0, players: 0, score: 0, expected: 0 });
+    x.games += c.games; x.players += c.players; x.score += c.score; x.expected += c.expected;
+  }
   const all = Object.values(tab).reduce((a, c) => a + c.games, 0);
   const rows = Object.entries(tab).sort((a, b) => b[1].games - a[1].games).slice(0, 6);
-  report.push(`- **${t.name}**（${all}試合）：` + rows.map(([a, c]) => `${a === 'other' ? '未分類' : rivalDeckName(a)} ${Math.round((100 * c.games) / all)}%（${c.players}人、期待との差 ${pct(perf(c))}）`).join('、'));
-  for (const [a, c] of rows) if (a !== 'other' && c.games >= 100 && c.games / all >= 0.3 && perf(c) >= 0.05) issues.push(`バランス：${t.name}で「${rivalDeckName(a)}」が使用率${Math.round((100 * c.games) / all)}%・期待より${pct(perf(c))}ポイント勝っています。カードの調整が必要かもしれません。`);
+  report.push(`- **${t.name}**（${all}試合）：` + rows.map(([a, c]) => `${a} ${Math.round((100 * c.games) / all)}%（${c.players}人）`).join('、'));
+  for (const [a, c] of rows) if (a !== '未分類' && c.games >= 100 && c.games / all >= 0.6) issues.push(`環境：${t.name}で「${a}」の使用率が${Math.round((100 * c.games) / all)}%です。他のデッキの調整が必要かもしれません。`);
 }
 report.push('');
 const nm = (id: string) => { try { return cardDef(id).name; } catch { return id; } };

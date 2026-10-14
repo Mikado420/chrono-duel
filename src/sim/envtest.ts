@@ -9,7 +9,7 @@ import { ROSTER, rivalId } from '../meta/roster';
 import { candidates, findNewDecks, findVariants, flexCards, oneSwaps, paired, type ListRow } from './evolve';
 import { archeOf, bookKey } from '../meta/deckbook';
 import { ROSTER_DECKS } from './rosterDecks';
-import { DECK_TYPES, cleanTier, computeTier, deckType } from '../meta/envtier';
+import { DECK_TYPES, cardAdoption, cleanTier, computeTier, deckType } from '../meta/envtier';
 
 const base = Object.keys(BLUEPRINTS).filter((id) => !id.startsWith('g_'));
 // every built-in list passes its own 設計図 and belongs to its own archetype
@@ -17,8 +17,9 @@ for (const id of base) {
   const o = originList(id)!;
   assert.deepEqual(checkList(id, o), [], `${id}: ${checkList(id, o).join(', ')}`);
   // the roster's builds of one 型 share most of their cards (and with the older archetypes), so for them any archetype will do
+  // players' lists are only sorted into today's decks (the roster's builds); an older archetype goes to one of them or to 未分類
   if (ROSTER_DECKS.some((d) => d.id === id)) assert.ok(classify(o), `${id} belongs to some archetype`);
-  else assert.equal(classify(o), id, `${id} classifies as itself`);
+  else assert.ok(classify(o) === null || ROSTER_DECKS.some((d) => d.id === classify(o)), `${id} goes to a roster build or 未分類`);
 }
 // a measured play profile is its own 戦型
 for (const [id, b] of Object.entries(BLUEPRINTS)) {
@@ -41,7 +42,7 @@ for (const [id, b] of Object.entries(BLUEPRINTS)) {
   // a small, legal tweak passes: one 振り子兵 → 歯車騎士 is still a 秒針突撃
   const tweak = rush.slice(); tweak[tweak.indexOf('pendulum')] = 'e_page';
   assert.deepEqual(checkList('rush', tweak), []);
-  assert.equal(classify(tweak), 'rush');
+  assert.equal(classify(tweak), 'second_aggro_pendulum', 'a list near the starter deck goes to the roster build it became');
   assert.ok(20 - shared(originList('rush')!, tweak) <= MAX_FROM_ORIGIN);
   assert.equal(listProfile(rush).units, BLUEPRINTS.rush.list.units);
   assert.equal(classify(Array(20).fill('scout')), null, 'far from everything: 未分類');
@@ -84,7 +85,7 @@ now += 86_400_000;
 await env.rated({ id: 'device-0000000001', deck: myRush, score: 0.5, rival: rivalId(rv), rivalLv: rv.lv, rivalDeck: rv.deck, rivalDeckV: 2, rating: 1000 });
 const week = (await env.env({})).body as { days: [string, string]; bands: Record<string, Record<string, { games: number; players: number; score: number; expected: number }>>; rivals: Record<string, { games: number }> };
 assert.deepEqual(week.days, [jstDay(now - 6 * 86_400_000), jstDay(now)]);
-const cell = week.bands.novice.rush;
+const cell = week.bands.novice.second_aggro_pendulum;
 assert.equal(cell.games, 3);
 assert.equal(cell.players, 2, 'players are counted once');
 assert.equal(cell.score, 1.5);
@@ -92,11 +93,11 @@ assert.ok(cell.expected > 0.5 * 3 && cell.expected < 3, 'a 1000 player against a
 assert.equal(week.rivals[`${rv.deck}@1`].games, 2);
 assert.equal(week.rivals[`${rv.deck}@2`].games, 1, 'each version of a rival list is kept apart');
 const today = (await env.env({ days: 1 })).body as typeof week;
-assert.equal(today.bands.novice.rush.games, 1);
+assert.equal(today.bands.novice.second_aggro_pendulum.games, 1);
 assert.equal((await env.lists({ token: 'nope' })).status, 403);
 const lists = (await env.lists({ token: 'secret', min: 1 })).body as { lists: { g: number; arche: string; players: number }[] };
 assert.equal(lists.lists[0].g, 3);
-assert.equal(lists.lists[0].arche, 'rush');
+assert.equal(lists.lists[0].arche, 'second_aggro_pendulum');
 assert.equal(lists.lists[0].players, 2);
 // the deck book: admin only, checked, versions go up, the previous one is kept
 assert.deepEqual((await env.book()).body, { version: 0, at: 0, decks: {} });
@@ -128,10 +129,22 @@ assert.ok(mem.has('book:prev'));
   assert.equal(lowAi.rows.find((r) => r.type === '急襲 テンポ')!.tier, 'S', 'the better rival deck is marked up');
   assert.ok(lowAi.rows.find((r) => r.type === '籠城 バーン')!.perf < 0);
   assert.equal(row('急襲 テンポ').was, undefined);
-  const day2 = computeTier({ days: ['20261002', '20261008'], bands: { sei: { raid_tempo_haste: tab(50) } }, rivals: {}, friends: {} }, '2026-10-08', day1);
+  const day2 = computeTier({ days: ['20261002', '20261008'], bands: { go: { raid_tempo_haste: tab(50) } }, rivals: {}, friends: {} }, '2026-10-08', day1);
   assert.equal(row('急襲 テンポ', day2).was, 'S');
-  assert.equal(row('急襲 テンポ', day2).tier, 'B');
+  assert.equal(row('急襲 テンポ', day2).tier, 'B', 'the only deck of a rank wins as often as the rank: no strength from that');
+  // the upper ranks' choice counts: a deck nearly all of 刻聖 and up play is marked up even with nothing to compare it with
+  const day3 = computeTier({ days: ['20261002', '20261008'], bands: { shin: { raid_tempo_haste: tab(45, 90), siege_burn_pray: tab(5, 10) } }, rivals: {}, friends: {} }, '2026-10-08');
+  assert.equal(row('急襲 テンポ', day3).use, 90);
+  assert.equal(row('急襲 テンポ', day3).tier, 'S');
+  // people are compared by win rate within their rank, not by their rating's expectation
+  const day4 = computeTier({ days: ['20261002', '20261008'], bands: { go: { raid_tempo_haste: { games: 50, players: 3, score: 35, expected: 45 }, siege_burn_pray: { games: 50, players: 3, score: 15, expected: 10 } } }, rivals: {}, friends: {} }, '2026-10-08');
+  assert.ok(row('急襲 テンポ', day4).perf > 0 && row('籠城 バーン', day4).perf < 0);
   assert.ok(cleanTier(JSON.parse(JSON.stringify(day2))));
+  // card adoption: rated and online decks only
+  const ad = cardAdoption({ v: '1', updated: 0, games: { rated: [80, 40], online: [20, 10], 'free-easy': [500, 400] }, cards: { bolt: { rated: [60, 30, 50, 25], online: [10, 5, 9, 4], 'free-easy': [500, 400, 400, 300] } } });
+  assert.deepEqual(ad.bolt, [70, 100]);
+  assert.ok(cleanTier({ ...day2, cards: ad }));
+  assert.equal(cleanTier({ ...day2, cards: { bolt: [1] } }), null);
   assert.equal(cleanTier({ ...day2, rows: [{ ...day2.rows[0], type: 'たっくん' }] }), null, 'only deck types');
   assert.ok(!JSON.stringify(day2).includes('rv:'), 'nothing about the rivals but their decks');
   assert.deepEqual((await env.wiki()).body, { tier: null, prev: null });
