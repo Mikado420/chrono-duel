@@ -1,7 +1,7 @@
 import { CARD_LIST, cardDef } from './cards';
 import { RULES } from './rules';
 import {
-  actor, apply, attackTarget, clone, legalActions, other, rushActive, worldTime,
+  actor, apply, attackTarget, cardCost, clone, mulberry32, legalActions, other, rushActive, worldTime,
   type Action, type GameState, type PlayerIndex, type PlayerState,
 } from './engine';
 
@@ -24,7 +24,25 @@ export const LV_OF_LEVEL: Record<AiLevel, number> = { easy: 1, normal: 3, hard: 
  * board; `push` — a hidden pin that may push the clock counts as
  * another round of attacks in the danger check; `rush` — the 急襲 discount in hand is worth something (rushValue).
  */
-export const AI_FIX = { reach: true, fade: true, fizzle: true, push: true, rush: true };
+export const AI_FIX = { reach: true, fade: true, fizzle: true, push: true, rush: true, soon: false, crn: true };
+/**
+ * `crn` (common random numbers): every candidate of a move is played out in the same guessed worlds with the same
+ * random choices, so the comparison is not swamped by luck. Without it a game-ending rollout (±1000) made two
+ * candidates differ by ±150 on noise alone and the choice among the shortlist was close to random.
+ * `end`: what a won or lost game counts for at the end of a rollout (1000 = the full win; lower = less noise, see
+ * LvParams.fresh).
+ */
+export function rollScore(s: GameState, pi: PlayerIndex, W: Weights, end = 1000): number {
+  const v = evaluate(s, pi, W);
+  return s.over && end !== 1000 ? (v / 1000) * end + (s.players[pi].hp - s.players[other(pi)].hp) : v;
+}
+/**
+ * `soon` (from the 0.22.0 review of the top players, who reserve at the earliest time almost always): a pending
+ * reservation is worth less the longer it waits (it does nothing until then and holds one of the two slots), and a
+ * reservation set later than it could be pays for each extra tick.
+ */
+export const SOON = { full: 4, step: 0.08, floor: 0.35, late: 0.3 };
+export const resvWorth = (T: number, time: number) => (AI_FIX.soon ? Math.max(SOON.floor, Math.min(1, 1 - (T - time - SOON.full) * SOON.step)) : 1);
 /**
  * 急襲の価値: being 2+ ticks behind makes the 急襲 cards in hand cheaper (`rush` — the ticks they would save, counted
  * for the side whose hand is known: our own). The clock gap alone (tempo) does not see that.
@@ -67,7 +85,7 @@ export function evaluate(s: GameState, pi: PlayerIndex, W: Weights = BASE_WEIGHT
     });
     const hc = p.hand.length;
     v += sign * (Math.min(hc, 3) * W.hand + Math.max(0, hc - 3) * W.handExtra) * handWorth(p.time);
-    v += sign * p.resv.filter((r) => !r.decoy).length * W.resv;
+    v += sign * p.resv.reduce((n, r) => n + (r.decoy ? 0 : resvWorth(r.T, p.time)), 0) * W.resv;
   };
   side(me, 1, pi);
   side(op, -1, other(pi));
@@ -160,7 +178,9 @@ export function intentBonus(s: GameState, pi: PlayerIndex, a: Action, card?: str
     // 囮の書 is reserve-only: a card when it fires, and a 4-tick swing if the opponent breaks it
     case 'xDecoy': b = 2.5; break;
   }
-  return b - wait * 0.12;
+  // set later than it could be (the earliest time is the clock after paying + the gap)
+  const late = AI_FIX.soon ? Math.max(0, a.T - (s.players[pi].time + cardCost(s, pi, d.id) + RULES.RESV_MIN_GAP)) * SOON.late : 0;
+  return b - wait * 0.12 - late;
 }
 
 export function bestReply(s: GameState, pi: PlayerIndex, depth = 0, skipLane = -1): number {
@@ -286,7 +306,7 @@ export function determinize(s: GameState, pi: PlayerIndex, ownDeck: string[], ra
   return c;
 }
 /** Plays greedily (with a little noise) for up to `depth` actions and scores the result for `pi`. */
-export function rollout(s: GameState, pi: PlayerIndex, depth: number, rand: () => number): number {
+export function rollout(s: GameState, pi: PlayerIndex, depth: number, rand: () => number, end = 1000): number {
   for (let i = 0; i < depth && !s.over; i++) {
     const q = actor(s);
     if (q === -1) break;
@@ -301,7 +321,7 @@ export function rollout(s: GameState, pi: PlayerIndex, depth: number, rand: () =
     }
     apply(s, best);
   }
-  return evaluate(s, pi, EXPERT_WEIGHTS);
+  return rollScore(s, pi, EXPERT_WEIGHTS, end);
 }
 
 /** A generator so the UI can pause between candidates and keep animating while 超つよい thinks. */
@@ -320,14 +340,15 @@ function* expertSteps(s: GameState, pi: PlayerIndex, rand: () => number, search:
   // 2) settle it by playing each candidate out against several guesses of the hidden cards
   const ownDeck = s.players[pi].deck.slice();
   const worlds = Array.from({ length: search.rollouts }, () => determinize(s, pi, ownDeck, rand));
+  const seeds = worlds.map(() => Math.floor(rand() * 2 ** 32));
   let best = short[0].a, bestV = -Infinity;
   for (const cand of short) {
     yield;
     let sum = 0;
-    for (const w of worlds) {
-      const c = clone(w);
+    for (let wi = 0; wi < worlds.length; wi++) {
+      const c = clone(worlds[wi]);
       try { apply(c, cand.a); } catch { sum -= 1000; continue; }
-      sum += rollout(c, pi, search.depth, rand);
+      sum += rollout(c, pi, search.depth, AI_FIX.crn ? mulberry32(seeds[wi]) : rand);
     }
     // keep a little of the search score: it knows about reservations that rollouts do not play
     const v = sum / worlds.length + cand.v * 0.25;
