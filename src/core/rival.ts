@@ -336,8 +336,27 @@ interface Scored { a: Action; v: number; ahead?: number }
 export const RIVAL_DEBUG: { on: boolean; pre: { a: Action; v: number }[]; scored: Scored[]; force?: Action } = { on: false, pre: [], scored: [] };
 
 
-/** A generator so the battle scene can keep animating between rollouts. */
+/**
+ * The weights of the static evaluation for `fresh` Lvs, refitted to who actually won (logistic regression on 15,000
+ * positions of 0.22.0 rated play and 19,000 of AI self-play, scaled to hp = 1.5): the old ones counted cards in hand,
+ * reservations and the clock gap at a third to a quarter of what they are worth. With them Lv10 beat the old weights
+ * 54% (160 games) and picked 1位's move more often (37% → 41%), reserving clock pushers and draws over bolts like 1位.
+ */
+export const FRESH_WEIGHTS: Weights = { hp: 1.5, danger: 1.0, atk: 1.6, body: 1.4, open: 0.4, hand: 3.5, handExtra: 2.2, resv: 5.0, tempo: 3.2, ready: 0 };
+/** A generator so the battle scene can keep animating between rollouts (`fresh` Lvs read with FRESH_WEIGHTS). */
 export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, mind: RivalMind, rand: () => number = Math.random): Generator<void, RivalMove> {
+  const P = LV[Math.max(1, Math.min(12, cfg.lv))];
+  const it = rivalStepsInner(real, pi, cfg, mind, rand);
+  if (!P.fresh || !AI_FIX.freshWeights) return yield* it;
+  // the evaluation reads the shared weight objects: swap them in while this move is read (and out while it waits)
+  const keepE = { ...EXPERT_WEIGHTS }, keepB = { ...BASE_WEIGHTS };
+  const on = () => { Object.assign(EXPERT_WEIGHTS, FRESH_WEIGHTS); Object.assign(BASE_WEIGHTS, FRESH_WEIGHTS); };
+  const off = () => { Object.assign(EXPERT_WEIGHTS, keepE); Object.assign(BASE_WEIGHTS, keepB); };
+  try {
+    for (;;) { on(); const r = it.next(); off(); if (r.done) return r.value; yield; }
+  } finally { off(); }
+}
+function* rivalStepsInner(real: GameState, pi: PlayerIndex, cfg: RivalCfg, mind: RivalMind, rand: () => number = Math.random): Generator<void, RivalMove> {
   if (real.pending) return { action: chooseChoice(real, pi), kind: 'obvious', why: 'only' };
   const P = LV[Math.max(1, Math.min(12, cfg.lv))];
   const base = fogged(real, pi);
