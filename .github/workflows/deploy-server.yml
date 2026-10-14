@@ -29,12 +29,12 @@ jobs:
       # only needed when the token can see more than one Cloudflare account
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Check for token
         id: token
         run: |
           if [ -n "$CLOUDFLARE_API_TOKEN" ]; then echo "have=true" >> "$GITHUB_OUTPUT"; else echo "CLOUDFLARE_API_TOKEN is not set; skipping." ; fi
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: steps.token.outputs.have == 'true'
         with:
           node-version: 22
