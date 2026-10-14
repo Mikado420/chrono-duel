@@ -51,6 +51,9 @@ export interface LvParams {
    * 1.3× the old one (phones).
    */
   fresh?: boolean;
+  /** Experiments per Lv (as AI_FIX.endgame / AI_FIX.planRoll, for this Lv only). */
+  endgame?: boolean;
+  planRoll?: boolean;
   /** Lv11–12: after `at` guessed worlds, only the best `keep` candidates are read in the rest. */
   halve?: { at: number; keep: number };
   /** Lv11–12: stop reading new worlds after this many ms (slow phones; at least 16 worlds are always read). */
@@ -303,7 +306,7 @@ function fogPins(w: GameState): GameState {
   return w;
 }
 /** Like ai.rollout, but either side may also reserve (at its earliest time or two ticks later): Lv10's 予約の先読み. */
-export function rolloutWithReserves(s: GameState, pi: PlayerIndex, depth: number, rand: () => number, end = 1000, decks?: [string | null, string | null]): number {
+export function rolloutWithReserves(s: GameState, pi: PlayerIndex, depth: number, rand: () => number, end = 1000, decks?: [string | null, string | null], plans = false): number {
   for (let i = 0; i < depth && !s.over; i++) {
     const q = actor(s);
     if (q === -1) break;
@@ -318,7 +321,7 @@ export function rolloutWithReserves(s: GameState, pi: PlayerIndex, depth: number
       }
       // AI_FIX.planRoll: each side plays its deck's plan in the rollout too (decks[0] is pi's, decks[1] the guess of the other)
       const deck = decks ? decks[q === pi ? 0 : 1] : null;
-      if (deck && AI_FIX.planRoll) extra += planBonus(deck, 'all', s, s, q, a) * PLAN_ROLL.k;
+      if (deck && (AI_FIX.planRoll || plans)) extra += planBonus(deck, 'all', s, s, q, a) * PLAN_ROLL.k;
       const c = clone(s);
       apply(c, a);
       const v = evaluate(c, q, EXPERT_WEIGHTS) + extra + (rand() - 0.5) * PLAN_ROLL.noise;
@@ -421,12 +424,12 @@ function* rivalStepsInner(real: GameState, pi: PlayerIndex, cfg: RivalCfg, mind:
     scored = [];
     const end = P.fresh ? FRESH_END : 1000;
     // 終盤の読み切り (AI_FIX.endgame): late in the game a `fresh` rollout plays on to the end instead of stopping at 12
-    const depth = P.fresh && AI_FIX.endgame && worldTime(base) >= ENDGAME.at ? ENDGAME.depth : search.depth;
+    const depth = P.fresh && (AI_FIX.endgame || P.endgame) && worldTime(base) >= ENDGAME.at ? ENDGAME.depth : search.depth;
     const play = (cand: { a: Action }, wi: number): number | null => {
       const c = clone(worlds[wi]);
       try { apply(c, cand.a); } catch { return null; }
       const rr = P.fresh && AI_FIX.crn ? mulberry32(seeds[wi]) : rand;
-      return pins ? rolloutWithReserves(c, pi, depth, rr, end, [cfg.deck, oppDeck]) : rollout(c, pi, depth, rr, end);
+      return pins ? rolloutWithReserves(c, pi, depth, rr, end, [cfg.deck, oppDeck], P.planRoll) : rollout(c, pi, depth, rr, end);
     };
     if (P.fresh) {
       // world by world for every candidate, so a time limit (P.timeMs) leaves every candidate read in the same worlds
