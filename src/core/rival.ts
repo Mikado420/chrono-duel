@@ -51,17 +51,20 @@ const S = (candidates: number, rollouts: number, depth: number) => ({ candidates
  * Tuned with `npm run sim:rivals` so each Lv beats the one below about 62–66% (the 仕様書's starting values were
  * a little too close together: reading deeper buys less than the noise and mistakes cost).
  */
+// 0.22.x review: rollouts are 12 actions long and won/lost games count ±60 (ROLL), with 2.5× as many guessed worlds
+// for the same work: the old 30-action rollouts ending in ±1000 made Lv10 pick a different move 70% of the time
+// when asked twice, and the new search beats the old one 66% at Lv8.
 export const LV: Record<number, LvParams> = {
   1: { read: 0, deeper: 0, search: S(0, 0, 0), noise: 14, eps: 3.0, plan: 'half', miss: M(35, 0, 30, 15, 35, 50, 30) },
   2: { read: 0, deeper: 0, search: S(0, 0, 0), noise: 8, eps: 2.5, plan: 'half', miss: M(15, 0, 20, 10, 15, 25, 15) },
   3: { read: 0, deeper: 0.25, search: S(0, 0, 0), noise: 4, eps: 2.0, plan: 'basic', miss: M(10, 15, 15, 8, 8, 10, 8) },
   4: { read: 1, deeper: 0, search: S(0, 0, 0), noise: 1.5, eps: 1.5, plan: 'all', miss: M(6, 10, 10, 5, 4, 0, 0) },
-  5: { read: 1, deeper: 0.5, search: S(4, 6, 20), noise: 0.5, eps: 1.5, plan: 'all', miss: M(4, 6, 6, 3, 2, 0, 0) },
-  6: { read: 2, deeper: 0, search: S(5, 8, 24), noise: 0, eps: 1.2, plan: 'all', miss: M(2, 4, 4, 2, 1, 0, 0) },
-  7: { read: 2, deeper: 0, search: S(6, 12, 30), noise: 0, eps: 1.0, plan: 'all', miss: M(1, 2, 2, 1, 0, 0, 0) },
-  8: { read: 2, deeper: 0, search: S(8, 24, 30), noise: 0, eps: 0.8, plan: 'all', miss: M(0, 1, 1, 0, 0, 0, 0) },
-  9: { read: 2, deeper: 0, search: S(10, 32, 30), noise: 0, eps: 0.6, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true },
-  10: { read: 2, deeper: 0, search: S(12, 40, 30), noise: 0, eps: 0.5, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true },
+  5: { read: 1, deeper: 0.5, search: S(4, 15, 12), noise: 0.5, eps: 1.5, plan: 'all', miss: M(4, 6, 6, 3, 2, 0, 0) },
+  6: { read: 2, deeper: 0, search: S(5, 20, 12), noise: 0, eps: 1.2, plan: 'all', miss: M(2, 4, 4, 2, 1, 0, 0) },
+  7: { read: 2, deeper: 0, search: S(6, 30, 12), noise: 0, eps: 1.0, plan: 'all', miss: M(1, 2, 2, 1, 0, 0, 0) },
+  8: { read: 2, deeper: 0, search: S(8, 60, 12), noise: 0, eps: 0.8, plan: 'all', miss: M(0, 1, 1, 0, 0, 0, 0) },
+  9: { read: 2, deeper: 0, search: S(10, 80, 12), noise: 0, eps: 0.6, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true },
+  10: { read: 2, deeper: 0, search: S(12, 100, 12), noise: 0, eps: 0.5, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true },
 };
 /** For balance tools: change a Lv's parameters. */
 export function tuneLv(lv: number, p: Partial<LvParams>) { Object.assign(LV[lv], p); }

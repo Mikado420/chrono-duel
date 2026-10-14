@@ -31,7 +31,7 @@ export const AI_FIX = { reach: true, fade: true, fizzle: true, push: true, rush:
  * candidates differ by ±150 on noise alone and the choice among the shortlist was close to random.
  * ROLL.end: what a won or lost game counts for at the end of a rollout (1000 = the full win; lower = less noise).
  */
-export const ROLL = { end: 1000 };
+export const ROLL = { end: 60 };
 /** The score a rollout ends with. */
 export function rollScore(s: GameState, pi: PlayerIndex, W: Weights): number {
   const v = evaluate(s, pi, W);
@@ -264,7 +264,7 @@ export function chooseChoice(s: GameState, pi: PlayerIndex): Action {
 }
 
 /** Tunables of the 超つよい rollout search (the balance tools may change them). */
-export const EXPERT_SEARCH = { candidates: 6, rollouts: 12, depth: 30 };
+export const EXPERT_SEARCH = { candidates: 6, rollouts: 30, depth: 12 };
 export type SearchCfg = { candidates: number; rollouts: number; depth: number };
 
 /**
