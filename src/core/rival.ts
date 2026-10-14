@@ -328,6 +328,8 @@ export function rolloutWithReserves(s: GameState, pi: PlayerIndex, depth: number
 }
 /** How much the deck plans count in rollouts (AI_FIX.planRoll); the rollout policy's noise; how much the shortlist score adds to a `fresh` result. */
 export const PLAN_ROLL = { k: 1, noise: 1.5, pre: 0.25 };
+/** 終盤の読み切り: from this world time, rollouts go on for up to `depth` actions (to the end of the game). */
+export const ENDGAME = { at: 30, depth: 60 };
 
 interface Scored { a: Action; v: number; ahead?: number }
 /** For analysis tools: the last move's shortlist (pre) and final scores. */
@@ -397,11 +399,13 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
     const seeds = worlds.map(() => Math.floor(rand() * 2 ** 32));
     scored = [];
     const end = P.fresh ? FRESH_END : 1000;
+    // 終盤の読み切り (AI_FIX.endgame): late in the game a `fresh` rollout plays on to the end instead of stopping at 12
+    const depth = P.fresh && AI_FIX.endgame && worldTime(base) >= ENDGAME.at ? ENDGAME.depth : search.depth;
     const play = (cand: { a: Action }, wi: number): number | null => {
       const c = clone(worlds[wi]);
       try { apply(c, cand.a); } catch { return null; }
       const rr = P.fresh && AI_FIX.crn ? mulberry32(seeds[wi]) : rand;
-      return pins ? rolloutWithReserves(c, pi, search.depth, rr, end, [cfg.deck, oppDeck]) : rollout(c, pi, search.depth, rr, end);
+      return pins ? rolloutWithReserves(c, pi, depth, rr, end, [cfg.deck, oppDeck]) : rollout(c, pi, depth, rr, end);
     };
     if (P.fresh) {
       // world by world for every candidate, so a time limit (P.timeMs) leaves every candidate read in the same worlds

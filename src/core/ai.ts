@@ -24,7 +24,7 @@ export const LV_OF_LEVEL: Record<AiLevel, number> = { easy: 1, normal: 3, hard: 
  * board; `push` — a hidden pin that may push the clock counts as
  * another round of attacks in the danger check; `rush` — the 急襲 discount in hand is worth something (rushValue).
  */
-export const AI_FIX = { reach: true, fade: true, fizzle: true, push: true, rush: true, soon: false, crn: true, planRoll: false };
+export const AI_FIX = { reach: true, fade: true, fizzle: true, push: true, rush: true, soon: false, crn: true, planRoll: false, endgame: false };
 /**
  * `crn` (common random numbers): every candidate of a move is played out in the same guessed worlds with the same
  * random choices, so the comparison is not swamped by luck. Without it a game-ending rollout (±1000) made two
