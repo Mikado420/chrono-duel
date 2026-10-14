@@ -4,7 +4,10 @@
  *
  * Every game counts for the deck type of each side: the players' lists (classified to the nearest known list), the
  * rated rivals' lists and both sides of online games. Strength is result − expected result (rated games know the
- * rating gap, the rest count 50%), shrunk towards 0 by a few games so a type with little data stays near the middle.
+ * rating gap, the rest count 50%), measured against the other decks played from the same side: people beat their
+ * expectation against the AI on the whole while the rivals fall short of it, so each side's average is taken off
+ * (a deck only the rivals play is not marked down for being played by the AI). Then it is shrunk towards 0 by a few
+ * games, so a type with little data stays near the middle.
  *
  * Nothing here may point at a person: only deck ids, deck types and counts (the rivals' names never reach it).
  */
@@ -50,7 +53,7 @@ export interface TierRow {
   tier: TierMark | null;
   /** The mark in the snapshot before (undefined: no snapshot before; null: it had no mark). */
   was?: TierMark | null;
-  /** All games, played by people (rated and online) and by the rivals. */
+  /** All games, played by people (rated and online) and by the rivals: [games, score, expected] (expected with the side's average added). */
   all: Rec3;
   human: Rec3;
   ai: Rec3;
@@ -83,6 +86,14 @@ export function markOf(games: number, perf: number): TierMark | null {
 
 /** Works out today's tier list from the environment tables; `prev` (the last published snapshot of another day) gives the arrows. */
 export function computeTier(env: EnvTables, date: string, prev?: TierSnapshot | null): TierSnapshot {
+  // each side's average result − expected per game (people, rivals), taken off every game of that side
+  const avg = (cells: { games: number; score: number; expected: number }[]) => {
+    const g = cells.reduce((a, c) => a + c.games, 0);
+    return g ? cells.reduce((a, c) => a + c.score - c.expected, 0) / g : 0;
+  };
+  const known = <T extends { games: number }>(o: Record<string, T>) => Object.entries(o).filter(([id, c]) => deckType(id.replace(/@\d+$/, '')) && c.games).map(([, c]) => c);
+  const aHuman = avg(Object.values(env.bands ?? {}).flatMap((t) => known(t)));
+  const aAi = avg(known(env.rivals ?? {}));
   const rows = new Map<string, TierRow>();
   const row = (type: string) => {
     let r = rows.get(type);
@@ -95,8 +106,8 @@ export function computeTier(env: EnvTables, date: string, prev?: TierSnapshot | 
     for (const [id, c] of Object.entries(tab)) {
       const t = deckType(id);
       if (!t || !c.games) continue;
-      const r = row(t);
-      add(r.all, c.games, c.score, c.expected); add(r.human, c.games, c.score, c.expected); build(r, id, c.games, c.score, c.expected);
+      const r = row(t), e = c.expected + aHuman * c.games;
+      add(r.all, c.games, c.score, e); add(r.human, c.games, c.score, e); build(r, id, c.games, c.score, e);
       r.players += c.players;
       (bands[band] ??= {})[t] = (bands[band][t] ?? 0) + c.games;
     }
@@ -105,8 +116,8 @@ export function computeTier(env: EnvTables, date: string, prev?: TierSnapshot | 
     const id = key.replace(/@\d+$/, '');
     const t = deckType(id);
     if (!t || !c.games) continue;
-    const r = row(t);
-    add(r.all, c.games, c.score, c.expected); add(r.ai, c.games, c.score, c.expected); build(r, id, c.games, c.score, c.expected);
+    const r = row(t), e = c.expected + aAi * c.games;
+    add(r.all, c.games, c.score, e); add(r.ai, c.games, c.score, e); build(r, id, c.games, c.score, e);
   }
   for (const [key, [g, sx]] of Object.entries(env.friends ?? {})) {
     const [x, y] = key.split('|');
