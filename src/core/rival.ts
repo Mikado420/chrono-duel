@@ -51,6 +51,8 @@ export interface LvParams {
    * 1.3× the old one (phones).
    */
   fresh?: boolean;
+  /** Lv11–12: after `at` guessed worlds, only the best `keep` candidates are read in the rest. */
+  halve?: { at: number; keep: number };
   /** Lv11–12: stop reading new worlds after this many ms (slow phones; at least 16 worlds are always read). */
   timeMs?: number;
 }
@@ -396,15 +398,18 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
     };
     if (P.fresh) {
       // world by world for every candidate, so a time limit (P.timeMs) leaves every candidate read in the same worlds
-      const sum = short.map(() => 0), ahead = short.map(() => 0);
+      // (P.halve: after `at` worlds only the best `keep` candidates go on, so the close ones are read much more)
+      const sum = short.map(() => 0), ahead = short.map(() => 0), seen = short.map(() => 0);
+      let live = short.map((_, k) => k);
       const t0 = Date.now();
-      let n = 0;
       for (let wi = 0; wi < worlds.length; wi++) {
-        if (wi % 2 === 0) { yield; if (P.timeMs && n >= 16 && Date.now() - t0 > P.timeMs) break; }
-        short.forEach((cand, k) => { const r = play(cand, wi); sum[k] += r ?? -1000; if (r !== null && r > 0) ahead[k]++; });
-        n++;
+        if (wi % 2 === 0) { yield; if (P.timeMs && wi >= 16 && Date.now() - t0 > P.timeMs) break; }
+        if (P.halve && wi === P.halve.at) live = [...live].sort((x, y) => (sum[y] / seen[y] + short[y].v * 0.25) - (sum[x] / seen[x] + short[x].v * 0.25)).slice(0, P.halve.keep);
+        for (const k of live) { const r = play(short[k], wi); sum[k] += r ?? -1000; seen[k]++; if (r !== null && r > 0) ahead[k]++; }
       }
-      short.forEach((cand, k) => scored.push({ a: cand.a, v: sum[k] / Math.max(1, n) + cand.v * 0.25 + noise(), ahead: ahead[k] / Math.max(1, n) }));
+      const kept = new Set(live);
+      // a candidate dropped halfway keeps its score but can no longer be chosen over one read to the end
+      short.forEach((cand, k) => scored.push({ a: cand.a, v: sum[k] / Math.max(1, seen[k]) + cand.v * 0.25 + noise() - (kept.has(k) ? 0 : 1e6), ahead: ahead[k] / Math.max(1, seen[k]) }));
     } else for (const cand of short) {
       yield;
       let sum = 0, ahead = 0;
