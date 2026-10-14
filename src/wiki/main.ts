@@ -12,17 +12,18 @@ import { cardFace, loadCardPics, setCardPicBase } from '../render/cardArt';
 import { VERSION } from '../version';
 import { GLOSS, KW_TIPS, MEMO } from './content';
 import { STATS } from './stats';
-import { META } from './meta';
+import { CARD_VALUE } from './cardvalue';
 import { serverUrl } from '../net/server';
 import { impacts, type StatsAgg, type StoredLog } from '../server/statsCore';
 import { narrate } from '../core/narrate';
 import { fxSegments } from '../core/cardText';
 import { ROSTER_DECKS, type RosterDeck } from '../sim/rosterDecks';
-import { DECK_TYPES, TIER_CUTS, TIER_MARKS, TIER_MIN_GAMES, TIER_SHRINK, cleanTier, type TierMark, type TierRow, type TierSnapshot } from '../meta/envtier';
+import { DECK_TYPES, USE_K, TIER_CUTS, TIER_MARKS, TIER_MIN_GAMES, TIER_SHRINK, cleanTier, type TierMark, type TierRow, type TierSnapshot } from '../meta/envtier';
 import { SEASONS, SEASON_REWARDS, TIERS as RANKS, jstDay, seasonAt } from '../meta/ranks';
 import { BASICS, GUIDE } from './guide';
 import { BAND_DECKS, BUILD_LV, LV_COUNT } from './envdata';
 
+const ADOPT_K_TEXT = '0.1';
 const RN: Record<Rarity, string> = { C: '通常', R: '希少', E: '秘宝', L: '伝説' };
 const RO: Record<Rarity, number> = { C: 0, R: 1, E: 2, L: 3 };
 const C: Record<string, CardDef> = Object.fromEntries(CARD_LIST.map((c) => [c.id, c]));
@@ -60,14 +61,15 @@ const V: Record<string, string | number> = {
   STATS_GAMES: STATS.games.toLocaleString('ja-JP'),
   STATS_DATE: STATS.date,
   STATS_PER: STATS.perPair,
-  META_GAMES: META.games.toLocaleString('ja-JP'),
-  META_PER: META.perPair,
-  META_DATE: META.date,
-  META_DECKS: META.decks.length,
+  CV_GAMES: CARD_VALUE.games,
+  CV_DATE: CARD_VALUE.date,
+  CV_LV: CARD_VALUE.level,
+  ADOPT_K: ADOPT_K_TEXT,
   TYPE_COUNT: DECK_TYPES.length,
   BUILD_COUNT: ROSTER_DECKS.length,
   TIER_MIN: TIER_MIN_GAMES,
   TIER_SHRINK,
+  USE_K,
   TIER_S: `+${TIER_CUTS[0]}`,
   TIER_A: `+${TIER_CUTS[1]}`,
   TIER_B: `${TIER_CUTS[2]}`,
@@ -109,15 +111,28 @@ const img = (id: string, cls = 'face') => `<img class="${cls}" data-face="${id}"
 // ------------------------------------------------------------------ ratings (environment round robin, strongest AI)
 type Tier = 'SS' | 'S' | 'A' | 'B' | 'C';
 const TIERS: Tier[] = ['SS', 'S', 'A', 'B', 'C'];
-/** 影響: how much more often a deck won in the games where the card was used, than that deck's average (%). */
-const SCORE: Record<string, number> = Object.fromEntries(Object.entries(META.cards).filter(([id]) => C[id] && !C[id].token).map(([id, x]) => [id, x[0]]));
+/**
+ * The card ranking: 入れ替え試験 (each card swapped for a plain 2-cost 2/2 in the roster builds that use it, both lists
+ * playing the same games; src/sim/cardvalue.ts) as the base, moved every day by how often the players put the card in
+ * their decks (the 環境Tier snapshot's `cards`). Worked out again when the snapshot arrives.
+ */
 const sign = (n: number) => `${n > 0 ? '+' : ''}${n.toFixed(1)}`;
-const RANKED = CARD_LIST.filter((c) => SCORE[c.id] != null).sort((a, b) => SCORE[b.id] - SCORE[a.id] || a.cost - b.cost);
+const ADOPT_K = 0.1;
+let SCORE: Record<string, number> = {};
+let RANKED: CardDef[] = [];
 const TIER: Record<string, Tier> = {};
 const RANK: Record<string, number> = {};
-{
+const adoptOf = (id: string) => tierNow?.cards?.[id]?.[0];
+function rankCards() {
+  const ad = tierNow?.cards ?? {};
+  const ids = CARD_LIST.filter((c) => !c.token && CARD_VALUE.cards[c.id]).map((c) => c.id);
+  const known = ids.filter((id) => ad[id]);
+  const mean = known.length ? known.reduce((a, id) => a + ad[id][0], 0) / known.length : 0;
+  SCORE = Object.fromEntries(ids.map((id) => [id, CARD_VALUE.cards[id][0] + (ad[id] ? ADOPT_K * (ad[id][0] - mean) : 0)]));
+  RANKED = CARD_LIST.filter((c) => SCORE[c.id] != null).sort((a, b) => SCORE[b.id] - SCORE[a.id] || a.cost - b.cost);
   const n = RANKED.length;
   const cuts = [0.1, 0.3, 0.55, 0.8].map((f) => SCORE[RANKED[Math.max(0, Math.ceil(n * f) - 1)]?.id] ?? 0);
+  for (const k of Object.keys(TIER)) delete TIER[k];
   RANKED.forEach((c, i) => {
     const w = SCORE[c.id];
     const t = cuts.findIndex((x) => w >= x);
@@ -172,6 +187,7 @@ const typeLv = (t: string): [number, number] | undefined => {
 // ------------------------------------------------------------------ 環境Tier (real games, worked out every day; see src/meta/envtier.ts)
 let tierNow: TierSnapshot | null = null;
 let tierLoading: Promise<void> | null = null;
+rankCards();
 let tierTried = false;
 function loadTier(): Promise<void> {
   const base = serverUrl()?.replace(/^ws/, 'http');
@@ -179,7 +195,8 @@ function loadTier(): Promise<void> {
   return (tierLoading ??= (async () => {
     try {
       const r = await fetch(base + '/api/wiki', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
-      if (r.ok) { tierNow = cleanTier(((await r.json()) as { tier: unknown }).tier); }
+      if (r.ok) { tierNow = cleanTier(((await r.json()) as { tier: unknown }).tier);
+      rankCards(); }
     } catch { /* offline */ }
     tierTried = true;
   })());
@@ -212,7 +229,7 @@ function tierRows(limit?: TierMark[]): string {
   }).join('');
   return out;
 }
-const tierLegend = () => `<p class="legend small mute"><i class="mv up">↑</i>前回より上がった <i class="mv down">↓</i>前回より下がった <i class="mv new">NEW</i>前回は集計中　数字は試合数と期待との差（ポイント）</p>`;
+const tierLegend = () => `<p class="legend small mute"><i class="mv up">↑</i>前回より上がった <i class="mv down">↓</i>前回より下がった <i class="mv new">NEW</i>前回は集計中　数字は試合数と点数</p>`;
 
 // ------------------------------------------------------------------ pages
 const svg = (d: string) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -242,9 +259,9 @@ const PAGES: Page[] = [
   { id: 'decks', label: 'デッキ解説', title: '全デッキ解説（15タイプ・37型）', desc: 'レシピ・立ち回り・相性',
     intro: 'レート戦で使われている15タイプ・37型のデッキについて、20枚のレシピ、型の違い、立ち回り、得意・苦手な相手をまとめました。カードの画像をタップすると、その場で性能を確認できます。' },
   { id: 'rated', label: 'レート戦', title: 'レート戦・ランク・季のまとめ', desc: '刻神Ⅰ〜Ⅴ・報酬・相手のLv',
-    intro: 'レート戦のランク、刻神Ⅰ〜Ⅴ、季（シーズン）の報酬とリセット、相手のAIのLvとデッキをまとめました。' },
+    intro: 'レート戦のランク、刻神Ⅰ〜Ⅴ、季（シーズン）の報酬とリセット、相手のLvとデッキをまとめました。' },
   { id: 'ranking', label: 'カード評価', title: '最強カードランキング', desc: '全カードを5段階で評価',
-    intro: '全カードを、いちばん強いAI同士で環境デッキを総当たりさせたときの「使った試合でどれだけ勝ちやすくなったか（影響）」で5段階に分けたランキングです。みんなの実際の対戦での影響も並べています。カードの画像をタップすると、その場で詳しい性能と攻略メモを見られます。' },
+    intro: '全カードを、デッキから抜いたときにどれだけ勝ちにくくなるか（貢献度）と、実戦での採用率から5段階に分けたランキングです。採用率は毎日更新されます。カードの画像をタップすると、その場で詳しい性能と攻略メモを見られます。' },
   { id: 'cards', label: 'カード一覧', title: `カード一覧（全${CARD_LIST.length}種）`, desc: '検索・絞り込み・評価つき',
     intro: 'セット・種類・レアリティ・効果で絞り込めます。行をタップすると詳細が開き、「前へ／次へ」で絞り込んだ一覧の中を順番に見られます。' },
   { id: 'rules', label: '基本ルール', title: '基本ルールと遊び方', desc: '時計・行動コスト・鐘・終焉・予約',
@@ -257,7 +274,7 @@ const PAGES: Page[] = [
   { id: 'themes', label: 'テーマ', title: 'テーマ一覧（文字盤・スリーブ・プレイマット）', desc: '全8テーマの絵と価格',
     intro: 'ショップでコインと交換できる見た目のテーマです。1つのテーマに文字盤・スリーブ・プレイマットの3つがあり、1つずつでも、まとめてでも交換できます。' },
   { id: 'real', label: '実戦データ', title: '実戦データ（カード別の成績）', desc: 'みんなの対戦の集計',
-    intro: 'みんなが実際に遊んだ対戦（フリー対戦・レート戦・フレンド対戦）から集計した、カードごとの成績です。AI同士の統計では分からない「人が使ったときの強さ」が見えます。バージョンごとに集計するので、調整前の数字は混ざりません。' },
+    intro: 'みんなが実際に遊んだ対戦（フリー対戦・レート戦・フレンド対戦）から集計した、カードごとの成績です。バージョンごとに集計するので、調整前の数字は混ざりません。' },
   { id: 'history', label: '更新履歴', title: '更新履歴', desc: 'バージョンごとの変更点' },
   { id: 'gloss', label: '用語集', title: '用語集', desc: '刻、世界の時刻、燃えるなど' },
   { id: 'admin', label: '対戦の記録', title: '対戦の記録（管理用）', desc: '', hidden: true },
@@ -327,19 +344,21 @@ function initCards() {
 const thumb = (id: string, extra = '') => `<button type="button" class="thumb" data-card="${id}">${img(id)}${extra}<span class="nm">${esc(C[id].name)}</span></button>`;
 const tierRow = (t: Tier, ids: string[]) => `<div class="tier ${t}"><b>${t}</b><div><div class="thumbs sm">${ids.map((id) => thumb(id)).join('')}</div></div></div>`;
 function initRanking() {
-  $('tierlist').innerHTML = TIERS.map((t) => tierRow(t, RANKED.filter((c) => TIER[c.id] === t).map((c) => c.id))).join('');
-  const table = () => {
-    $('ranktable').innerHTML = '<tr><th class="num">順位</th><th>カード</th><th>評価</th><th class="num">影響（AI戦）</th><th class="num">影響（実戦）</th><th class="num wide">使われた試合</th></tr>' +
+  const draw = () => {
+    if (page !== 'ranking') return;
+    $('tierlist').innerHTML = TIERS.map((t) => tierRow(t, RANKED.filter((c) => TIER[c.id] === t).map((c) => c.id))).join('');
+    $('ranktable').innerHTML = '<tr><th class="num">順位</th><th>カード</th><th>評価</th><th class="num">総合</th><th class="num">貢献度</th><th class="num">採用率</th><th class="num wide">影響（実戦）</th></tr>' +
       RANKED.map((c) => {
-        const r = realLift?.[c.id], m = META.cards[c.id];
-        const real = r && r.used >= 20 ? `<b class="n">${sign(r.lift)}</b>` : r ? `<span class="mute">${sign(r.lift)}</span>` : '<span class="mute">—</span>';
-        return `<tr data-card="${c.id}" tabindex="0"><td class="ranknum">${RANK[c.id]}</td><td>${cname(c)}</td><td>${tierBadge(c.id)}</td><td class="num"><b class="n">${sign(SCORE[c.id])}</b></td><td class="num">${real}</td><td class="num wide small">${m?.[1] ?? 0}</td></tr>`;
+        const r = realLift?.[c.id], a = adoptOf(c.id);
+        const real = r && r.used >= 20 ? `${sign(r.lift)}` : r ? `<span class="mute">${sign(r.lift)}</span>` : '<span class="mute">—</span>';
+        return `<tr data-card="${c.id}" tabindex="0"><td class="ranknum">${RANK[c.id]}</td><td>${cname(c)}</td><td>${tierBadge(c.id)}</td><td class="num"><b class="n">${sign(SCORE[c.id])}</b></td><td class="num">${sign(CARD_VALUE.cards[c.id]?.[0] ?? 0)}</td><td class="num">${a != null ? `${Math.round(a)}%` : '<span class="mute">—</span>'}</td><td class="num wide small">${real}</td></tr>`;
       }).join('');
-    hydrate($('ranktable'));
+    $('ranktable').classList.add('list');
+    hydrate($('tierlist')); hydrate($('ranktable'));
   };
-  table();
-  if (!realLift) void loadReal().then(() => { if (document.body.contains($('ranktable'))) { table(); $('ranktable').classList.add('list'); } });
-  $('ranktable').classList.add('list');
+  draw();
+  void loadTier().then(draw);
+  if (!realLift) void loadReal().then(draw);
 }
 
 // ------------------------------------------------------------------ text with **bold** and card names that open the card
@@ -348,36 +367,6 @@ const NAME_RE = new RegExp(CARD_NAMES.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g
 const md = (s: string) => esc(s).replace(NAME_RE, (n) => `<button type="button" class="clink" data-card="${BY_NAME.get(n)}">${n}</button>`).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
 
 // ------------------------------------------------------------------ decks page (15 types, 37 builds)
-interface BookEntryLite { v: number; cards: string[] }
-let book: Record<string, BookEntryLite> | null = null;
-let bookLoading: Promise<void> | null = null;
-function loadBook(): Promise<void> {
-  const base = serverUrl()?.replace(/^ws/, 'http');
-  if (!base) return Promise.resolve();
-  return (bookLoading ??= (async () => {
-    try {
-      const r = await fetch(base + '/api/decks', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
-      if (r.ok) book = ((await r.json()) as { decks?: Record<string, BookEntryLite> }).decks ?? {};
-    } catch { /* offline */ }
-  })());
-}
-/** What the daily improvement changed in a build (the list the stronger rivals bring now), or ''. */
-function bookDiff(b: Build): string {
-  if (!book) return '';
-  const out: string[] = [];
-  for (const [key, label] of [[b.d.id, 'Lv8以上'], [`${b.d.id}~lo`, 'Lv7以下']] as const) {
-    const e = book[key];
-    if (!e || !Array.isArray(e.cards) || e.v <= 1) continue;
-    const now = countOf(e.cards), add: string[] = [], cut: string[] = [];
-    for (const id of new Set([...Object.keys(now), ...Object.keys(b.count)])) {
-      const d = (now[id] ?? 0) - (b.count[id] ?? 0);
-      if (!C[id] || !d) continue;
-      (d > 0 ? add : cut).push(`${C[id].name}${Math.abs(d) > 1 ? `×${Math.abs(d)}` : ''}`);
-    }
-    if (add.length || cut.length) out.push(`<li><b>${label}のAI（版${e.v}）</b>${add.length ? `<span class="plus">＋${esc(add.join('・'))}</span>` : ''}${cut.length ? `<span class="minus">－${esc(cut.join('・'))}</span>` : ''}</li>`);
-  }
-  return out.length ? `<div class="bookdiff"><b>毎日の改良で変わったカード</b><ul>${out.join('')}</ul></div>` : '';
-}
 function buildBlock(b: Build) {
   const units = b.d.cards.filter((id) => C[id]?.kind === 'unit').length;
   const curve = Array(9).fill(0) as number[];
@@ -386,12 +375,11 @@ function buildBlock(b: Build) {
   const avgCost = b.d.cards.reduce((s, id) => s + (C[id]?.cost ?? 0), 0) / b.d.cards.length;
   const rec = tierOfType(b.d.type)?.builds[b.d.id];
   return `<section class="deck" id="build-${b.d.id}" data-ctx="${esc(b.d.name)}">
-    <div class="deck-hd"><div><h3>${esc(buildName(b))}</h3><div class="tags">${b.lv ? `<span class="tag">レート戦のAI ${lvText(b.lv)}</span>` : ''}${rec && rec[0] ? `<span class="small mute">実戦 ${rec[0]}試合・勝率${winPct(rec[0], rec[1])}</span>` : ''}</div></div></div>
+    <div class="deck-hd"><div><h3>${esc(buildName(b))}</h3><div class="tags">${b.lv ? `<span class="tag">レート戦 ${lvText(b.lv)}の相手が使用</span>` : ''}${rec && rec[0] ? `<span class="small mute">実戦 ${rec[0]}試合・勝率${winPct(rec[0], rec[1])}</span>` : ''}</div></div></div>
     <div class="deck-bd">
       <div class="thumbs sm">${b.ids.map((id) => thumb(id, b.count[id] > 1 ? `<span class="cnt">×${b.count[id]}</span>` : '')).join('')}</div>
       <div class="deck-meta"><div class="curve" aria-label="コスト分布">${curve.map((k, i) => `<div><i style="height:${mx ? (k / mx) * 34 : 0}px"></i>${i + 1}</div>`).join('')}</div>
         <div>ユニット ${units}枚 ／ 術 ${b.d.cards.length - units}枚<br>平均コスト ${avgCost.toFixed(2)}</div></div>
-      <div class="bd-live" data-build="${b.d.id}">${bookDiff(b)}</div>
     </div></section>`;
 }
 function typeSection(t: string, i: number) {
@@ -399,8 +387,8 @@ function typeSection(t: string, i: number) {
   const bs = buildsOf(t);
   return `<h2 id="type-${i}">${esc(t)}</h2>
     <div class="type-hd" data-ctx="${esc(t)}">${thumb(keyCard(t))}
-      <div><div class="type-tier">${markBadge(r?.tier)}${r ? moveOf(r) : ''}<span class="small mute">${r ? `実戦 ${r.all[0]}試合・期待との差 ${signed(r.perf)}` : '実戦データは集計中'}</span></div>
-      <p>${md(g?.lead ?? '')}</p><p class="small mute">型の数：${bs.length}　レート戦のAI：${lvText(typeLv(t)) || '—'}</p></div></div>
+      <div><div class="type-tier">${markBadge(r?.tier)}${r ? moveOf(r) : ''}<span class="small mute">${r ? `実戦 ${r.all[0]}試合・点数 ${signed(r.perf)}` : '実戦データは集計中'}</span></div>
+      <p>${md(g?.lead ?? '')}</p><p class="small mute">型の数：${bs.length}　レート戦で使う相手：${lvText(typeLv(t)) || '—'}</p></div></div>
     <h3>レシピ</h3>${bs.map(buildBlock).join('')}
     ${g?.builds.length ? `<h3>型の違い</h3><ul class="dots">${g.builds.map((x) => `<li>${md(x)}</li>`).join('')}</ul>` : ''}
     ${g ? `<h3>立ち回り</h3><ol class="steps">${g.steps.map((x) => `<li>${md(x)}</li>`).join('')}</ol>` : ''}
@@ -420,12 +408,10 @@ function initDecks() {
     drawList();
     DECK_TYPES.forEach((t, i) => {
       const r = tierOfType(t), box = document.querySelector(`#type-${i} + .type-hd .type-tier`);
-      if (box) box.innerHTML = `${markBadge(r?.tier)}${r ? moveOf(r) : ''}<span class="small mute">${r ? `実戦 ${r.all[0]}試合・期待との差 ${signed(r.perf)}` : '実戦データは集計中'}</span>`;
+      if (box) box.innerHTML = `${markBadge(r?.tier)}${r ? moveOf(r) : ''}<span class="small mute">${r ? `実戦 ${r.all[0]}試合・点数 ${signed(r.perf)}` : '実戦データは集計中'}</span>`;
     });
-    document.querySelectorAll<HTMLElement>('[data-build]').forEach((el) => { const b = BUILDS.find((x) => x.d.id === el.dataset.build); if (b) el.innerHTML = bookDiff(b); });
   };
   void loadTier().then(refresh);
-  void loadBook().then(refresh);
 }
 
 // ------------------------------------------------------------------ 環境Tier page
@@ -437,11 +423,11 @@ function initTier() {
       : tierTried ? 'まだ集計がありません。毎日4:30ごろに更新されます。' : '読み込み中…';
     $('tierlist2').innerHTML = tierRows() + tierLegend();
     const rows = DECK_TYPES.map((x) => tierOfType(x)).filter((x): x is TierRow => !!x).sort((a, b) => markRank(a.tier) - markRank(b.tier) || b.perf - a.perf);
-    $('tiertable').innerHTML = '<tr><th class="num">順位</th><th>デッキタイプ</th><th>Tier</th><th class="num">試合</th><th class="num wide">人／AI</th><th class="num">期待との差</th><th class="num">勝率</th></tr>' +
-      (rows.length ? rows.map((r, i) => `<tr><td class="ranknum">${i + 1}</td><td><button type="button" class="clink" data-type="${DECK_TYPES.indexOf(r.type)}">${esc(r.type)}</button></td><td>${markBadge(r.tier)}${moveOf(r)}</td><td class="num"><b class="n">${r.all[0]}</b></td><td class="num wide small">${r.human[0]}／${r.ai[0]}</td><td class="num"><b class="n">${signed(r.perf)}</b></td><td class="num">${winPct(r.all[0], r.all[1])}</td></tr>`).join('')
-        : '<tr><td colspan="7" class="mute">集計中</td></tr>');
+    $('tiertable').innerHTML = '<tr><th class="num">順位</th><th>デッキタイプ</th><th>Tier</th><th class="num">点数</th><th class="num">上位の使用率</th><th class="num">試合</th><th class="num wide">プレイヤー／相手</th><th class="num">勝率</th></tr>' +
+      (rows.length ? rows.map((r, i) => `<tr><td class="ranknum">${i + 1}</td><td><button type="button" class="clink" data-type="${DECK_TYPES.indexOf(r.type)}">${esc(r.type)}</button></td><td>${markBadge(r.tier)}${moveOf(r)}</td><td class="num"><b class="n">${signed(r.perf)}</b></td><td class="num">${r.use ? `${Math.round(r.use)}%` : '<span class="mute">—</span>'}</td><td class="num">${r.all[0]}</td><td class="num wide small">${r.human[0]}／${r.ai[0]}</td><td class="num">${winPct(r.all[0], r.all[1])}</td></tr>`).join('')
+        : '<tr><td colspan="8" class="mute">集計中</td></tr>');
     const bl = BUILDS.map((b) => ({ b, r: tierOfType(b.d.type)?.builds[b.d.id] })).filter((x) => x.r && x.r[0] > 0).sort((a, b) => b.r![0] - a.r![0]);
-    $('buildtable').innerHTML = '<tr><th>型</th><th class="num">試合</th><th class="num">期待との差</th><th class="num">勝率</th></tr>' +
+    $('buildtable').innerHTML = '<tr><th>型</th><th class="num">試合</th><th class="num">成績</th><th class="num">勝率</th></tr>' +
       (bl.length ? bl.map(({ b, r }) => `<tr><td><button type="button" class="clink" data-type="${b.type}">${esc(b.d.name)}</button></td><td class="num">${r![0]}</td><td class="num">${signed((100 * (r![1] - r![2])) / (r![0] + TIER_SHRINK))}</td><td class="num">${winPct(r![0], r![1])}</td></tr>`).join('')
         : '<tr><td colspan="4" class="mute">集計中</td></tr>');
     const bands = t ? RANKS.filter((k) => t.bands[k.id]) : [];
@@ -459,10 +445,10 @@ function initTier() {
 
 // ------------------------------------------------------------------ rated page
 const LV_NOTE: [number, number, string][] = [
-  [1, 3, '読みはなく、ときどきミスをします。カードの使い方を覚える相手。'],
-  [4, 7, 'デッキの作戦どおりに動き、少し先まで読みます。ミスはほとんどしません。'],
-  [8, 10, '何手も先まで読み、あなたの手札や予約を推測して動きます。'],
-  [11, 12, 'Lv10と同じ考え方で、近い候補をずっと長く読み比べます（1手に最大20秒）。'],
+  [1, 3, 'はじめての人向け。ときどきミスをします。'],
+  [4, 7, '手強い相手。ミスはほとんどしません。'],
+  [8, 10, '上級者向け。先の展開まで考えて動きます。'],
+  [11, 12, '最上級。1手に最大20秒考えます。'],
 ];
 function initRated() {
   const today = jstDay(Date.now()), cur = seasonAt(today);
@@ -534,7 +520,7 @@ function initHome() {
   };
   drawTier();
   void loadTier().then(drawTier);
-  $('home-ranks').innerHTML = ([['tier', '最強デッキ', '環境Tier（実戦）'], ['ranking', '最強カード', 'AI同士の総当たり'], ['real', 'カード実戦成績', 'みんなの対戦の集計'], ['rated', 'ランクと報酬', '刻神Ⅰ〜Ⅴ']] as [string, string, string][])
+  $('home-ranks').innerHTML = ([['tier', '最強デッキ', '環境Tier（実戦）'], ['ranking', '最強カード', '貢献度と採用率'], ['real', 'カード実戦成績', 'みんなの対戦の集計'], ['rated', 'ランクと報酬', '刻神Ⅰ〜Ⅴ']] as [string, string, string][])
     .map(([p, a, b]) => `<a href="#${p}" data-go="${p}"><span class="ic">${ICON[p] ?? ''}</span><b>${a}</b><small>${b}</small></a>`).join('');
   $('home-themes').innerHTML = THEMES.map((t) => `<a href="#themes" data-go="themes" class="th"><img src="${themePic(t.id, 'dial')}" alt="" loading="lazy" decoding="async"><span>${esc(t.name)}</span></a>`).join('');
   const sets = [...new Set(CARD_LIST.map(setOf))];
@@ -610,12 +596,12 @@ async function initReal(ver?: string) {
   sum.textContent = `${total}試合 ・ ` + Object.entries(agg.games).map(([k, [g]]) => `${MODE_NAMES[k] ?? k} ${g}`).join(' / ');
   const rows = impacts(agg).filter((x) => C[x.id] && x.used > 0).sort((a, b) => (b.used >= REAL_MIN ? 1 : 0) - (a.used >= REAL_MIN ? 1 : 0) || b.lift - a.lift);
   const sign = (n: number) => `${n > 0 ? '+' : ''}${n.toFixed(1)}`;
-  body.innerHTML = `<div class="tw"><table class="gt list"><tr><th>カード</th><th class="num">使用</th><th class="num">勝率</th><th class="num">影響</th><th class="num">AI評価</th></tr>` +
+  body.innerHTML = `<div class="tw"><table class="gt list"><tr><th>カード</th><th class="num">使用</th><th class="num">勝率</th><th class="num">影響</th><th class="num">評価</th></tr>` +
     rows.map((x) => {
       const faint = x.used < REAL_MIN ? ' style="opacity:.45"' : '';
       const col = x.used < REAL_MIN ? '' : x.lift >= 5 ? ' style="color:var(--you)"' : x.lift <= -5 ? ' style="color:var(--foe)"' : '';
       return `<tr data-card="${x.id}" tabindex="0"${faint}><td>${cname(C[x.id])}</td><td class="num">${x.used}</td><td class="num">${x.winUsed.toFixed(0)}%</td><td class="num"${col}><b>${sign(x.lift)}</b></td><td class="num">${tierBadge(x.id)}</td></tr>`;
-    }).join('') + '</table></div><p class="small mute">使用＝使われた試合数、勝率＝使ったときの勝率、AI評価＝最強カードランキングでのランク（参考）。</p>';
+    }).join('') + '</table></div><p class="small mute">使用＝使われた試合数、勝率＝使ったときの勝率、評価＝最強カードランキングでのランク（参考）。</p>';
   hydrate(body);
 }
 
@@ -701,7 +687,7 @@ function renderPage(id: string) {
   page = id;
   main.innerHTML = `<nav class="crumbs" aria-label="現在地"><a href="#home" data-go="home">クロノ・デュエル攻略wiki</a>${id !== 'home' ? `<span>${esc(p.label)}</span>` : ''}</nav>
     <article class="art"><h1>${esc(p.title)}</h1>
-      <div class="updated"><span>最終更新：<b id="upd-date">${esc(dayFmt(lastUpdate()))}</b></span><span>対応バージョン：<b>Ver. ${esc(VERSION)}</b></span>${id === 'ranking' ? `<span>評価データ：<b>${esc(META.date)}</b> 集計</span>` : ''}</div>
+      <div class="updated"><span>最終更新：<b id="upd-date">${esc(dayFmt(lastUpdate()))}</b></span><span>対応バージョン：<b>Ver. ${esc(VERSION)}</b></span>${id === 'ranking' ? `<span>貢献度：<b>${esc(CARD_VALUE.date)}</b> 集計</span>` : ''}</div>
       ${p.intro ? `<p class="intro">${esc(p.intro)}</p>` : ''}
       <div id="page-body"></div></article>`;
   const bodyEl = $('page-body');
@@ -737,6 +723,8 @@ function renderChrome() {
   fillValues(document);
   hydrate($('side'));
   void loadTier().then(() => {
+    const top5 = document.querySelector('aside .stop');
+    if (top5) { top5.innerHTML = RANKED.slice(0, 5).map((c, i) => `<li><button type="button" data-card="${c.id}"><i>${i + 1}</i>${img(c.id)}<span>${esc(c.name)}</span><small>${sign(SCORE[c.id])}</small></button></li>`).join(''); hydrate(top5); }
     const rows = (tierNow?.rows ?? []).filter((r) => r.tier).slice(0, 5);
     $('side-tier').innerHTML = rows.length ? `<ol>${rows.map((r) => `<li><button type="button" data-type="${DECK_TYPES.indexOf(r.type)}">${markBadge(r.tier)}<span>${esc(r.type)}</span>${moveOf(r)}</button></li>`).join('')}</ol>` : '<p class="small mute">集計中（毎日4:30ごろ更新）</p>';
     const u = document.getElementById('upd-date');
@@ -762,7 +750,6 @@ function renderDetail(id: string) {
   current = id;
   const i = ctx.ids.indexOf(id);
   const n = ctx.ids.length;
-  const w = STATS.win[id], u = STATS.use[id];
   const kws = keywordsOf(c);
   const ds = decksWith(id);
   const rows: [string, string][] = [['コスト', `<b class="n">${c.cost}</b> 刻${c.rush ? `（急襲${c.rush}）` : ''}${c.charge ? `（充填${c.charge}）` : ''}`], ['種類', c.kind === 'unit' ? 'ユニット' : '術'], ['レアリティ', `<span class="rar ${c.rarity}">${RN[c.rarity]}</span>`], ['収録', esc(SET_NAMES[setOf(c)])]];
@@ -779,7 +766,7 @@ function renderDetail(id: string) {
       <div>
         <h2 class="m-name" id="m-name">${esc(c.name)}</h2>
         <div class="m-sub">${kws.map((k) => `<span class="rar C">${k}</span>`).join('')}</div>
-        <div class="m-eval">${tierBadge(id)}<div>${SCORE[id] != null ? `影響 <b>${sign(SCORE[id])}</b>（全${RANKED.length}種中 ${RANK[id]}位）<br>` : ''}${w != null ? `AI「ふつう」での採用時勝率 ${w}% ／ 1試合あたり 使用 ${u?.[0].toFixed(2) ?? '0'}回${u?.[1] ? ` ／ 予約 ${u[1].toFixed(2)}回` : ''}` : ''}${SCORE[id] == null && w == null ? 'このカードはまだ評価データがありません。' : ''}</div></div>
+        <div class="m-eval">${tierBadge(id)}<div>${SCORE[id] != null ? `総合 <b>${sign(SCORE[id])}</b>（全${RANKED.length}種中 ${RANK[id]}位）<br>貢献度 ${sign(CARD_VALUE.cards[id]?.[0] ?? 0)}${adoptOf(id) != null ? ` ／ 採用率 ${Math.round(adoptOf(id)!)}%` : ''}` : 'このカードはまだ評価データがありません。'}</div></div>
         <div class="tw"><table class="gt spec">${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table></div>
         <div class="m-sec"><h4>効果</h4><p>${fx(c.text) || '<span class="mute">（効果なし）</span>'}</p>${c.resvText ? `<p class="resv"><b>予約</b>${fx(c.resvText)}</p>` : ''}</div>
         ${MEMO[id] ? `<div class="m-sec"><h4>攻略メモ</h4><p>${esc(MEMO[id])}</p></div>` : ''}
