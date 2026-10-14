@@ -31,6 +31,8 @@ export interface TitleCtx {
   themesComplete: number;
   ratedGames: number;
   ratedPeak: number;
+  /** Best rating since 刻神 got its five steps. */
+  shinPeak?: number;
   /** Longest run of rated wins. */
   ratedStreak: number;
   /** Best rank (tier id) of each finished season, by season id. */
@@ -74,6 +76,8 @@ const ALL: T[] = [
   rate('r1600', '刻豪', 'レート戦で刻豪（1600）に届く', 'silver', rated(1600)),
   rate('r1800', '刻聖', 'レート戦で刻聖（1800）に届く', 'gold', rated(1800)),
   rate('r2000', '刻神', 'レート戦で刻神（2000）に届く', 'red', rated(2000)),
+  rate('r2200', '刻神Ⅲ', 'レート戦で刻神Ⅲ（2200）に届く', 'red', (c) => (c.shinPeak ?? 0) >= 2200),
+  rate('r2400', '刻神Ⅴ', 'レート戦で刻神Ⅴ（2400）に届く', 'red', (c) => (c.shinPeak ?? 0) >= 2400),
   rate('streak5', '五連の歯車', 'レート戦で5連勝する', 'bronze', (c) => c.ratedStreak >= 5),
   rate('streak10', '十連の時計', 'レート戦で10連勝する', 'gold', (c) => c.ratedStreak >= 10),
 
@@ -107,7 +111,7 @@ const ALL: T[] = [
   keep('tailor', '仕立て屋', 'テーマの文字盤・スリーブ・マットを3点そろえる', 'green', (c) => c.themesComplete >= 1),
 ];
 // 季の称号: one title per finished season, for the best rank reached there (見習い to 刻神)
-const SEASON_TONE: Record<string, TitleTone> = { novice: 'green', shi: 'blue', sho: 'bronze', go: 'silver', sei: 'gold', shin: 'red' };
+const SEASON_TONE: Record<string, TitleTone> = { novice: 'green', shi: 'blue', sho: 'bronze', go: 'silver', sei: 'gold', shin: 'red', shin2: 'red', shin3: 'red', shin4: 'red', shin5: 'red' };
 const season = g('季の称号');
 for (const se of SEASONS) {
   for (const t of TIERS) {

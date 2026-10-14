@@ -51,6 +51,8 @@ export interface LvParams {
    * 1.3× the old one (phones).
    */
   fresh?: boolean;
+  /** Lv11–12: stop reading new worlds after this many ms (slow phones; at least 16 worlds are always read). */
+  timeMs?: number;
 }
 const M = (attackMiss: number, threatMiss: number, resvShift: number, holdBack: number, misplace: number, missLethal: number, forgetDefend: number): Record<MissKind, number> =>
   ({ attackMiss, threatMiss, resvShift, holdBack, misplace, missLethal, forgetDefend });
@@ -72,6 +74,9 @@ export const LV: Record<number, LvParams> = {
   8: { read: 2, deeper: 0, search: S(8, 24, 30), noise: 0, eps: 0.8, plan: 'all', miss: M(0, 1, 1, 0, 0, 0, 0) },
   9: { read: 2, deeper: 0, search: S(10, 32, 30), noise: 0, eps: 0.6, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true },
   10: { read: 2, deeper: 0, search: S(12, 80, 12), noise: 0, eps: 0.5, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true, fresh: true },
+  // 刻神Ⅲ〜Ⅴ: the same brain reading many more worlds (about 2.5× and 6× Lv10's work), up to 20 s a move
+  11: { read: 2, deeper: 0, search: S(14, 170, 12), noise: 0, eps: 0.4, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true, fresh: true, timeMs: 20000 },
+  12: { read: 2, deeper: 0, search: S(16, 360, 12), noise: 0, eps: 0.3, plan: 'all', miss: M(0, 0, 0, 0, 0, 0, 0), infer: true, pins: true, fresh: true, timeMs: 20000 },
 };
 /** For balance tools: change a Lv's parameters. */
 export function tuneLv(lv: number, p: Partial<LvParams>) { Object.assign(LV[lv], p); }
@@ -325,7 +330,7 @@ export const RIVAL_DEBUG: { on: boolean; pre: { a: Action; v: number }[]; scored
 /** A generator so the battle scene can keep animating between rollouts. */
 export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, mind: RivalMind, rand: () => number = Math.random): Generator<void, RivalMove> {
   if (real.pending) return { action: chooseChoice(real, pi), kind: 'obvious', why: 'only' };
-  const P = LV[Math.max(1, Math.min(10, cfg.lv))];
+  const P = LV[Math.max(1, Math.min(12, cfg.lv))];
   const base = fogged(real, pi);
   const me = base.players[pi];
   observe((mind.seen ??= {}), real, pi);
@@ -382,15 +387,30 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
     const worlds = Array.from({ length: search.rollouts }, () => (guess ? guessWorld(real, pi, guess, mind.seen, pins, rand) : determinize(real, pi, real.players[pi].deck.slice(), rand)));
     const seeds = worlds.map(() => Math.floor(rand() * 2 ** 32));
     scored = [];
-    for (const cand of short) {
+    const end = P.fresh ? FRESH_END : 1000;
+    const play = (cand: { a: Action }, wi: number): number | null => {
+      const c = clone(worlds[wi]);
+      try { apply(c, cand.a); } catch { return null; }
+      const rr = P.fresh && AI_FIX.crn ? mulberry32(seeds[wi]) : rand;
+      return pins ? rolloutWithReserves(c, pi, search.depth, rr, end) : rollout(c, pi, search.depth, rr, end);
+    };
+    if (P.fresh) {
+      // world by world for every candidate, so a time limit (P.timeMs) leaves every candidate read in the same worlds
+      const sum = short.map(() => 0), ahead = short.map(() => 0);
+      const t0 = Date.now();
+      let n = 0;
+      for (let wi = 0; wi < worlds.length; wi++) {
+        if (wi % 2 === 0) { yield; if (P.timeMs && n >= 16 && Date.now() - t0 > P.timeMs) break; }
+        short.forEach((cand, k) => { const r = play(cand, wi); sum[k] += r ?? -1000; if (r !== null && r > 0) ahead[k]++; });
+        n++;
+      }
+      short.forEach((cand, k) => scored.push({ a: cand.a, v: sum[k] / Math.max(1, n) + cand.v * 0.25 + noise(), ahead: ahead[k] / Math.max(1, n) }));
+    } else for (const cand of short) {
       yield;
       let sum = 0, ahead = 0;
       for (let wi = 0; wi < worlds.length; wi++) {
-        const c = clone(worlds[wi]);
-        try { apply(c, cand.a); } catch { sum -= 1000; continue; }
-        const rr = P.fresh && AI_FIX.crn ? mulberry32(seeds[wi]) : rand;
-        const end = P.fresh ? FRESH_END : 1000;
-        const r = pins ? rolloutWithReserves(c, pi, search.depth, rr, end) : rollout(c, pi, search.depth, rr, end);
+        const r = play(cand, wi);
+        if (r === null) { sum -= 1000; continue; }
         sum += r;
         if (r > 0) ahead++;
       }

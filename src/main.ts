@@ -12,12 +12,12 @@ import { COLORS, DESIGN } from './render/theme';
 import { Tweener } from './render/tween';
 import { PackOpenScene } from './render/packOpen';
 import { MIN_ACTIONS, applyReward, canOpen, localDate, openPack, packById, reward, type Reward } from './meta/economy';
-import { bump, dailyView, grantEventPrize, grantPersonalGift, grantSeasonReward, recordBattle, recordMatch, track } from './meta/progress';
+import { bump, dailyView, grantAdjustment, grantEventPrize, grantPersonalGift, grantSeasonReward, recordBattle, recordMatch, track } from './meta/progress';
 import { haptics } from './render/haptics';
 import { LOOKS, PITY, refundRetired } from './meta/economy';
 import { deckKey, deckLook, favCard, shownTitle } from './ui/profile';
 import { CARD_LIST } from './core/cards';
-import { SEASON_REWARDS, TIERS, applyRatingReset, finishRated, foeById, foeLevel, makeOpponent, rollSeason, startRated, tierOf, type RatedGame } from './meta/rating';
+import { SEASON_REWARDS, SHIN_RESET_COINS, TIERS, applyRatingResets, finishRated, foeById, foeLevel, makeOpponent, rollSeason, startRated, tierOf, type RatedGame } from './meta/rating';
 import { seasonById } from './meta/ranks';
 import { eventOf, eventProgress, recordEventGame } from './meta/events';
 import { levelOfLv } from './core/ai';
@@ -282,11 +282,17 @@ async function boot() {
     pendingNotice = `販売を終えた着せ替え（スリーブ・文字盤・マット）の代金 ${refund} コインをお返ししました`;
   }
   // the ranks were redrawn: ratings go back to the start of the rank (刻匠 and above to 刻匠)
+  // (and 刻神 got its five steps: ratings above 2000 go back to 2000, 4 coins for every point)
   {
-    const before = store.rated.rating;
-    if (applyRatingReset(store.rated)) {
+    const done = applyRatingResets(store.rated);
+    if (done) {
       store.saveRated();
-      if (store.rated.games > 0) pendingNotice = [pendingNotice, `ランクの見直しにともない、レートを ${before} から ${store.rated.rating}（${tierOf(store.rated.rating).tier.name}）に調整しました`].filter(Boolean).join('\n');
+      if (done.shinCut > 0) {
+        const coins = done.shinCut * SHIN_RESET_COINS;
+        grantAdjustment(store.meta, `刻神Ⅰ〜Ⅴの導入にともなうレート調整（${done.before} → ${store.rated.rating}）の補填`, coins, localDate());
+        store.saveMeta();
+        pendingNotice = [pendingNotice, `刻神が刻神Ⅰ〜Ⅴの5段階になりました。レートを ${done.before} から ${store.rated.rating}（刻神Ⅰ）に調整し、下がった分 ${done.shinCut} × ${SHIN_RESET_COINS} = ${coins} コインをプレゼントに送りました`].filter(Boolean).join('\n');
+      } else if (store.rated.games > 0 && store.rated.rating !== done.before) pendingNotice = [pendingNotice, `ランクの見直しにともない、レートを ${done.before} から ${store.rated.rating}（${tierOf(store.rated.rating).tier.name}）に調整しました`].filter(Boolean).join('\n');
     }
   }
   // a new season (one per card set): the best rank of the last one pays out, the rating starts one rank lower

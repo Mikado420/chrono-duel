@@ -79,11 +79,16 @@ assert.ok(earnedTitles({ ...zero, wins: 1 }).includes('first'));
 assert.ok(!earnedTitles({ ...zero, ratedPeak: 1200 }).includes('r1200'), 'rated titles need a rated game');
 assert.ok(earnedTitles({ ...zero, ratedGames: 3, ratedPeak: 1200 }).includes('r1200'));
 assert.ok(!earnedTitles({ ...zero, ratedGames: 3, ratedPeak: 1200 }).includes('r1400'));
-// the agreed list: 53 titles, wins and games in six steps, every action at 100 / 500 / 1000
-assert.equal(BASE_TITLE_COUNT, 53);
-assert.equal(TITLES.length, 53 + SEASONS.length * 6, 'six season titles per season (見習い to 刻神)');
+// the agreed list: 55 titles (刻神Ⅲ・Ⅴ added), wins and games in six steps, every action at 100 / 500 / 1000
+assert.equal(BASE_TITLE_COUNT, 55);
+assert.equal(TITLES.length, 55 + SEASONS.length * 10, 'ten season titles per season (見習い to 刻神Ⅴ)');
+// 刻神Ⅲ・Ⅴ count from the 刻神 steps on (not the best rating of before)
+assert.ok(!earnedTitles({ ...zero, ratedGames: 9, ratedPeak: 2500 }).includes('r2200'));
+assert.ok(earnedTitles({ ...zero, ratedGames: 9, ratedPeak: 2500, shinPeak: 2250 }).includes('r2200'));
+assert.ok(!earnedTitles({ ...zero, ratedGames: 9, ratedPeak: 2500, shinPeak: 2250 }).includes('r2400'));
 assert.deepEqual(titleById('season1-novice')?.season, { id: 1, tier: 'novice', label: '第1季', rank: '見習い' });
-assert.equal(titleById('season1-shin')?.name, '第1季 刻神');
+assert.equal(titleById('season1-shin')?.name, '第1季 刻神Ⅰ');
+assert.equal(titleById('season1-shin5')?.name, '第1季 刻神Ⅴ');
 // 季の称号 are given only once their season is over
 assert.equal(titleOpen('season1-shin', '2026-12-01'), false, 'not while 第1季 runs');
 assert.equal(titleOpen('first', '2026-12-01'), true);

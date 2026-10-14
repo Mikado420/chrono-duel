@@ -1,5 +1,5 @@
 /**
- * レート戦の対戦相手の名簿（120人：Lv1〜10に12人ずつ）。名前ごとにLv・性格・得意デッキが決まっている。
+ * レート戦の対戦相手の名簿（140人：Lv1〜10に12人ずつ、刻神Ⅲ〜Ⅳ向けのLv11と刻神Ⅴ向けのLv12に10人ずつ）。名前ごとにLv・性格・得意デッキが決まっている。
  * 名前から戦い方は分からないようにしている。性格は判断の重みと得意デッキだけを変え、読みの深さ（＝Lvの強さ）は変えない。
  * 各Lvの内訳：攻め型4・守り型2・策士型4・堅実型2。
  * デッキ（0.22.x で白紙から組み直し。src/sim/rosterDecks.ts）は Lv に合わせて段階的に強くなる：
@@ -142,6 +142,27 @@ export const ROSTER: Rival[] = [
   {name: "時間外労働",lv: 10,rating: 2130,persona: "schemer",deck: "prison_control_mirea",sub: "verna_loop_guard"},
   {name: "天",lv: 10,rating: 2080,persona: "steady",deck: "raid_tempo_guard",sub: "siege_burn_pray"},
   {name: "神様の暇つぶし",lv: 10,rating: 2140,persona: "steady",deck: "siege_burn_pray",sub: "siege_burn_mirea"},
+  // 刻神Ⅲ〜Ⅳ（Lv11）と刻神Ⅴ（Lv12）: 10 each
+  {name: "蒼月",lv: 11,rating: 2210,persona: "attack",deck: "raid_tempo_haste",sub: "raid_tempo_raider_guard"},
+  {name: "Orion",lv: 11,rating: 2260,persona: "attack",deck: "raid_tempo_raider_guard",sub: "raid_tempo_haste"},
+  {name: "終電逃した",lv: 11,rating: 2330,persona: "attack",deck: "raid_tempo_decoy",sub: "raid_tempo_haste"},
+  {name: "白夜",lv: 11,rating: 2240,persona: "guard",deck: "siege_burn_pray",sub: "verna_loop_guard"},
+  {name: "kanade_r",lv: 11,rating: 2300,persona: "guard",deck: "verna_loop_guard",sub: "siege_burn_mirea"},
+  {name: "影踏み",lv: 11,rating: 2280,persona: "schemer",deck: "prison_control_mirea",sub: "raid_tempo_guard"},
+  {name: "Lumen",lv: 11,rating: 2350,persona: "schemer",deck: "verna_loop_titan",sub: "prison_control_mirea"},
+  {name: "三度目の正直",lv: 11,rating: 2220,persona: "schemer",deck: "raid_tempo_guard",sub: "verna_loop_titan"},
+  {name: "凪",lv: 11,rating: 2380,persona: "steady",deck: "raid_tempo_guard",sub: "siege_burn_pray"},
+  {name: "定時で帰る人",lv: 11,rating: 2310,persona: "steady",deck: "siege_burn_mirea",sub: "raid_tempo_guard"},
+  {name: "焔",lv: 12,rating: 2420,persona: "attack",deck: "raid_tempo_haste",sub: "raid_tempo_decoy"},
+  {name: "Sirius",lv: 12,rating: 2480,persona: "attack",deck: "raid_tempo_raider_guard",sub: "raid_tempo_haste"},
+  {name: "夜更かしの神様",lv: 12,rating: 2540,persona: "attack",deck: "raid_tempo_haste",sub: "raid_tempo_raider_guard"},
+  {name: "霧雨",lv: 12,rating: 2450,persona: "guard",deck: "verna_loop_guard",sub: "siege_burn_pray"},
+  {name: "tokiwa_s",lv: 12,rating: 2510,persona: "guard",deck: "siege_burn_mirea",sub: "verna_loop_titan"},
+  {name: "宵闇",lv: 12,rating: 2560,persona: "schemer",deck: "prison_control_mirea",sub: "verna_loop_titan"},
+  {name: "Astra",lv: 12,rating: 2470,persona: "schemer",deck: "verna_loop_titan",sub: "raid_tempo_guard"},
+  {name: "最後の一枚",lv: 12,rating: 2590,persona: "schemer",deck: "raid_tempo_guard",sub: "prison_control_mirea"},
+  {name: "久遠",lv: 12,rating: 2530,persona: "steady",deck: "raid_tempo_guard",sub: "siege_burn_mirea"},
+  {name: "時計職人の孫",lv: 12,rating: 2440,persona: "steady",deck: "siege_burn_pray",sub: "raid_tempo_guard"},
 ];
 
 export const rivalId = (r: Rival) => `rv:${r.name}`;

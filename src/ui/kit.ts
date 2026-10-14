@@ -96,10 +96,16 @@ export function topBar(title: string, back: (() => void) | null, ...right: Child
 }
 
 /** The plate of a 称号: the grander its grade (黄→赤), the grander the plate. */
-export function ribbon(titleId: string | undefined, cls = '') {
+export function ribbon(titleId: string | undefined, cls = '', place?: number) {
   const t = titleById(titleId);
   if (!t) return null;
-  if (t.season) return h('span', { class: `stt sv-${t.season.tier} sea-${t.season.id} ${cls}`, title: t.how, 'aria-label': t.name, html: seasonPlate(t.season.tier, t.season.label, t.season.rank) });
+  if (t.season) {
+    const tier = t.season.tier.startsWith('shin') ? `shin sv-${t.season.tier}` : t.season.tier;
+    const el = h('span', { class: `stt sv-${tier} sea-${t.season.id} ${cls}`, title: t.how, 'aria-label': place ? `${t.name}（${place}位）` : t.name, html: seasonPlate(t.season.tier, t.season.label, t.season.rank) });
+    // the final place of that season, small at the right end of the plate
+    if (place) el.append(h('span', { class: 'stt-place' }, `${place}位`));
+    return el;
+  }
   return h('span', { class: `ttl t-${t.tone} ${cls}`, title: t.how }, h('b', {}, t.name));
 }
 
@@ -140,8 +146,11 @@ export function tierBadge(t: Tier, size: 'sm' | 'lg' = 'sm', withName = true) {
 const TIER_LOOK: Record<string, [string, string, string]> = {
   novice: ['#d9f5bf', '#6cc04a', '#244f14'], shi: ['#dbe9ff', '#4a86e8', '#173269'], sho: ['#ffd9b5', '#b9692d', '#43200c'],
   go: ['#ffffff', '#b7c1cb', '#46525e'], sei: ['#fff5c8', '#e4aa2a', '#5e3f05'], shin: ['#ffe0a6', '#d61c2a', '#3d040c'],
+  shin2: ['#ffe0a6', '#d61c2a', '#3d040c'], shin3: ['#fff0b0', '#d4142a', '#3a0208'], shin4: ['#fff0b0', '#c80c26', '#360006'], shin5: ['#fff8d0', '#b8001e', '#300004'],
 };
-const TIER_LEVEL: Record<string, number> = { novice: 0, shi: 1, sho: 2, go: 3, sei: 4, shin: 5 };
+const TIER_LEVEL: Record<string, number> = { novice: 0, shi: 1, sho: 2, go: 3, sei: 4, shin: 5, shin2: 5, shin3: 5, shin4: 5, shin5: 5 };
+/** 刻神Ⅰ〜Ⅴ: the step (1–5), 0 for the other ranks. */
+const shinStep = (id: string) => (id === 'shin' ? 1 : /^shin(\d)$/.test(id) ? +id.slice(4) : 0);
 /** The emblem of a rank as SVG (100×100). */
 export function tierEmblem(id: string): string {
   const L = TIER_LEVEL[id] ?? 0;
@@ -183,6 +192,10 @@ export function tierEmblem(id: string): string {
   if (L >= 4) parts.push(`<path d="M36 14 L40 4 L45 11 L50 1 L55 11 L60 4 L64 14 Z" fill="url(#${g}f)" stroke="${lo}" stroke-width="1"/><rect x="36" y="13" width="28" height="4" rx="1" fill="${mid}" stroke="${lo}" stroke-width=".8"/>${L >= 5 ? `<circle cx="50" cy="6" r="2" fill="#fff4c0"/><circle cx="43" cy="11" r="1.4" fill="#ffd27a"/><circle cx="57" cy="11" r="1.4" fill="#ffd27a"/>` : ''}`);
   // 刻神: a star below
   if (L >= 5) parts.push(`<path d="M50 84 L53 91 L60 92 L55 97 L56 100 L50 97 L44 100 L45 97 L40 92 L47 91 Z" fill="${hi}" stroke="${lo}" stroke-width=".8"/>`);
+  // 刻神Ⅰ〜Ⅴ: one gem on the ring for each step, either side of the star
+  const step = shinStep(id);
+  const GEM_AT = [120, 60, 141, 39, 162]; // degrees on the ring (90 = straight down, where the star is)
+  if (step) parts.push(`<g fill="#fff4c0" stroke="${lo}" stroke-width="1.2">${GEM_AT.slice(0, step).map((d) => { const a = (d * Math.PI) / 180, x = 50 + 44 * Math.cos(a), y = 52 + 44 * Math.sin(a); return `<path d="M${x.toFixed(1)} ${(y - 5.5).toFixed(1)} l4 5.5 l-4 5.5 l-4 -5.5 Z"/>`; }).join('')}</g>`);
   return `<svg viewBox="0 0 100 104" aria-hidden="true">${defs}${parts.join('')}</svg>`;
 }
 /** NEW tag (skewed, brass) for things the player has not looked at yet. */

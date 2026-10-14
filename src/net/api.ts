@@ -78,7 +78,7 @@ export const replayLink = (id: string) => `${location.origin}${location.pathname
 /** A replay id from a link (#/replay/xxxxxxxxxx), or null. */
 export const replayFromHash = (hash: string) => { const m = hash.match(/^#\/replay\/([a-z2-9]{10})$/); return m ? m[1] : null; };
 
-interface SubmitRes { rating: number; games: number; wins: number; peak: number; season?: number; sPeak?: number; sGames?: number; sWins?: number; accepted: string[]; refused: string[] }
+interface SubmitRes { rating: number; games: number; wins: number; peak: number; season?: number; sPeak?: number; sGames?: number; sWins?: number; places?: Record<number, number>; accepted: string[]; refused: string[] }
 /**
  * Sends finished rated games; on success the server's numbers replace the local ones. Returns true if in sync.
  * Only one send runs at a time: a call made while one is on its way waits for it and then sends again, so two sends
@@ -111,6 +111,8 @@ async function syncOnce(): Promise<boolean> {
     r.rating = res.rating; r.games = res.games; r.wins = res.wins; r.peak = Math.max(r.peak, res.peak);
     if (res.season !== undefined && res.season === r.season) { r.sPeak = res.sPeak; r.sGames = res.sGames; r.sWins = res.sWins; }
   }
+  // final places of finished seasons (shown at the end of their 季の称号)
+  for (const x of r.seasons ?? []) { const pl = res.places?.[x.season]; if (pl) x.place = pl; }
   store.saveRated();
   return r.outbox.length === 0;
 }
