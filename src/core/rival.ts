@@ -309,6 +309,27 @@ export function rolloutWithReserves(s: GameState, pi: PlayerIndex, depth: number
 
 interface Scored { a: Action; v: number; ahead?: number }
 
+/**
+ * The top players' habits (0.22.0 review, experimental): clock pushers and draws reserved at the earliest time,
+ * no reservation set far ahead, 星読みの占者 played early. STYLE.k = 0 turns it off.
+ */
+export const STYLE = { k: 0, push: 2, draw: 1.5, far: 0.4, seer: 1 };
+function styleBonus(s: GameState, pi: PlayerIndex, a: Action): number {
+  if (!STYLE.k) return 0;
+  const me = s.players[pi];
+  const card = 'hand' in a ? me.hand.find((h) => h.uid === a.hand)?.card : undefined;
+  let b = 0;
+  if (a.t === 'reserve' && card) {
+    const r = resvRange(s, pi, timeCost(s, pi, a));
+    const extra = r ? a.T - r[0] : 0;
+    if (extra === 0 && ['e_reverse', 'stop'].includes(card)) b += STYLE.push;
+    if (extra === 0 && ['insight', 'e_draw'].includes(card)) b += STYLE.draw;
+    b -= Math.max(0, extra - 1) * STYLE.far;
+  }
+  if (a.t === 'play' && card === 'x_seer' && me.time < 20) b += STYLE.seer;
+  return b * STYLE.k;
+}
+
 /** A generator so the battle scene can keep animating between rollouts. */
 export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, mind: RivalMind, rand: () => number = Math.random): Generator<void, RivalMove> {
   if (real.pending) return { action: chooseChoice(real, pi), kind: 'obvious', why: 'only' };
@@ -349,7 +370,7 @@ export function* rivalSteps(real: GameState, pi: PlayerIndex, cfg: RivalCfg, min
   // ---- 2. score at the Lv's depth
   const read = (P.read + (rand() < P.deeper ? 1 : 0)) as 0 | 1 | 2;
   const threatLane = miss === 'threatMiss' ? Math.floor(rand() * RULES.LANES) : -1;
-  const bonus = (a: Action) => intentBonus(base, pi, a) + breakBonus(real, pi, a) + planBonus(cfg.deck, P.plan, base, real, pi, a, oppDeck);
+  const bonus = (a: Action) => intentBonus(base, pi, a) + breakBonus(real, pi, a) + planBonus(cfg.deck, P.plan, base, real, pi, a, oppDeck) + styleBonus(base, pi, a);
   const noise = () => (P.noise ? (rand() * 2 - 1) * P.noise * mind.form : 0);
   let scored: Scored[];
   if (read < 2) {
