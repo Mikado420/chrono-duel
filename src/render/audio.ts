@@ -29,7 +29,8 @@ type Sfx = 'tick' | 'bell' | 'summon' | 'hit' | 'heavyHit' | 'base' | 'destroy' 
  */
 export type SfxSlot = 'select' | 'flip' | 'deny' | 'clock' | 'bell' | 'resv' | 'battle_card' | 'spell' | 'heal' | 'attack' | 'base_destroy' | 'destroy' | 'win' | 'lose' | 'pack';
 /** The files in public/sfx. Add a name here when its files are added. */
-const SFX_FILES: SfxSlot[] = ['select', 'flip', 'deny', 'clock', 'bell', 'battle_card', 'spell', 'heal', 'attack', 'base_destroy', 'destroy', 'pack'];
+// 仮音源（public/sfx の12ファイル）は試したうえで使わないことにした：今は全部合成音。使うときは名前をここに戻す
+const SFX_FILES: SfxSlot[] = [];
 /** Effect → [file, playback rate (pitch), level]. The files are levelled alike, so the menu sounds are played softer. */
 const SFX_OF: Record<Sfx, [SfxSlot, number?, number?]> = {
   select: ['select', 1, 0.6], flip: ['flip', 1, 0.6], draw: ['flip', 0.9, 0.7],
