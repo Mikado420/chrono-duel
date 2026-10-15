@@ -1,5 +1,5 @@
 /**
- * Sound: synthesized effects plus streamed background music. Everything starts silent until the first user gesture
+ * Sound: effects (recorded files in public/sfx when there are any, synthesized otherwise) plus streamed background music. Everything starts silent until the first user gesture
  * (browsers do not allow sound before one), so `unlock` is called from every tap.
  *
  * BGM streams from <audio> elements routed through Web Audio, which gives iOS a working volume and lets two decks
@@ -22,7 +22,33 @@ const FADE = 1.2;
 type Sfx = 'tick' | 'bell' | 'summon' | 'hit' | 'heavyHit' | 'base' | 'destroy' | 'cast' | 'reserve' | 'reveal' | 'draw' | 'select' | 'deny' | 'heal' | 'doom' | 'win' | 'lose' | 'clock' | 'echo'
   | 'tear' | 'burst' | 'flip' | 'rareR' | 'rareE' | 'rareL' | 'coin' | 'charge';
 
+/**
+ * 効果音の12枠. Every effect the game plays goes to one of them, some at another pitch or level (the table below), so a
+ * whole set is 12 files: public/sfx/<枠>.m4a and .ogg (AAC for most browsers, Opus for the rest, as the music).
+ * An effect whose slot has no file yet is synthesized as before, so files can be added one at a time.
+ */
+export type SfxSlot = 'decide' | 'deny' | 'clock' | 'bell' | 'resv' | 'summon' | 'spell' | 'attack' | 'destroy' | 'win' | 'lose' | 'pack';
+/** The slots whose files are in public/sfx. Add a slot here when its files are added. */
+const SFX_FILES: SfxSlot[] = [];
+/** Effect → [slot, playback rate (pitch), level]. */
+const SFX_OF: Record<Sfx, [SfxSlot, number?, number?]> = {
+  select: ['decide'], flip: ['decide', 1.15, 0.7],
+  deny: ['deny'],
+  tick: ['clock', 1.3, 0.5], clock: ['clock'],
+  bell: ['bell'], doom: ['bell', 0.5, 1.2],
+  reserve: ['resv'], echo: ['resv', 1.2, 0.7], reveal: ['resv', 0.85],
+  summon: ['summon'],
+  cast: ['spell'], heal: ['spell', 1.25], charge: ['spell', 0.8], draw: ['spell', 1.5, 0.5],
+  hit: ['attack'], base: ['attack', 0.85], heavyHit: ['attack', 0.7, 1.3],
+  destroy: ['destroy'],
+  win: ['win'], lose: ['lose'],
+  tear: ['pack', 0.8, 0.8], burst: ['pack'], coin: ['pack', 1.6, 0.5], rareR: ['pack', 1.1], rareE: ['pack', 1.25, 1.1], rareL: ['pack', 1.5, 1.25],
+};
+/** Slots heard many times in a row get a little random pitch, so they do not sound mechanical. */
+const SFX_JITTER: Partial<Record<SfxSlot, number>> = { decide: 0.03, clock: 0.04, attack: 0.05, summon: 0.03 };
+
 class Audio {
+  private sfx = new Map<SfxSlot, AudioBuffer>();
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private music: GainNode | null = null;
@@ -53,6 +79,27 @@ class Audio {
     } catch { this.ctx = null; }
     // the scene asked for music before sound was allowed: start it inside this gesture
     if (this.scene) this.startWanted();
+    this.loadSfx();
+  }
+  /** Fetches and decodes the effect files (once, after the first gesture). */
+  private loadSfx() {
+    const c = this.ctx;
+    if (!c) return;
+    const ext = document.createElement('audio').canPlayType('audio/mp4; codecs="mp4a.40.2"') ? 'm4a' : 'ogg';
+    for (const slot of SFX_FILES) {
+      fetch(`./sfx/${slot}.${ext}`)
+        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
+        .then((b) => c.decodeAudioData(b))
+        .then((buf) => { this.sfx.set(slot, buf); })
+        .catch(() => { /* keeps the synthesized sound */ });
+    }
+  }
+  private playFile(buf: AudioBuffer, rate: number, gain: number) {
+    const c = this.ctx!;
+    const s = c.createBufferSource(); s.buffer = buf; s.playbackRate.value = rate;
+    const g = c.createGain(); g.gain.value = gain;
+    s.connect(g).connect(this.master!);
+    s.start();
   }
   /** Whether background music is actually sounding (the title uses this to know if its first tap only woke the sound). */
   get musicOn() { const d = this.decks[this.live]; return !!d && !d.el.paused && this.musicLevel() > 0; }
@@ -194,6 +241,9 @@ class Audio {
   }
   play(name: Sfx) {
     if (!this.ctx || !this.master || this.muted) return;
+    const [slot, rate = 1, gain = 1] = SFX_OF[name];
+    const buf = this.sfx.get(slot);
+    if (buf) { const j = SFX_JITTER[slot] ?? 0; this.playFile(buf, rate * (1 + (Math.random() * 2 - 1) * j), gain); return; }
     switch (name) {
       case 'tick': this.noise(0.03, 0.35, 4200, 0, 8); this.tone(2400, 0.03, 'square', 0.02); break;
       case 'clock': this.tone(300, 0.35, 'sawtooth', 0.06, 0, 90); this.noise(0.3, 0.2, 600); break;
