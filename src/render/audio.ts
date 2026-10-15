@@ -23,29 +23,29 @@ type Sfx = 'tick' | 'bell' | 'summon' | 'hit' | 'heavyHit' | 'base' | 'destroy' 
   | 'tear' | 'burst' | 'flip' | 'rareR' | 'rareE' | 'rareL' | 'coin' | 'charge';
 
 /**
- * 効果音の12枠. Every effect the game plays goes to one of them, some at another pitch or level (the table below), so a
- * whole set is 12 files: public/sfx/<枠>.m4a and .ogg (AAC for most browsers, Opus for the rest, as the music).
- * An effect whose slot has no file yet is synthesized as before, so files can be added one at a time.
+ * 効果音のファイル: public/sfx/<名前>.m4a and .ogg (AAC for most browsers, Opus for the rest, as the music), cut to the
+ * sound and levelled to the same loudness when they are added. Every effect the game plays goes to one of them, some
+ * at another pitch or level (the table below). An effect whose file is missing is synthesized as before.
  */
-export type SfxSlot = 'decide' | 'deny' | 'clock' | 'bell' | 'resv' | 'summon' | 'spell' | 'attack' | 'destroy' | 'win' | 'lose' | 'pack';
-/** The slots whose files are in public/sfx. Add a slot here when its files are added. */
-const SFX_FILES: SfxSlot[] = [];
-/** Effect → [slot, playback rate (pitch), level]. */
+export type SfxSlot = 'select' | 'flip' | 'deny' | 'clock' | 'bell' | 'resv' | 'battle_card' | 'spell' | 'heal' | 'attack' | 'base_destroy' | 'destroy' | 'win' | 'lose' | 'pack';
+/** The files in public/sfx. Add a name here when its files are added. */
+const SFX_FILES: SfxSlot[] = ['select', 'flip', 'deny', 'clock', 'bell', 'battle_card', 'spell', 'heal', 'attack', 'base_destroy', 'destroy', 'pack'];
+/** Effect → [file, playback rate (pitch), level]. The files are levelled alike, so the menu sounds are played softer. */
 const SFX_OF: Record<Sfx, [SfxSlot, number?, number?]> = {
-  select: ['decide'], flip: ['decide', 1.15, 0.7],
-  deny: ['deny'],
-  tick: ['clock', 1.3, 0.5], clock: ['clock'],
+  select: ['select', 1, 0.6], flip: ['flip', 1, 0.6], draw: ['flip', 0.9, 0.7],
+  deny: ['deny', 1, 0.7],
+  tick: ['clock', 1.25, 0.4], clock: ['clock', 1, 0.8],
   bell: ['bell'], doom: ['bell', 0.5, 1.2],
   reserve: ['resv'], echo: ['resv', 1.2, 0.7], reveal: ['resv', 0.85],
-  summon: ['summon'],
-  cast: ['spell'], heal: ['spell', 1.25], charge: ['spell', 0.8], draw: ['spell', 1.5, 0.5],
-  hit: ['attack'], base: ['attack', 0.85], heavyHit: ['attack', 0.7, 1.3],
+  summon: ['battle_card'],
+  cast: ['spell'], charge: ['spell', 0.8], heal: ['heal'],
+  hit: ['attack'], base: ['base_destroy'], heavyHit: ['base_destroy', 0.85, 1.3],
   destroy: ['destroy'],
   win: ['win'], lose: ['lose'],
   tear: ['pack', 0.8, 0.8], burst: ['pack'], coin: ['pack', 1.6, 0.5], rareR: ['pack', 1.1], rareE: ['pack', 1.25, 1.1], rareL: ['pack', 1.5, 1.25],
 };
-/** Slots heard many times in a row get a little random pitch, so they do not sound mechanical. */
-const SFX_JITTER: Partial<Record<SfxSlot, number>> = { decide: 0.03, clock: 0.04, attack: 0.05, summon: 0.03 };
+/** Sounds heard many times in a row get a little random pitch, so they do not sound mechanical. */
+const SFX_JITTER: Partial<Record<SfxSlot, number>> = { select: 0.03, flip: 0.04, clock: 0.04, attack: 0.05, battle_card: 0.03 };
 
 class Audio {
   private sfx = new Map<SfxSlot, AudioBuffer>();
