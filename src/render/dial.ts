@@ -270,15 +270,91 @@ export class Dial extends Container {
     if (!animate || from === t) { put(t); return; }
     const steps = Math.abs(t - from);
     this.kick += Math.min(steps, 12) * 0.05;
-    const dur = Math.min(900, 160 + steps * 90);
+    // the hand glides; the stretch it covers glows in its colour and each tick lights as it is passed
+    const dur = Math.min(1000, 380 + steps * 70);
+    const col = pi === 0 ? COLORS.you : COLORS.foe;
+    const trail = new Graphics(); trail.blendMode = 'add';
+    if (this.motion) this.addChildAt(trail, this.getChildIndex(this.ticks) + 1);
     let last = Math.round(from);
     await this.tw.run(dur, (k) => {
       const v = from + (t - from) * k;
       put(v);
       const r = Math.round(v);
-      if (r !== last) { last = r; onStep?.(); }
+      if (r !== last) { last = r; onStep?.(); if (this.motion) void this.flashTick(r, col); }
+      if (!this.motion) return;
+      const a0 = this.angleOf(Math.min(from, v)), a1 = this.angleOf(Math.max(from, v)), ah = this.angleOf(v);
+      trail.clear().arc(this.cx, this.cy, this.R + 13, a0, a1).stroke({ color: col, width: 24, alpha: 0.32 });
+      const lead = t > from ? Math.max(a0, ah - 0.08) : ah;
+      trail.arc(this.cx, this.cy, this.R + 13, lead, t > from ? ah : Math.min(a1, ah + 0.08)).stroke({ color: 0xffffff, width: 24, alpha: 0.35 });
+      const tp = this.point(v, this.R + 13);
+      trail.circle(tp.x, tp.y, 12).fill({ color: col, alpha: 0.5 });
     }, ease.inOutCubic);
     put(t);
+    const n = this.handNum[pi];
+    void this.tw.run(260, (k) => n.scale.set(1.6 - 0.6 * k), ease.outBack);
+    if (!this.motion) { trail.destroy(); return; }
+    const tip = this.point(t, this.tipR(pi));
+    const ring = new Graphics(); ring.blendMode = 'add'; this.addChild(ring);
+    void this.tw.run(480, (k) => { ring.clear().circle(tip.x, tip.y, 18 + 52 * k).stroke({ color: col, width: 5 * (1 - k) + 0.5, alpha: 1 - k }); }, ease.outCubic).then(() => ring.destroy());
+    void this.tw.to(trail, { alpha: 0 }, 700).then(() => trail.destroy());
+  }
+  /** A tick mark lights up for a moment. */
+  flashTick(t: number, color: number) {
+    const p1 = this.point(t, this.R + 26), p2 = this.point(t, this.R);
+    const g = new Graphics(); g.blendMode = 'add';
+    g.moveTo(p1.x, p1.y).lineTo(p2.x, p2.y).stroke({ color, width: 9, alpha: 0.5 }).moveTo(p1.x, p1.y).lineTo(p2.x, p2.y).stroke({ color: 0xffffff, width: 3 });
+    g.circle(p2.x, p2.y, 7).fill({ color, alpha: 0.6 });
+    this.addChild(g);
+    return this.tw.to(g, { alpha: 0 }, 520).then(() => g.destroy());
+  }
+  /** 鐘: the bell swings and sound waves leave it. */
+  async ringBell(at: number) {
+    const p = this.point(at, this.R - 40);
+    const g = this.children.find((c) => c instanceof Graphics && Math.abs(c.x - p.x) < 1 && Math.abs(c.y - p.y) < 1) as Graphics | undefined;
+    const halo = new Graphics(); halo.blendMode = 'add'; this.addChild(halo);
+    const waves: Promise<void>[] = [];
+    for (let i = 0; i < 3; i++) {
+      const w = new Graphics(); w.x = p.x; w.y = p.y; w.blendMode = 'add'; this.addChild(w);
+      waves.push(this.tw.wait(i * 170).then(() => this.tw.run(900, (k) => {
+        const r = 16 + k * 90, st = { color: COLORS.brass, width: 4 * (1 - k) + 1, alpha: 1 - k };
+        w.clear().arc(0, 0, r, -Math.PI * 0.95, -Math.PI * 0.6).stroke(st).arc(0, 0, r, -Math.PI * 0.4, -Math.PI * 0.05).stroke(st);
+      }, ease.outCubic)).then(() => w.destroy()));
+    }
+    if (g) { g.pivot.set(0, -9); g.y = p.y - 9; g.scale.set(1.5); g.tint = 0xffe0a0; }
+    await this.tw.run(1400, (k) => {
+      const t = k * 1.4;
+      if (g) g.rotation = Math.sin(t * 16) * 0.55 * Math.exp(-2.6 * t);
+      halo.clear().circle(p.x, p.y, 26).fill({ color: COLORS.brass, alpha: 0.35 * (1 - k) });
+    });
+    if (g) { g.rotation = 0; g.scale.set(1); g.tint = 0xffffff; g.pivot.set(0, 0); g.y = p.y; }
+    halo.destroy();
+    await Promise.all(waves);
+  }
+  /** 終焉: the face cracks from where doom begins; the cracks stay, faint. */
+  crackDoom(level: number, ms = 650) {
+    const o = this.point(Math.max(this.doomFrom, 1), this.R + 13);
+    const n = level === 1 ? 6 : 3, len = level === 1 ? 160 : 110;
+    const paths: { x: number; y: number }[][] = [];
+    for (let i = 0; i < n; i++) {
+      let a = Math.PI * 0.5 + (i / n) * Math.PI * 2 + Math.random() * 0.5, px = 0, py = 0;
+      const pts = [{ x: 0, y: 0 }];
+      const L = len * (0.6 + Math.random() * 0.5);
+      for (let d = 0; d < L; d += 14) { a += (Math.random() - 0.5) * 0.8; px += Math.cos(a) * 14; py += Math.sin(a) * 14; pts.push({ x: px, y: py }); }
+      paths.push(pts);
+    }
+    const g = new Graphics(); g.x = o.x; g.y = o.y;
+    this.addChildAt(g, this.getChildIndex(this.ticks) + 1);
+    const draw = (k: number) => {
+      g.clear();
+      for (const pts of paths) {
+        const m = Math.max(1, Math.floor(pts.length * k));
+        g.moveTo(0, 0); for (let i = 1; i < m; i++) g.lineTo(pts[i].x, pts[i].y);
+        g.stroke({ color: COLORS.doom, width: 7, alpha: 0.4 });
+        g.moveTo(0, 0); for (let i = 1; i < m; i++) g.lineTo(pts[i].x, pts[i].y);
+        g.stroke({ color: 0xffd0c0, width: 2, alpha: 0.9 });
+      }
+    };
+    return { at: o, done: this.tw.run(ms, draw, ease.outCubic).then(() => this.tw.to(g, { alpha: 0.35 }, 800)) };
   }
   handTip(pi: PlayerIndex) { return this.point(this.handT[pi], this.tipR(pi)); }
   tipR(pi: PlayerIndex) { return pi === 0 ? this.R - 4 : this.R - 62; }

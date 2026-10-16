@@ -22,6 +22,7 @@ import type { Fx } from './fx';
 import { COLORS, FONTS } from './theme';
 import { ease, type Tweener } from './tween';
 import { Button, label } from './ui';
+import { BattleFx, MINUS } from './battleFx';
 import { HandCardView, Hud, UnitView, UNIT_H, UNIT_W, makeBack, makeFace } from './views';
 
 export interface BattleConfig {
@@ -91,6 +92,9 @@ type Mode =
 export class BattleScene extends Container {
   private s!: GameState;
   private dial: Dial;
+  private bfx: BattleFx;
+  /** Set while the finishing blow holds the camera in; the hit zooms back out. */
+  private zoomBack: (() => Promise<void>) | null = null;
   private board = new Container();
   private slotG = new Graphics();
   private units = new Container();
@@ -168,6 +172,7 @@ export class BattleScene extends Container {
   constructor(private tw: Tweener, private fx: Fx, private ticker: Ticker, private cfg: BattleConfig, private onEnd: (r: BattleResult) => void, private onMenu: () => void, private onLog: (text: string, side: PlayerIndex | -1) => void = () => {}, private onLogToggle: () => void = () => {}) {
     super();
     this.dial = new Dial(tw, cfg.looks?.dial, !cfg.looks?.still);
+    this.bfx = new BattleFx(tw, fx, this, () => (this.parent?.parent as Container | null) ?? null);
     this.matLayer.addChild(this.foeMat, this.foeMatMask, this.myMat, this.myMatMask);
     this.foeMat.mask = this.foeMatMask; this.myMat.mask = this.myMatMask;
     if (isArtMat(cfg.looks?.mat)) void this.loadMyMat(cfg.looks.mat);
@@ -1466,9 +1471,9 @@ export class BattleScene extends Container {
         audio.play('bell');
         const p = this.dial.point(e.at, this.dial.R - 40);
         this.dial.tfx?.bell(e.at); this.matFx?.bell();
-        void fx.ring(p.x, p.y, COLORS.brass, 8, 120, 700, 6);
-        void fx.floatText(p.x, p.y - 20, '鐘', COLORS.brass, 30, 40, 800);
-        await tw.wait(200);
+        void this.dial.ringBell(e.at);
+        void fx.floatText(p.x, p.y - 30, '鐘', COLORS.brass, 30, 40, 900);
+        await tw.wait(350);
         break;
       }
       case 'draw': {
@@ -1500,7 +1505,14 @@ export class BattleScene extends Container {
       }
       case 'summon': {
         const to = { x: LANE_X[e.lane], y: ROW_Y[e.pi] };
-        if ((e.pi === 1 || this.watching) && e.fromHand >= 0) {
+        const legend = e.fromHand >= 0 && cardDef(e.unit.card).rarity === 'L' && !tw.reduced;
+        if (legend) {
+          // 伝説: the cut-in, then the card comes down onto its lane
+          await this.bfx.legend(e.unit.card, e.pi === 0 ? COLORS.you : COLORS.foe);
+          const s = makeFace(e.unit.card);
+          await this.fly(s, { x: 360, y: e.pi === 0 ? 260 : 900 }, to, 1.1, 0.52, 260);
+          s.destroy();
+        } else if ((e.pi === 1 || this.watching) && e.fromHand >= 0) {
           const s = await this.present(e.unit.card, this.flyFrom ?? (e.pi === 1 ? FOE_HAND_POS : { x: 360, y: L.hand }), true);
           await this.fly(s, { x: s.x, y: s.y }, to, s.scale.x, 0.52, 260);
           s.destroy();
@@ -1518,6 +1530,7 @@ export class BattleScene extends Container {
         v.scale.set(1.25); v.alpha = 0.4;
         audio.play('summon');
         await Promise.all([tw.to(v.scale, { x: 1, y: 1 }, 220, ease.inCubic), tw.to(v, { alpha: 1 }, 160)]);
+        if (legend) this.bfx.legendLand(to.x, to.y);
         void fx.shake(5, 180);
         void fx.ring(to.x, to.y + 80, e.pi === 0 ? COLORS.you : COLORS.foe, 20, 150, 450, 6);
         fx.burst(to.x, to.y + 100, COLORS.brass, 16, 200, { size: 3, grav: 200, life: 0.5 });
@@ -1526,6 +1539,7 @@ export class BattleScene extends Container {
         break;
       }
       case 'cast': {
+        if (e.fromHand >= 0 && e.card !== HIDDEN && cardDef(e.card).rarity === 'L') await this.bfx.legend(e.card, e.pi === 0 ? COLORS.you : COLORS.foe);
         audio.play('cast');
         const s = e.pi === 1 ? await this.present(e.card, this.flyFrom ?? FOE_HAND_POS, true) : await this.present(e.card, this.flyFrom ?? { x: 360, y: L.hand }, this.watching);
         void fx.burst(360, 600, 0xc9a8ff, 30, 320, { shape: 'spark', grav: 0, life: 0.6 });
@@ -1606,24 +1620,37 @@ export class BattleScene extends Container {
         const to = this.targetPoint(e.target);
         const ox = v.x, oy = v.y;
         const dx = to.x - ox, dy = to.y - oy;
+        const up = e.pi === 0 ? 1 : -1;
+        // the blow that ends the game: the screen darkens and closes in while the attacker comes slowly
+        const lethal = !e.target && !!this.s.over && this.s.over.winner === e.pi && this.s.players[other(e.pi)].hp <= 0 && !tw.reduced;
+        let shade: ReturnType<BattleFx['shade']> | null = null;
+        if (lethal) {
+          shade = this.bfx.shade(0.45, 300);
+          this.zoomBack = await this.bfx.zoomHold({ x: (ox + to.x) / 2, y: (oy + to.y) / 2 }, 0.1, 300);
+        }
         this.units.setChildIndex(v, this.units.children.length - 1);
-        await tw.run(140, (k) => { v.y = oy - (e.pi === 0 ? 1 : -1) * 18 * k; v.rotation = (e.pi === 0 ? -1 : 1) * 0.04 * k; }, ease.outCubic);
-        await tw.run(150, (k) => { v.x = ox + dx * 0.72 * k; v.y = oy + dy * 0.72 * k; }, ease.inCubic);
+        void this.bfx.charge(ox, oy, e.pi === 0 ? COLORS.you : COLORS.foe);
+        await tw.run(lethal ? 300 : 230, (k) => { v.y = oy + up * 30 * k; v.scale.set(1 + 0.06 * k); v.rotation = -up * 0.05 * k; }, ease.outCubic);
+        await tw.run(lethal ? 520 : 100, (k) => { v.x = ox + dx * 0.74 * k; v.y = oy + up * 30 + (dy * 0.74 - up * 30) * k; }, ease.inCubic);
         audio.play(e.target ? 'hit' : 'base');
-        fx.burst(ox + dx * 0.8, oy + dy * 0.8, 0xffd29a, 22, 360, { shape: 'spark', grav: 100, life: 0.45 });
-        void fx.shake(e.target ? 8 : 14, 240);
-        await tw.run(220, (k) => { v.x = ox + dx * 0.72 * (1 - k); v.y = oy + dy * 0.72 * (1 - k); v.rotation *= 1 - k; }, ease.outCubic);
-        v.x = ox; v.y = oy; v.rotation = 0;
+        const hx = ox + dx * 0.8, hy = oy + dy * 0.8;
+        fx.burst(hx, hy, 0xffd29a, 22, 360, { shape: 'spark', grav: 100, life: 0.45 });
+        if (!lethal) { this.bfx.impact(e.target ? to.x : hx, e.target ? to.y + 30 : hy, !e.target); void fx.shake(e.target ? 8 : 14, 240); }
+        await tw.run(240, (k) => { v.x = ox + dx * 0.74 * (1 - k); v.y = oy + dy * 0.74 * (1 - k); v.rotation *= 1 - k; v.scale.set(1.06 - 0.06 * k); }, ease.outCubic);
+        v.x = ox; v.y = oy; v.rotation = 0; v.scale.set(1);
+        if (shade) void shade.off(400);
         break;
       }
       case 'dmgUnit': {
         const v = this.viewAt(e.pi, e.lane);
         if (!v) break;
         v.setStats(v.atk, e.hp);
-        void v.flash(tw, 0xff4a2a);
-        void fx.floatText(v.x, v.y - 30, `-${e.amount}`, 0xff8f6b, 46);
-        await tw.run(200, (k) => { v.x = LANE_X[e.lane] + Math.sin(k * 30) * 6 * (1 - k); });
-        v.x = LANE_X[e.lane];
+        void v.flash(tw, 0xffffff);
+        void this.bfx.stamp(v.x + 70, v.y - 50, `−${e.amount}`, 60);
+        // knocked back, away from the other side
+        const back = e.pi === 1 ? -1 : 1, y0 = ROW_Y[e.pi];
+        await tw.run(380, (k) => { v.y = y0 + back * 24 * Math.sin(Math.PI * Math.min(1, k * 1.6)) * (1 - k * 0.4); }, ease.outCubic);
+        v.y = y0;
         break;
       }
       case 'dmgBase': {
@@ -1632,13 +1659,33 @@ export class BattleScene extends Container {
         audio.play(e.amount >= 4 ? 'heavyHit' : 'base');
         if (!this.watching && (e.amount >= 4 || e.hp <= 0)) haptics.big('hit');
         const c = h.center;
+        const col = e.pi === 0 ? COLORS.you : COLORS.foe;
         if (e.amount >= 5) { this.dial.tfx?.hit(); if (e.pi === 0) this.matFx?.hit(); }
-        void fx.floatText(c.x + 60, c.y + (e.pi === 1 ? 40 : -30), `-${e.amount}`, e.doom ? COLORS.doom : 0xff8f6b, 56, 60);
-        if (e.doom) void fx.floatText(c.x + 150, c.y + (e.pi === 1 ? 60 : -10), `終焉+${this.s.doom}`, COLORS.doom, 22, 40, 900);
-        fx.burst(c.x, c.y, e.pi === 0 ? COLORS.you : COLORS.foe, 26, 300, { shape: 'shard', life: 0.7 });
-        void fx.flash(e.pi === 0 ? 0xff2200 : 0xffaa55, e.pi === 0 ? 0.22 : 0.12, 280);
-        void fx.shake(8 + e.amount * 2, 320);
-        await h.hit(tw);
+        if (e.doom) void fx.floatText(c.x + 170, c.y + (e.pi === 1 ? 70 : -10), `終焉+${this.s.doom}`, COLORS.doom, 22, 40, 900);
+        if (e.hp <= 0 && !tw.reduced) {
+          // the base breaks: white out, a long stop, the medal shatters
+          void fx.flash(0xffffff, 0.9, 500);
+          await this.bfx.hitstop(260);
+          void this.zoomBack?.(); this.zoomBack = null;
+          h.medal.visible = false;
+          fx.burst(c.x, c.y, col, 70, 520, { shape: 'shard', grav: 500, life: 1.3, size: 8 });
+          fx.burst(c.x, c.y, 0xffffff, 30, 300, { life: 0.8 });
+          void fx.ring(c.x, c.y, 0xffffff, 20, 400, 700, 12);
+          void fx.shake(26, 500);
+          await tw.wait(500);
+          break;
+        }
+        this.bfx.impact(c.x, c.y, true, e.doom ? COLORS.doom : MINUS);
+        void this.bfx.edge(e.pi === 0 ? 0xff2200 : MINUS, e.pi === 0 ? 1 : 0.8);
+        fx.burst(c.x, c.y, col, 30, 340, { shape: 'shard', life: 0.8 });
+        void fx.shake(8 + e.amount * 2, 340);
+        const from = e.hp + e.amount;
+        h.setHp(from);
+        void tw.run(420, (k) => h.setHp(Math.round(from - e.amount * k)));
+        void this.bfx.stamp(c.x + 110, c.y + (e.pi === 1 ? 50 : -40), `−${e.amount}`, 84, e.doom ? COLORS.doom : MINUS);
+        await tw.run(300, (k) => { h.medal.x = 44 - 16 * Math.sin(Math.PI * k); h.medal.scale.set(1 - 0.15 * Math.sin(Math.PI * k)); }, ease.outCubic);
+        h.medal.x = 44; h.medal.scale.set(1);
+        await tw.wait(150);
         break;
       }
       case 'heal': {
@@ -1757,15 +1804,26 @@ export class BattleScene extends Container {
       }
       case 'doom': {
         audio.play('doom');
+        // time stands still, the face cracks where doom begins, red light leaks out
+        const first = e.level === 1 && !tw.reduced;
+        const sh = first ? this.bfx.shade(0.6, 260) : null;
+        if (first) await tw.wait(500);
+        const cr = this.dial.crackDoom(e.level, first ? 650 : 400);
+        void fx.shake(first ? 6 : 4, first ? 600 : 300);
+        await tw.wait(first ? 650 : 400);
+        void fx.flash(COLORS.doom, first ? 0.45 : 0.3, 600);
+        fx.burst(cr.at.x, cr.at.y, 0xff5a3a, first ? 40 : 20, 320, { shape: 'shard', life: 0.9 });
         this.dial.setDoom(e.level);
         this.dial.tfx?.doom(e.level); this.matFx?.doom(e.level);
-        void fx.flash(COLORS.doom, 0.3, 700);
+        void sh?.off(500);
         await fx.banner(e.level === 1 ? '終焉の刻' : `終焉 ${e.level}段階`, `ユニットが拠点に与えるダメージ +${e.level}`, COLORS.doom, 360, 640);
         break;
       }
       case 'end': {
         audio.play(e.winner === 0 || this.watching ? 'win' : 'lose');
         if (!this.watching) haptics.big(e.winner === 0 ? 'win' : 'lose');
+        if (this.watching) await this.bfx.verdict('draw', e.winner === -1 ? '引き分け' : '決着');
+        else await this.bfx.verdict(e.winner === 0 ? 'win' : e.winner === 1 ? 'lose' : 'draw', e.winner === 0 ? '勝利' : e.winner === 1 ? '敗北' : '引き分け');
         break;
       }
     }
