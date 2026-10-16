@@ -299,11 +299,14 @@ export class Screens {
         h('div', { class: 'pedestal' },
           h('button', { class: 'feat', 'aria-label': `看板カード ${favDef.name}`, onclick: () => this.cardDetail(fav) }, h('span', {}, h('img', { src: cardImg(fav), alt: favDef.name }))),
           h('div', { class: 'feat-name' }, h('small', {}, '看板カード'), h('b', {}, favDef.name)))),
-      h('div', { class: 'home-cta2' },
-        h('button', { class: 'cta-main', onclick: () => { audio.play('summon'); this.clear(); this.host.startBattle(quick, PRESET_DECKS[Math.floor(Math.random() * PRESET_DECKS.length)], aiLv()); } },
-          h('b', {}, 'バトル'),
-          h('small', {}, `フリー対戦 ・ ${quick.name} ・ AI Lv${aiLv()}`)),
-        h('button', { class: 'cta-side', style: `--tier:${tr.color}`, onclick: () => this.rated() }, 'レート戦', h('small', {}, `${tr.name} ${fmt(rt.rating)}`))),
+      // the two ways to play, side by side at the same size: レート戦 (gold) and フリー対戦 (blue)
+      h('div', { class: 'home-cta2 pair' },
+        h('button', { class: 'cta-main', onclick: () => this.rated() },
+          h('b', {}, 'レート戦'),
+          h('small', {}, `${tr.name} ${fmt(rt.rating)}`)),
+        h('button', { class: 'cta-main free', onclick: () => { audio.play('summon'); this.clear(); this.host.startBattle(quick, PRESET_DECKS[Math.floor(Math.random() * PRESET_DECKS.length)], aiLv()); } },
+          h('b', {}, 'フリー対戦'),
+          h('small', {}, `AI Lv${aiLv()} ・ ${quick.name}`))),
     );
     this.hub('home', body);
     const timer = window.setInterval(() => { if (!carousel.isConnected) { clearInterval(timer); return; } setSlide(slide + 1); }, 5000);
@@ -484,7 +487,7 @@ export class Screens {
     const r = store.record, o = store.onlineRecord;
     this.hub('battle', h('div', { class: 'tab-page' },
       h('div', { class: 'mode-head' }, h('i', {}), h('div', {}, h('b', {}, 'バトル'), h('small', {}, 'BATTLE')), h('i', {})),
-      h('div', { class: 'modes' },
+      h('div', { class: 'modes rows' },
         tile('レート戦', 'RATED', E.rated, `${tr.tier.name} ・ ${fmt(rt.rating)}`, () => this.rated()),
         tile('フリー対戦', 'FREE', E.free, `AIの強さを選んで練習 ・ ${r.win}勝${r.lose}敗`, () => this.setup()),
         tile('フレンド対戦', 'FRIEND', E.friend, flow.available ? `あいことば・招待・観戦 ・ ${o.win}勝${o.lose}敗` : '準備中', flow.available ? () => this.onlineMenu() : null),
