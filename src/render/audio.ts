@@ -18,7 +18,11 @@ const bgmUrl = (t: string) => {
   return `./bgm/${t}.${bgmExt}`;
 };
 const FADE = 1.2;
-/** iPhone / iPad (iPadOS reports itself as a Mac with touch): where the music comes back too fast after the background. */
+/**
+ * iPhone / iPad (iPadOS reports itself as a Mac with touch). There, music routed through Web Audio comes back too fast
+ * and too high after the app was in the background, so the <audio> elements play on their own instead. iOS ignores an
+ * element's volume, so the music level there is only on (any level above 0) or off.
+ */
 const IOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
 type Sfx = 'tick' | 'bell' | 'summon' | 'hit' | 'heavyHit' | 'base' | 'destroy' | 'cast' | 'reserve' | 'reveal' | 'draw' | 'select' | 'deny' | 'heal' | 'doom' | 'win' | 'lose' | 'clock' | 'echo'
@@ -63,16 +67,12 @@ class Audio {
   private nextBattle = '';
   private warmed = new Set<string>();
   private hidden = false;
-  /** Been in the background since the sound was built: rebuild it on the next tap. */
-  private stale = false;
   volume = 0.7;
   bgmVolume = 0.5;
   muted = false;
 
   unlock() {
     if (this.ctx) {
-      // first tap after coming back from the background: rebuild the sound inside the gesture (see rebuild)
-      if (this.stale && !this.hidden) { this.stale = false; this.rebuild(); return; }
       void this.ctx.resume();
       // a play() refused before (no gesture yet) gets another try inside this one
       if (this.scene && !this.hidden && this.decks[this.live]?.el.paused) this.startWanted();
@@ -96,35 +96,6 @@ class Audio {
       this.music.connect(this.ctx.destination);
       return true;
     } catch { this.ctx = null; return false; }
-  }
-  /**
-   * Phones (iOS above all) may change the audio hardware's rate while the page is in the background; music routed
-   * through the old context then plays too fast and too high. Coming back, the music carries on at once on the old
-   * context; the first tap after that (a gesture, so a new context may start sounding and the track may be played)
-   * builds the sound afresh and carries on the track from where it was.
-   */
-  private rebuild() {
-    const live = this.decks[this.live];
-    const track = live?.track ?? '', at = live && !Number.isNaN(live.el.currentTime) ? live.el.currentTime : 0;
-    for (const d of this.decks) { d.el.pause(); d.el.removeAttribute('src'); d.el.load(); try { d.g.disconnect(); } catch { /* gone */ } }
-    this.decks = []; this.live = 0;
-    const old = this.ctx;
-    this.ctx = null;
-    void old?.close().catch(() => {});
-    if (!this.makeCtx()) return;
-    this.sfx.clear();
-    this.loadSfx();
-    if (!this.scene) return;
-    if (track && (this.scene !== 'battle' || track === this.lastBattle)) {
-      const d = this.deck(0);
-      d.track = track;
-      d.el.src = bgmUrl(track);
-      d.el.loop = this.scene !== 'battle';
-      const seek = () => { try { if (Math.abs(d.el.currentTime - at) > 0.5) d.el.currentTime = at; } catch { /* not seekable yet */ } };
-      if (at > 0) { d.el.addEventListener('loadedmetadata', seek, { once: true }); d.el.addEventListener('playing', seek, { once: true }); }
-      d.g.gain.setValueAtTime(1, this.ctx!.currentTime);
-      this.playEl(d.el);
-    } else this.startWanted();
   }
   /** Fetches and decodes the effect files (once, after the first gesture). */
   private loadSfx() {
@@ -155,6 +126,7 @@ class Audio {
   private applyMusicLevel() {
     if (!this.music || !this.ctx) return;
     this.music.gain.setTargetAtTime(this.musicLevel(), this.ctx.currentTime, 0.05);
+    if (IOS) for (const d of this.decks) d.el.muted = this.musicLevel() <= 0;
     if (this.musicLevel() > 0 && this.scene) this.startWanted();
   }
 
@@ -208,7 +180,8 @@ class Audio {
       el.setAttribute('playsinline', '');
       const g = this.ctx!.createGain();
       g.gain.value = 0;
-      this.ctx!.createMediaElementSource(el).connect(g).connect(this.music!);
+      if (IOS) el.muted = this.musicLevel() <= 0;
+      else this.ctx!.createMediaElementSource(el).connect(g).connect(this.music!);
       const d = { el, g, track: '' };
       el.addEventListener('ended', () => { if (this.decks[this.live] === d && this.scene === 'battle') this.crossfadeTo(this.pick('battle'), true); });
       this.decks.push(d);
@@ -228,7 +201,8 @@ class Audio {
       old.g.gain.setValueAtTime(old.g.gain.value, now);
       old.g.gain.linearRampToValueAtTime(0, now + FADE * 0.8);
       const el = old.el;
-      setTimeout(() => { if (this.decks[this.live]?.el !== el) el.pause(); }, FADE * 1000 + 100);
+      if (IOS) el.pause(); // no fade without Web Audio: cut over
+      else setTimeout(() => { if (this.decks[this.live]?.el !== el) el.pause(); }, FADE * 1000 + 100);
     }
     d.track = track;
     d.el.src = bgmUrl(track);
@@ -256,7 +230,7 @@ class Audio {
   }
   private onVisibility() {
     this.hidden = document.visibilityState === 'hidden';
-    if (this.hidden) { for (const d of this.decks) d.el.pause(); this.stale = IOS; return; }
+    if (this.hidden) { for (const d of this.decks) d.el.pause(); return; }
     this.startWanted();
   }
 
