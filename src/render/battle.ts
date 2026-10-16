@@ -173,7 +173,7 @@ export class BattleScene extends Container {
   constructor(private tw: Tweener, private fx: Fx, private ticker: Ticker, private cfg: BattleConfig, private onEnd: (r: BattleResult) => void, private onMenu: () => void, private onLog: (text: string, side: PlayerIndex | -1) => void = () => {}, private onLogToggle: () => void = () => {}) {
     super();
     this.dial = new Dial(tw, cfg.looks?.dial, !cfg.looks?.still);
-    this.bfx = new BattleFx(tw, fx, this, () => (this.parent?.parent as Container | null) ?? null);
+    this.bfx = new BattleFx(tw, fx, () => (this.parent?.parent as Container | null) ?? null);
     this.dial.onPlan = () => { if (this.mode.k !== 'resv') this.openPlan(); };
     this.matLayer.addChild(this.foeMat, this.foeMatMask, this.myMat, this.myMatMask);
     this.foeMat.mask = this.foeMatMask; this.myMat.mask = this.myMatMask;
@@ -250,6 +250,7 @@ export class BattleScene extends Container {
 
   override destroy() {
     this.destroyed_ = true;
+    this.bfx.resetCam();
     this.unsubs.forEach((f) => f());
     this.unsubs = [];
     this.ticker.remove(this.tickFn);
@@ -1455,6 +1456,8 @@ export class BattleScene extends Container {
         try { await this.animate(e); } catch (err) { console.error('animation failed', e.e, err); }
       }
     } finally { this.animating--; }
+    // a held zoom whose finishing hit never came still goes back
+    if (this.zoomBack) { void this.zoomBack(); this.zoomBack = null; }
     this.flyFrom = null;
     if (!this.destroyed_) this.syncAll();
   }

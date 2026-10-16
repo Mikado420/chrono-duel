@@ -52,8 +52,11 @@ async function boot() {
   const tw = new Tweener(app.ticker);
   const backdrop = new Backdrop(app.ticker);
   const world = new Container();
+  // world (fits the screen) → cam (the battle's zoom punches) → shake (screen shake); effects never touch the fit
+  const cam = new Container();
   const shake = new Container();
-  world.addChild(shake);
+  world.addChild(cam);
+  cam.addChild(shake);
   app.stage.addChild(backdrop, world);
   const fx = new Fx(tw, app.ticker, shake);
 
@@ -474,7 +477,8 @@ async function boot() {
   });
 
   if (location.hash === '#debug' || /[?&]debug\b/.test(location.search)) (window as unknown as { __cd: unknown }).__cd = { battle: () => battle?.debug(), app, screens, audio };
-  window.addEventListener('pointerdown', () => audio.unlock(), { once: true });
+  // every tap: the first allows sound at all, later ones restart it after the page was in the background
+  for (const ev of ['pointerdown', 'touchend', 'click']) window.addEventListener(ev, () => audio.unlock(), { passive: true });
   document.getElementById('loading')?.remove();
   const invite = codeFromHash(location.hash);
   const rid = replayFromHash(location.hash);

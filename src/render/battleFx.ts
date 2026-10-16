@@ -14,9 +14,9 @@ export function bigText(s: string, size: number, color: number, font: string = F
   return t;
 }
 
-/** Screen-level effects for one battle. `world` is the container the whole board is scaled in (zoom punches move it). */
+/** Screen-level effects for one battle. `world` gives the camera container (main.ts: world → cam → shake → board). */
 export class BattleFx {
-  constructor(private tw: Tweener, private fx: Fx, private board: Container, private world: () => Container | null) {}
+  constructor(private tw: Tweener, private fx: Fx, private world: () => Container | null) {}
   private get on() { return !this.tw.reduced; }
 
   /** The real clock, so a hit can freeze every tween for a moment. */
@@ -28,25 +28,43 @@ export class BattleFx {
     this.tw.speed = sp;
   }
 
+  /**
+   * The camera: zooms add up (a punch on top of a held zoom) around the latest focus point, and when none is left the
+   * camera is exactly back at rest. Nothing is captured and restored, so overlapping effects cannot leave it shifted.
+   */
+  private zooms = new Set<{ a: number }>();
+  private focus = { x: 360, y: 640 };
+  private applyCam() {
+    const c = this.world();
+    if (!c) return;
+    let f = 1; for (const z of this.zooms) f += z.a;
+    if (!this.zooms.size || f === 1) { c.scale.set(1); c.pivot.set(0, 0); c.position.set(0, 0); return; }
+    c.pivot.set(this.focus.x, this.focus.y); c.position.set(this.focus.x, this.focus.y); c.scale.set(f);
+  }
+  private zoomBy(p: { x: number; y: number }) { this.focus = { x: p.x, y: p.y }; const z = { a: 0 }; this.zooms.add(z); return z; }
+  private zoomEnd(z: { a: number }) { this.zooms.delete(z); this.applyCam(); }
   /** Zoom toward a board point and back. */
   async punch(p: { x: number; y: number }, amt: number, inMs = 70, outMs = 300) {
-    const w = this.world();
-    if (!w || !this.on) return;
-    const G = this.board.toGlobal(p), s0 = w.scale.x, x0 = w.x, y0 = w.y;
-    const set = (f: number) => { w.scale.set(s0 * f); w.x = G.x - (G.x - x0) * f; w.y = G.y - (G.y - y0) * f; };
-    await this.tw.run(inMs, (k) => set(1 + amt * k), ease.outCubic);
-    await this.tw.run(outMs, (k) => set(1 + amt * (1 - k)), ease.outCubic);
-    w.scale.set(s0); w.x = x0; w.y = y0;
+    if (!this.on || !this.world()) return;
+    const z = this.zoomBy(p);
+    await this.tw.run(inMs, (k) => { z.a = amt * k; this.applyCam(); }, ease.outCubic);
+    await this.tw.run(outMs, (k) => { z.a = amt * (1 - k); this.applyCam(); }, ease.outCubic);
+    this.zoomEnd(z);
   }
   /** Zoom in and stay; the returned function zooms back. */
   async zoomHold(p: { x: number; y: number }, amt: number, ms: number) {
-    const w = this.world();
-    if (!w || !this.on) return async () => {};
-    const G = this.board.toGlobal(p), s0 = w.scale.x, x0 = w.x, y0 = w.y;
-    const set = (f: number) => { w.scale.set(s0 * f); w.x = G.x - (G.x - x0) * f; w.y = G.y - (G.y - y0) * f; };
-    await this.tw.run(ms, (k) => set(1 + amt * k), ease.inOutCubic);
-    return async () => { await this.tw.run(380, (k) => set(1 + amt * (1 - k)), ease.inOutCubic); w.scale.set(s0); w.x = x0; w.y = y0; };
+    if (!this.on || !this.world()) return async () => {};
+    const z = this.zoomBy(p);
+    await this.tw.run(ms, (k) => { z.a = amt * k; this.applyCam(); }, ease.inOutCubic);
+    let done = false;
+    return async () => {
+      if (done) return; done = true;
+      await this.tw.run(380, (k) => { z.a = amt * (1 - k); this.applyCam(); }, ease.inOutCubic);
+      this.zoomEnd(z);
+    };
   }
+  /** Puts the camera back at rest at once (a battle ends or is left mid-effect). */
+  resetCam() { this.zooms.clear(); this.applyCam(); }
 
   shade(alpha: number, ms = 250, color = 0x000000) {
     const g = new Graphics().rect(-400, -400, 1520, 2080).fill(color);

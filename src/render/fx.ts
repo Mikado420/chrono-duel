@@ -8,6 +8,7 @@ interface Particle { g: Graphics; vx: number; vy: number; life: number; max: num
 export class Fx {
   readonly layer = new Container();
   private parts: Particle[] = [];
+  private shakes = new Set<{ p: number }>();
   constructor(private tw: Tweener, ticker: { add: (fn: (t: { deltaMS: number }) => void) => void }, private shakeTarget: Container) {
     ticker.add((t) => this.step(t.deltaMS));
   }
@@ -83,13 +84,17 @@ export class Fx {
   }
   shake(power = 10, dur = 300) {
     if (this.tw.reduced) return Promise.resolve();
+    // shakes may overlap: each one adds its own jitter around the rest position (0, 0) and the last to end puts it back,
+    // so the board can never be left a few pixels off
     const t = this.shakeTarget;
-    const ox = t.x, oy = t.y;
+    const me = { p: 0 };
+    this.shakes.add(me);
     return this.tw.run(dur, (k) => {
-      const p = power * (1 - k);
-      t.x = ox + (Math.random() - 0.5) * p * 2;
-      t.y = oy + (Math.random() - 0.5) * p * 2;
-    }).then(() => { t.x = ox; t.y = oy; });
+      me.p = power * (1 - k);
+      let q = 0; for (const s of this.shakes) q = Math.max(q, s.p);
+      t.x = (Math.random() - 0.5) * q * 2;
+      t.y = (Math.random() - 0.5) * q * 2;
+    }).then(() => { this.shakes.delete(me); if (!this.shakes.size) { t.x = 0; t.y = 0; } });
   }
   /** A glowing streak from a to b (used for spell hits and triggers). */
   async beam(ax: number, ay: number, bx: number, by: number, color: ColorSource, dur = 260) {
