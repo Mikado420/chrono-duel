@@ -18,7 +18,7 @@ const mix = (a: number, b: number, k: number) => {
   return (ch(16) << 16) | (ch(8) << 8) | ch(0);
 };
 
-interface Pin { c: Container; pi: PlayerIndex; T: number; card: string | null; face: Container; echo: boolean; stem: Graphics }
+interface Pin { c: Container; pi: PlayerIndex; T: number; card: string | null; face: Container; echo: boolean; stem: Graphics; left: Container; leftTxt: Text; ring: Container; next: boolean }
 
 /** Clock faces (looks bought in the shop). The plain ones change colour only; themed ones (lookArt.ts) bring a picture. */
 export interface DialSkin { face: number; faceAlpha: number; rim: number; inner: number; tick: number; minor: number; num: number; star?: boolean; art?: DialLook }
@@ -48,6 +48,12 @@ export class Dial extends Container {
   private resvCursor = new Container();
   private cursorTxt: Text;
   private pins = new Map<number, Pin>();
+  /** The world time (both clocks' earlier one): reservations and echoes go off when it reaches their time. */
+  private now = 0;
+  /** 「予定」 on the status plate: how many are coming; tapping the plate opens the list (Battle sets onPlan). */
+  private planChip = new Container();
+  private planTxt: Text;
+  onPlan: (() => void) | null = null;
   private plate = new Container();
   private plateMain: Text;
   private plateSub: Text;
@@ -120,6 +126,18 @@ export class Dial extends Container {
     this.plate.addChild(this.plateBg, this.plateMain, this.plateSub);
     this.plate.x = this.cx; this.plate.y = this.cy - 96;
     this.addChild(this.plate);
+    // 「予定」: a small hourglass and the count, on a brass-rimmed tab
+    this.planTxt = label('', 16, COLORS.brass, { font: FONTS.num, weight: '700' });
+    this.planTxt.anchor.set(0, 0.52);
+    const glass = new Graphics()
+      .moveTo(-5, -7).lineTo(5, -7).lineTo(0.8, 0).lineTo(5, 7).lineTo(-5, 7).lineTo(-0.8, 0).closePath().stroke({ color: COLORS.brass, width: 1.4 })
+      .poly([-2.6, 4.6, 2.6, 4.6, 0, 1.6]).fill({ color: COLORS.brass, alpha: 0.85 })
+      .moveTo(-6.5, -7).lineTo(6.5, -7).moveTo(-6.5, 7).lineTo(6.5, 7).stroke({ color: COLORS.brass, width: 1.6 });
+    this.planChip.addChild(new Graphics(), glass, this.planTxt);
+    this.planChip.visible = false;
+    this.plate.addChild(this.planChip);
+    this.plate.eventMode = 'static'; this.plate.cursor = 'pointer';
+    this.plate.on('pointertap', (e) => { if (!this.planChip.visible || !this.onPlan) return; e.stopPropagation(); this.onPlan(); });
     this.setHand(0, 0, false); this.setHand(1, 0, false);
   }
 
@@ -253,7 +271,13 @@ export class Dial extends Container {
     this.embers?.tick(ms);
     this.tfx?.tick(ms);
     if (this.doomLevel) this.drawDoom();
-    for (const p of this.pins.values()) if (p.pi === 1 && !p.card) p.face.rotation = Math.sin(this.glowT * 2 + p.T) * 0.12;
+    for (const p of this.pins.values()) {
+      if (p.pi === 1 && !p.card) p.face.rotation = Math.sin(this.glowT * 2 + p.T) * 0.12;
+      if (p.next && this.motion) {
+        p.ring.children[0].alpha = 0.5 + 0.5 * Math.sin(this.glowT * 3);
+        p.ring.children[1].rotation += ms * 0.0005;
+      }
+    }
   }
   setDoom(level: number) { this.doomLevel = level; this.tfx?.setLevel(level); this.drawDoom(); }
 
@@ -382,7 +406,10 @@ export class Dial extends Container {
     const col = tone === 'you' ? COLORS.you : tone === 'foe' ? COLORS.foe : COLORS.brassDeep;
     this.plateMain.style.fill = tone === 'you' ? COLORS.you : tone === 'foe' ? COLORS.foe : COLORS.ivory;
     this.plateBg.clear().roundRect(-w / 2, -40, w, 80, 16).fill({ color: COLORS.ink, alpha: 0.9 }).roundRect(-w / 2, -40, w, 80, 16).stroke({ color: col, width: 2, alpha: 0.9 });
+    this.plateW = w;
+    this.drawPlan();
   }
+  private plateW = 260;
 
   // ---------------------------------------------------------- pins
   /** Where a pin for time T goes. Pins sharing a time fan out so none hides another. */
@@ -402,9 +429,30 @@ export class Dial extends Container {
     c.addChild(stem, face);
     c.eventMode = 'static'; c.cursor = 'pointer';
     this.addChild(c);
-    const pin = { c, pi, T, card, face, echo, stem };
+    // the next to go off gets a soft glow and a turning bezel; every pin carries how many 刻 are left, top right
+    const ring = new Container();
+    const halo = new Graphics();
+    for (let i = 0; i < 4; i++) halo.circle(0, 0, 25 + i * 2.5).stroke({ color: COLORS.brass, width: 2.5, alpha: 0.24 - i * 0.05 });
+    const bezel = new Graphics();
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * TAU, r0 = i % 6 === 0 ? 27 : 29.5;
+      bezel.moveTo(Math.cos(a) * r0, Math.sin(a) * r0).lineTo(Math.cos(a) * 32, Math.sin(a) * 32);
+    }
+    bezel.stroke({ color: COLORS.brass, width: 1.6, alpha: 0.95 });
+    ring.addChild(halo, bezel);
+    ring.visible = false;
+    const left = new Container();
+    const leftTxt = label('', 15, COLORS.ivory, { font: FONTS.num, weight: '700' });
+    leftTxt.anchor.set(0.5, 0.52);
+    left.addChild(new Graphics(), leftTxt);
+    left.x = 17; left.y = -18;
+    c.addChildAt(ring, 1);
+    c.addChild(left);
+    c.hitArea = { contains: (x: number, y: number) => x * x + (y - 6) * (y - 6) < 34 * 34 };
+    const pin = { c, pi, T, card, face, echo, stem, left, leftTxt, ring, next: false };
     this.pins.set(uid, pin);
     this.drawStem(pin);
+    this.setNow(this.now);
     return c;
   }
   private drawStem(p: Pin) {
@@ -419,6 +467,7 @@ export class Dial extends Container {
     const to = this.pinPoint(T, p.pi, p.echo, uid);
     const fx = p.c.x, fy = p.c.y;
     p.T = T;
+    this.setNow(this.now);
     await this.tw.run(420, (k) => { p.c.x = fx + (to.x - fx) * k; p.c.y = fy + (to.y - fy) * k; this.drawStem(p); });
   }
   private drawPinFace(face: Container, pi: PlayerIndex, card: string | null, echo = false) {
@@ -452,6 +501,50 @@ export class Dial extends Container {
       face.addChild(q);
     }
   }
+  /** Moves 「あと N」 on every pin to the world time `now` and rings the next to go off. */
+  setNow(now: number) {
+    this.now = now;
+    const lefts = [...this.pins.values()].map((p) => Math.max(0, p.T - now));
+    const soon = lefts.length ? Math.min(...lefts) : -1;
+    for (const p of this.pins.values()) {
+      const n = Math.max(0, p.T - now);
+      const col = p.pi === 0 ? COLORS.you : COLORS.foe;
+      const next = n === soon;
+      p.leftTxt.text = String(n);
+      p.leftTxt.style.fill = next ? COLORS.brass : COLORS.ivory;
+      const r = Math.max(11.5, p.leftTxt.width / 2 + 6);
+      const g = (p.left.children[0] as Graphics).clear();
+      g.circle(0, 0, r).fill({ color: COLORS.ink, alpha: 0.95 }).circle(0, 0, r).stroke({ color: next ? COLORS.brass : col, width: next ? 2 : 1.5, alpha: next ? 1 : 0.8 });
+      if (next) g.circle(0, 0, r + 3.5).stroke({ color: COLORS.brass, width: 1, alpha: 0.45 });
+      p.next = n === soon;
+      p.ring.visible = p.next;
+    }
+    // crowded pins: the sooner pill wins, a later one that would overlap it is hidden (the list has them all)
+    const shown: { x: number; y: number; w: number }[] = [];
+    for (const p of [...this.pins.values()].sort((a, b) => a.T - b.T)) {
+      const w = p.left.width, x = p.c.x + p.left.x, y = p.c.y + p.left.y;
+      const hit = shown.some((r) => Math.abs(r.x - x) < (r.w + w) / 2 && Math.abs(r.y - y) < (r.w + w) / 2);
+      p.left.visible = !hit;
+      if (!hit) shown.push({ x, y, w });
+    }
+    // and the sooner pin is drawn on top
+    for (const p of [...this.pins.values()].sort((a, b) => b.T - a.T)) if (p.c.parent === this) this.setChildIndex(p.c, this.children.length - 1);
+    this.drawPlan();
+  }
+  private drawPlan() {
+    const n = this.pins.size;
+    this.planChip.visible = n > 0;
+    if (!n) return;
+    this.planTxt.text = String(n);
+    const w = this.planTxt.width + 40;
+    (this.planChip.children[0] as Graphics).clear()
+      .roundRect(-w / 2, -14, w, 28, 6).fill({ color: COLORS.ink, alpha: 0.96 })
+      .roundRect(-w / 2, -14, w, 28, 6).stroke({ color: COLORS.brass, width: 1.5 })
+      .roundRect(-w / 2 + 3, -11, w - 6, 22, 4).stroke({ color: COLORS.brassDeep, width: 1, alpha: 0.7 });
+    this.planChip.children[1].x = -w / 2 + 15;
+    this.planTxt.x = -w / 2 + 25;
+    this.planChip.x = this.plateW / 2 - 6; this.planChip.y = -40;
+  }
   pinInfo(uid: number) { return this.pins.get(uid); }
   pinAt(uid: number) { const p = this.pins.get(uid); return p ? { x: p.c.x, y: p.c.y } : null; }
   revealPin(uid: number, card: string) {
@@ -465,12 +558,13 @@ export class Dial extends Container {
     const p = this.pins.get(uid);
     if (!p) return;
     this.pins.delete(uid);
+    this.setNow(this.now);
     if (mode === 'fire') await this.tw.run(260, (k) => { p.c.scale.set(1 + k); p.c.alpha = 1 - k; });
     else await this.tw.run(300, (k) => { p.c.rotation = k * 2; p.c.scale.set(1 - k); p.c.alpha = 1 - k; });
     p.c.destroy({ children: true });
   }
   pinsFor(pi: PlayerIndex) { return [...this.pins.entries()].filter(([, p]) => p.pi === pi); }
-  clearPins() { for (const p of this.pins.values()) p.c.destroy({ children: true }); this.pins.clear(); }
+  clearPins() { for (const p of this.pins.values()) p.c.destroy({ children: true }); this.pins.clear(); this.drawPlan(); }
   describePin(uid: number) {
     const p = this.pins.get(uid);
     if (!p) return '';

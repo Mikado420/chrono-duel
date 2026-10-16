@@ -3,7 +3,7 @@ import { AI_LEVEL_NAMES, chooseAction, chooseActionAsync, chooseActionSpecAsync,
 import { chooseRivalAsync, newMind, thinkMs, type RivalCfg, type RivalMind } from '../core/rival';
 import { KEYWORD_HELP, cardDef, keywordsOf } from '../core/cards';
 import {
-  actor, apply, attackTarget, canShift, cardCost, createGame, isReady, legalActions, other, resvCount, resvRange,
+  actor, apply, attackTarget, canShift, cardCost, createGame, isReady, legalActions, other, resvCount, resvRange, worldTime,
   type Action, type GameEvent, type GameState, type PlayerIndex, type Target,
 } from '../core/engine';
 import type { GameLog } from '../core/gamelog';
@@ -23,6 +23,7 @@ import { COLORS, FONTS } from './theme';
 import { ease, type Tweener } from './tween';
 import { Button, label } from './ui';
 import { BattleFx, MINUS } from './battleFx';
+import { cardArt } from './cardArt';
 import { HandCardView, Hud, UnitView, UNIT_H, UNIT_W, makeBack, makeFace } from './views';
 
 export interface BattleConfig {
@@ -173,6 +174,7 @@ export class BattleScene extends Container {
     super();
     this.dial = new Dial(tw, cfg.looks?.dial, !cfg.looks?.still);
     this.bfx = new BattleFx(tw, fx, this, () => (this.parent?.parent as Container | null) ?? null);
+    this.dial.onPlan = () => { if (this.mode.k !== 'resv') this.openPlan(); };
     this.matLayer.addChild(this.foeMat, this.foeMatMask, this.myMat, this.myMatMask);
     this.foeMat.mask = this.foeMatMask; this.myMat.mask = this.myMatMask;
     if (isArtMat(cfg.looks?.mat)) void this.loadMyMat(cfg.looks.mat);
@@ -674,7 +676,7 @@ export class BattleScene extends Container {
     this.toast(`${this.foe}が降参しました`);
     this.onEnd({ winner: 0, reason: 'surrender', myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats }, played: [...this.played], feats: this.feats.result(this.s), ...(this.log ? { log: this.log } : {}) });
   }
-  debug() { return { s: this.s, busy: this.busy, mode: this.mode.k, use: (uid: number, lane: number | null) => this.use(uid, lane), act: (a: Action) => this.tryAction(a), auto: () => (this.cfg.net ? legalActions(this.s, 0).filter((x) => x.t !== 'wait' && x.t !== 'draw')[0] ?? { t: 'wait' } : chooseAction(this.s, 0, 'normal')), finished: this.finished, hand: () => [...this.handViews].map(([uid, v]) => ({ uid, card: v.card, x: v.x, y: v.y })), lanes: { x: [...LANE_X], y: ROW_Y[0] }, redraw: () => this.syncAll(false), giveUp: () => this.surrender('surrender') }; }
+  debug() { return { s: this.s, busy: this.busy, mode: this.mode.k, use: (uid: number, lane: number | null) => this.use(uid, lane), act: (a: Action) => this.tryAction(a), auto: () => (this.cfg.net ? legalActions(this.s, 0).filter((x) => x.t !== 'wait' && x.t !== 'draw')[0] ?? { t: 'wait' } : chooseAction(this.s, 0, 'normal')), finished: this.finished, hand: () => [...this.handViews].map(([uid, v]) => ({ uid, card: v.card, x: v.x, y: v.y })), lanes: { x: [...LANE_X], y: ROW_Y[0] }, redraw: () => this.syncAll(false), giveUp: () => this.surrender('surrender'), plan: () => this.openPlan() }; }
   surrender(reason: 'surrender' | 'timeout' = 'surrender') {
     if (this.cfg.net) { this.cfg.net.send({ t: 'surrender' }); return; }
     if (this.s.over || this.finished) return;
@@ -806,6 +808,7 @@ export class BattleScene extends Container {
     const who = this.s.over ? -1 : actor(this.s);
     this.huds[0].setActive(who === 0); this.huds[1].setActive(who === 1);
     const [y, f] = this.s.players;
+    this.dial.setNow(worldTime(this.s));
     if (this.s.over) this.dial.setStatus('決着', '', 'neutral');
     else if (actor(this.s) === 1) this.dial.setStatus(`${this.foe}の番`, `${this.foe} ${f.time}刻 ・ ${this.me} ${y.time}刻`, 'foe');
     else if (this.watching) this.dial.setStatus(`${this.me}の番`, `${this.me} ${y.time}刻 ・ ${this.foe} ${f.time}刻`, 'you');
@@ -1088,7 +1091,7 @@ export class BattleScene extends Container {
   private onPinTap(uid: number) {
     const info = this.dial.pinInfo(uid);
     if (!info) return;
-    if (info.card && info.echo) this.inspectCard(info.card, [`${info.pi === 0 ? this.me : this.foe}の残響：両者の時計が${info.T}刻に達すると、弱い効果がもう一度起きる`]);
+    if (info.card && info.echo) this.inspectCard(info.card, [`${info.pi === 0 ? this.me : this.foe}の残響：両者の時計が${info.T}刻に達すると、カードの残響の効果が起きる`]);
     else if (info.card) this.inspectCard(info.card, [`${info.pi === 0 ? this.me : this.foe}の予約：両者の時計が${info.T}刻に達すると発動`]);
     else this.toast(`${info.pi === 0 ? this.me : this.foe}の予約：${info.T}刻に発動（中身は不明）`);
   }
@@ -1268,6 +1271,83 @@ export class BattleScene extends Container {
     this.modal = c;
     c.alpha = 0;
     void this.tw.to(c, { alpha: 1 }, 160);
+  }
+  /** 予定: every reservation and echo still to come, the soonest first (opened from the clock's status plate). */
+  private openPlan() {
+    audio.play('select');
+    const now = worldTime(this.s);
+    const rows = ([0, 1] as PlayerIndex[]).flatMap((pi) => this.s.players[pi].resv.map((r) => ({ pi, r, card: (pi === 0 || r.revealed || r.echo) && r.card !== HIDDEN ? r.card : null })))
+      .sort((a, b) => a.r.T - b.r.T || a.pi - b.pi);
+    const soon = rows.length ? Math.max(0, rows[0].r.T - now) : 0;
+    this.openModal((c) => {
+      // title between brass rules
+      const title = label('これからの予定', 34, COLORS.ivory, { font: FONTS.display, weight: '700' });
+      title.anchor.set(0.5, 0); title.x = 360; title.y = 150;
+      const orn = new Graphics();
+      for (const sgn of [-1, 1]) {
+        const x0 = 360 + sgn * (title.width / 2 + 18), x1 = 360 + sgn * (title.width / 2 + 120), y = 172;
+        orn.moveTo(x0, y).lineTo(x1, y).stroke({ color: COLORS.brassDeep, width: 1.2 });
+        orn.poly([x0, y - 4, x0 + sgn * 4, y, x0, y + 4, x0 - sgn * 4, y]).fill(COLORS.brass);
+      }
+      const sub = label(`いま ${now}刻 ・ 両者の時計が届いた刻に起きる`, 17, COLORS.mute);
+      sub.anchor.set(0.5, 0); sub.x = 360; sub.y = 204;
+      c.addChild(orn, title, sub);
+      const RH = 92, top = 254, max = Math.min(rows.length, 8), W = 620, X = 50;
+      if (rows.length) {
+        const h = max * RH;
+        const panel = new Graphics()
+          .roundRect(X, top, W, h, 10).fill({ color: COLORS.ink, alpha: 0.95 })
+          .roundRect(X, top, W, h, 10).stroke({ color: COLORS.brassDeep, width: 1.5 })
+          .roundRect(X + 5, top + 5, W - 10, h - 10, 7).stroke({ color: COLORS.line, width: 1, alpha: 0.6 });
+        for (let i = 1; i < max; i++) panel.moveTo(X + 24, top + i * RH).lineTo(X + W - 24, top + i * RH).stroke({ color: COLORS.line, width: 1, alpha: 0.7 });
+        c.addChild(panel);
+      }
+      rows.slice(0, max).forEach(({ pi, r, card }, i) => {
+        const row = new Container();
+        row.x = X; row.y = top + i * RH;
+        const n = Math.max(0, r.T - now), next = n === soon;
+        const col = pi === 0 ? COLORS.you : COLORS.foe;
+        const hit = new Graphics().rect(0, 0, W, RH).fill({ color: COLORS.brass, alpha: next ? 0.09 : 0.001 });
+        row.addChild(hit);
+        if (next) row.addChild(new Graphics().roundRect(8, 14, 3, RH - 28, 1.5).fill(COLORS.brass));
+        // how many 刻 are left, and the time it happens
+        const big = label(String(n), 40, next ? COLORS.brass : COLORS.ivory, { font: FONTS.num, weight: '700' });
+        big.anchor.set(0.5); big.x = 66; big.y = RH / 2 - 10;
+        const at = label(`${r.T}刻`, 15, COLORS.mute);
+        at.anchor.set(0.5); at.x = 66; at.y = RH / 2 + 24;
+        row.addChild(big, at);
+        // the card (or ? for a hidden reservation) in a brass-rimmed medallion
+        const icon = new Container(); icon.x = 166; icon.y = RH / 2;
+        icon.addChild(new Graphics().circle(0, 0, 31).fill(COLORS.ink).circle(0, 0, 31).stroke({ color: COLORS.brassDeep, width: 2 }).circle(0, 0, 27).stroke({ color: col, width: 2 }));
+        if (card) {
+          const sp = new Sprite(Texture.from(cardArt(card, 96, 96)));
+          sp.anchor.set(0.5); sp.width = 52; sp.height = 52;
+          const m = new Graphics().circle(0, 0, 26).fill(0xffffff);
+          sp.mask = m; icon.addChild(m, sp);
+        } else { const q = label('?', 28, col, { font: FONTS.num, weight: '700' }); q.anchor.set(0.5); icon.addChild(q); }
+        row.addChild(icon);
+        const name = label(card ? cardDef(card).name : '伏せられた予約', 25, COLORS.ivory, { font: FONTS.display, weight: '700' });
+        name.x = 216; name.y = 16;
+        const who = label(pi === 0 ? this.me : this.foe, 16, col, { weight: '700' });
+        who.x = 216; who.y = 54;
+        const kind = label(r.echo ? '残響' : '予約', 14, r.echo ? COLORS.mute : COLORS.brass, { weight: '700' });
+        const kc = new Container();
+        kc.addChild(new Graphics().roundRect(0, 0, kind.width + 14, 22, 3).stroke({ color: r.echo ? COLORS.mute : COLORS.brassDeep, width: 1.2 }), kind);
+        kind.x = 7; kind.y = 2;
+        kc.x = 216 + who.width + 12; kc.y = 53;
+        row.addChild(name, who, kc);
+        const chev = new Graphics().moveTo(W - 34, RH / 2 - 7).lineTo(W - 27, RH / 2).lineTo(W - 34, RH / 2 + 7).stroke({ color: COLORS.mute, width: 2, alpha: 0.7 });
+        row.addChild(chev);
+        row.eventMode = 'static'; row.cursor = 'pointer';
+        row.on('pointertap', (e) => { e.stopPropagation(); this.onPinTap(r.uid); });
+        c.addChild(row);
+      });
+      if (!rows.length) { const t = label('予約も残響もありません', 22, COLORS.mute); t.anchor.set(0.5, 0); t.x = 360; t.y = top + 20; c.addChild(t); }
+      if (rows.length > max) { const t = label(`ほか${rows.length - max}件`, 18, COLORS.mute); t.anchor.set(0.5, 0); t.x = 360; t.y = top + max * RH + 12; c.addChild(t); }
+      const b = new Button('閉じる', 200, 70, 'plain', undefined, () => this.closeModal());
+      b.x = 360; b.y = Math.max(top + Math.min(rows.length || 1, max) * RH + 80, 760);
+      c.addChild(b);
+    });
   }
   private inspectCard(card: string, notes: string[], buttons: [string, 'plain' | 'primary', () => void, boolean?][] = []) {
     audio.play('select');
