@@ -84,7 +84,7 @@ export class BattleFx {
     this.fx.burst(x, y + 50, 0xa89c88, 20, 220, { grav: 50, life: 0.6, size: 5 });
   }
 
-  /** A legendary card: a slanted band with its art, name and 伝説 crosses the screen. */
+  /** A legendary card: a slanted band with its art and name crosses the screen. */
   async legend(card: string, color: number) {
     if (!this.on) return;
     const sh = this.shade(0.65, 220);
@@ -96,12 +96,11 @@ export class BattleFx {
     art.mask = m;
     const edge = new Graphics().rect(-700, -H / 2 - 6, 1400, 6).fill(COLORS.brass).rect(-700, H / 2, 1400, 6).fill(COLORS.brass);
     const shadeLow = new Graphics().rect(-700, H / 2 - 120, 1400, 120).fill({ color: 0x000000, alpha: 0.55 });
-    const name = bigText(cardDef(card).name, 72, COLORS.ivory, FONTS.display, 8); name.x = 60; name.y = H / 2 - 62; name.style.letterSpacing = 10;
+    const name = bigText(cardDef(card).name, 72, COLORS.ivory, FONTS.display, 8); name.x = 0; name.y = H / 2 - 62; name.style.letterSpacing = 10;
     if (name.width > 560) name.scale.set(560 / name.width);
-    const tag = new Container();
-    tag.addChild(new Graphics().roundRect(-62, -24, 124, 48, 4).fill(COLORS.brass).roundRect(-62, -24, 124, 48, 4).stroke({ color, width: 3 }), bigText('伝説', 30, COLORS.ink, FONTS.display, 0));
-    tag.x = -230; tag.y = H / 2 - 62;
-    c.addChild(m, art, shadeLow, edge, name, tag);
+    // the owner's colour as a thin line under the name
+    const under = new Graphics().rect(-200, 0, 520, 3).fill(color); under.x = name.x - 60; under.y = name.y + 44;
+    c.addChild(m, art, shadeLow, edge, name, under);
     this.fx.layer.addChild(c);
     const streaks = new Graphics(); streaks.blendMode = 'add';
     this.fx.layer.addChild(streaks);

@@ -292,8 +292,12 @@ export class BattleScene extends Container {
     this.toastC.y = L.front;
     this.layoutMats(e);
     this.buildBoard();
-    if (this.s) this.syncAll(false);
+    // mid-animation the board is behind the state (a drawn card has no view yet): rebuilding it now would make a second
+    // view for that card, left stuck on the screen. Only re-place the hand; play() syncs everything when it ends.
+    if (this.s) { if (this.animating) this.layoutHand(false); else this.syncAll(false); }
   }
+  /** Event batches being animated right now. */
+  private animating = 0;
 
   /** Your mat starts at the front line and covers the rest of the board (scaled up to fill tall screens). */
   private layoutMats(extra: number) {
@@ -676,7 +680,7 @@ export class BattleScene extends Container {
     this.toast(`${this.foe}が降参しました`);
     this.onEnd({ winner: 0, reason: 'surrender', myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats }, played: [...this.played], feats: this.feats.result(this.s), ...(this.log ? { log: this.log } : {}) });
   }
-  debug() { return { s: this.s, busy: this.busy, mode: this.mode.k, use: (uid: number, lane: number | null) => this.use(uid, lane), act: (a: Action) => this.tryAction(a), auto: () => (this.cfg.net ? legalActions(this.s, 0).filter((x) => x.t !== 'wait' && x.t !== 'draw')[0] ?? { t: 'wait' } : chooseAction(this.s, 0, 'normal')), finished: this.finished, hand: () => [...this.handViews].map(([uid, v]) => ({ uid, card: v.card, x: v.x, y: v.y })), lanes: { x: [...LANE_X], y: ROW_Y[0] }, redraw: () => this.syncAll(false), giveUp: () => this.surrender('surrender'), plan: () => this.openPlan() }; }
+  debug() { return { s: this.s, busy: this.busy, mode: this.mode.k, use: (uid: number, lane: number | null) => this.use(uid, lane), act: (a: Action) => this.tryAction(a), auto: () => (this.cfg.net ? legalActions(this.s, 0).filter((x) => x.t !== 'wait' && x.t !== 'draw')[0] ?? { t: 'wait' } : chooseAction(this.s, 0, 'normal')), finished: this.finished, hand: () => [...this.handViews].map(([uid, v]) => ({ uid, card: v.card, x: v.x, y: v.y })), lanes: { x: [...LANE_X], y: ROW_Y[0] }, redraw: () => this.syncAll(false), handN: () => this.handLayer.children.length, giveUp: () => this.surrender('surrender'), plan: () => this.openPlan() }; }
   surrender(reason: 'surrender' | 'timeout' = 'surrender') {
     if (this.cfg.net) { this.cfg.net.send({ t: 'surrender' }); return; }
     if (this.s.over || this.finished) return;
@@ -722,6 +726,8 @@ export class BattleScene extends Container {
     });
   }
   private addHandView(uid: number, card: string) {
+    const had = this.handViews.get(uid);
+    if (had) return had;
     const v = new HandCardView(uid, card, this.cfg.looks?.back);
     v.on('pointerdown', (e) => this.onCardDown(v, e));
     this.handViews.set(uid, v);
@@ -1441,11 +1447,14 @@ export class BattleScene extends Container {
 
   // ------------------------------------------------------------------ animation player
   private async play(events: GameEvent[]) {
-    for (const e of events) {
-      if (this.destroyed_) return;
-      this.feats.see(e);
-      try { await this.animate(e); } catch (err) { console.error('animation failed', e.e, err); }
-    }
+    this.animating++;
+    try {
+      for (const e of events) {
+        if (this.destroyed_) return;
+        this.feats.see(e);
+        try { await this.animate(e); } catch (err) { console.error('animation failed', e.e, err); }
+      }
+    } finally { this.animating--; }
     this.flyFrom = null;
     if (!this.destroyed_) this.syncAll();
   }

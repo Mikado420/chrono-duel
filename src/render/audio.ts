@@ -66,7 +66,19 @@ class Audio {
   muted = false;
 
   unlock() {
-    if (this.ctx) { void this.ctx.resume(); return; }
+    if (this.ctx) {
+      void this.ctx.resume();
+      // the sound was rebuilt while the page was in the background: this tap may start it
+      if (this.scene && !this.hidden) { const d = this.decks[this.live]; if (d?.el.paused) this.startWanted(); }
+      return;
+    }
+    if (!this.makeCtx()) return;
+    document.addEventListener('visibilitychange', () => this.onVisibility());
+    // the scene asked for music before sound was allowed: start it inside this gesture
+    if (this.scene) this.startWanted();
+    this.loadSfx();
+  }
+  private makeCtx() {
     try {
       const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.ctx = new Ctx();
@@ -76,11 +88,36 @@ class Audio {
       this.music = this.ctx.createGain();
       this.music.gain.value = this.musicLevel();
       this.music.connect(this.ctx.destination);
-      document.addEventListener('visibilitychange', () => this.onVisibility());
-    } catch { this.ctx = null; }
-    // the scene asked for music before sound was allowed: start it inside this gesture
-    if (this.scene) this.startWanted();
+      return true;
+    } catch { this.ctx = null; return false; }
+  }
+  /**
+   * Phones (iOS above all) may change the audio hardware's rate while the page is in the background; music routed
+   * through the old context then plays too fast and too high. So coming back builds the sound afresh and carries on
+   * the track from where it was.
+   */
+  private rebuild() {
+    const live = this.decks[this.live];
+    const track = live?.track ?? '', at = live && !Number.isNaN(live.el.currentTime) ? live.el.currentTime : 0;
+    for (const d of this.decks) { d.el.pause(); d.el.removeAttribute('src'); d.el.load(); try { d.g.disconnect(); } catch { /* gone */ } }
+    this.decks = []; this.live = 0;
+    const old = this.ctx;
+    this.ctx = null;
+    void old?.close().catch(() => {});
+    if (!this.makeCtx()) return;
+    this.sfx.clear();
     this.loadSfx();
+    if (!this.scene) return;
+    if (track && (this.scene !== 'battle' || track === this.lastBattle)) {
+      const d = this.deck(0);
+      d.track = track;
+      d.el.src = bgmUrl(track);
+      d.el.loop = this.scene !== 'battle';
+      const seek = () => { try { d.el.currentTime = at; } catch { /* not seekable yet */ } };
+      if (at > 0) d.el.addEventListener('loadedmetadata', seek, { once: true });
+      d.g.gain.setValueAtTime(1, this.ctx!.currentTime);
+      this.playEl(d.el);
+    } else this.startWanted();
   }
   /** Fetches and decodes the effect files (once, after the first gesture). */
   private loadSfx() {
@@ -213,7 +250,7 @@ class Audio {
   private onVisibility() {
     this.hidden = document.visibilityState === 'hidden';
     if (this.hidden) { for (const d of this.decks) d.el.pause(); return; }
-    this.startWanted();
+    this.rebuild();
   }
 
   private tone(freq: number, dur: number, type: OscillatorType, gain: number, when = 0, slide?: number) {

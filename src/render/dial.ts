@@ -60,7 +60,6 @@ export class Dial extends Container {
   private plateBg = new Graphics();
   private doomLevel = 0;
   private doomFrom: number = RULES.DOOM_AT;
-  private doomLabel: { x: number; y: number } | null = null;
   private glowT = 0;
 
   private skin: DialSkin;
@@ -207,18 +206,12 @@ export class Dial extends Container {
       g.x = p.x; g.y = p.y;
       this.addChild(g);
     }
-    const dp = this.point(this.doomFrom, R + 44);
-    const dl = label('終焉', 15, COLORS.doom, { font: FONTS.display, weight: '700' });
-    dl.anchor.set(0.5); dl.x = dp.x; dl.y = dp.y;
-    this.doomLabel = dl;
-    this.addChild(dl);
     this.drawDoom();
   }
   /** Where doom begins this game (イベント「終焉開幕」 starts it at 0). */
   setDoomFrom(t: number) {
     this.doomFrom = t;
     this.tfx?.setDoomFrom(t);
-    if (this.doomLabel) { const p = this.point(Math.max(t, 1.2), this.R + 44); this.doomLabel.x = p.x; this.doomLabel.y = p.y; }
     this.drawDoom();
   }
 
