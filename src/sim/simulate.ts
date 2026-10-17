@@ -1,5 +1,6 @@
-/* Balance simulator: `npm run sim -- [games] [levelA] [levelB]` */
-import { EXPERT_SEARCH, chooseAction, setExpertWeights, type AiLevel } from '../core/ai';
+/* Balance simulator: `npm run sim -- [games] [LvA] [LvB]` (the AI's Lv, 1–12; default Lv4 for both) */
+import { setExpertWeights } from '../core/ai';
+import { SIM_LV, lvAi } from './lvplay';
 import { PRESET_DECKS, validateDeck } from '../core/decks';
 import { PACK_TEST_DECKS } from './packDecks';
 import { actor, apply, createGame, mulberry32, type GameEvent, type PlayerIndex } from '../core/engine';
@@ -7,10 +8,10 @@ import { actor, apply, createGame, mulberry32, type GameEvent, type PlayerIndex 
 import { RULES } from '../core/rules';
 if (process.env.RULES) Object.assign(RULES as Record<string, unknown>, JSON.parse(process.env.RULES));
 if (process.env.EXPW) setExpertWeights(JSON.parse(process.env.EXPW));
-if (process.env.EXPS) Object.assign(EXPERT_SEARCH, JSON.parse(process.env.EXPS));
 const N = +(process.argv[2] ?? 400);
-const LA = (process.argv[3] ?? 'normal') as AiLevel;
-const LB = (process.argv[4] ?? LA) as AiLevel;
+const lvOf = (x: string | undefined, d: number) => { const v = x === undefined ? d : +x.replace(/^Lv/i, ''); if (!Number.isInteger(v) || v < 1 || v > 12) throw new Error(`Lv は 1〜12 で指定してください（${x}）`); return v; };
+const LA = lvOf(process.argv[3], SIM_LV);
+const LB = lvOf(process.argv[4], LA);
 
 interface Stat { aWins: number; games: number; firstWins: number; secondWins: number; draws: number; ko: number; actions: number; resv: number; triggers: number; hpGap: number; cardUse: Record<string, number> }
 const blank = (): Stat => ({ aWins: 0, games: 0, firstWins: 0, secondWins: 0, draws: 0, ko: 0, actions: 0, resv: 0, triggers: 0, hpGap: 0, cardUse: {} });
@@ -19,12 +20,13 @@ function play(deckA: string[], deckB: string[], seed: number, st: Stat): PlayerI
   const first = (seed % 2) as PlayerIndex;
   const { state } = createGame([deckA, deckB], seed, first);
   const rand = mulberry32(seed * 7 + 1);
+  const ais = [lvAi(LA, '', rand), lvAi(LB, '', rand)];
   let guard = 0;
   const played: [Set<string>, Set<string>] = [new Set(), new Set()];
   while (!state.over && guard++ < 400) {
     const pi = actor(state);
     if (pi === -1) break;
-    const a = chooseAction(state, pi, pi === 0 ? LA : LB, rand);
+    const a = ais[pi](state, pi);
     const ev: GameEvent[] = apply(state, a);
     for (const e of ev) {
       if (e.e === 'summon' || e.e === 'cast' || e.e === 'reserve') played[e.pi].add(e.e === 'summon' ? e.unit.card : e.card);
@@ -69,8 +71,8 @@ for (const A of DECKS) {
   }
 }
 const pct = (x: number) => ((x / all.games) * 100).toFixed(1) + '%';
-console.log(`games ${all.games} (${LA} vs ${LB}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-console.log(`A(${LA}) wins ${pct(all.aWins)}  first ${pct(all.firstWins)}  second ${pct(all.secondWins)}  draw ${pct(all.draws)}  KO ${pct(all.ko)}`);
+console.log(`games ${all.games} (Lv${LA} vs Lv${LB}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+console.log(`A(Lv${LA}) wins ${pct(all.aWins)}  first ${pct(all.firstWins)}  second ${pct(all.secondWins)}  draw ${pct(all.draws)}  KO ${pct(all.ko)}`);
 console.log(`actions/player ${(all.actions / all.games / 2).toFixed(1)}  reservations/game ${(all.resv / all.games).toFixed(2)}  timeout hp gap ${(all.hpGap / Math.max(1, all.games - all.ko)).toFixed(1)}`);
 console.log('win% row vs column:');
 console.table(matrix);

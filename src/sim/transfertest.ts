@@ -51,13 +51,14 @@ console.log('transfer ok');
 {
   const { Replays } = await import('../server/replays');
   const { createGame, actor, legalActions, apply } = await import('../core/engine');
-  const { chooseAction } = await import('../core/ai');
+  const { lvBoth } = await import('./lvplay');
+  const ai = lvBoth(1);
   const { PRESET_DECKS } = await import('../core/decks');
   const rp = new Replays(kv, () => now);
   const decks: [string[], string[]] = [PRESET_DECKS[0].cards, PRESET_DECKS[1].cards];
   const { state } = createGame(decks, 7, 0);
   const actions = [];
-  while (!state.over && actions.length < 800) { const pi = actor(state); if (pi === -1) break; const a = chooseAction(state, pi as 0 | 1, 'easy'); actions.push(a); apply(state, a); }
+  while (!state.over && actions.length < 800) { const pi = actor(state); if (pi === -1) break; const a = ai(state, pi as 0 | 1); actions.push(a); apply(state, a); }
   void legalActions;
   const log = { seed: 7, first: 0 as const, decks, actions };
   const saved = await rp.save({ log, info: { names: ['アリス', 'AI'], decks: ['均衡', '速攻'], mode: 'free' } });

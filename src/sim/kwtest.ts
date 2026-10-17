@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { CARDS } from '../core/cards';
 import { apply, createGame, legalActions, type GameState } from '../core/engine';
 import { sameAction } from '../core/net';
-import { chooseAction } from '../core/ai';
+import { lvBoth } from './lvplay';
 
 CARDS.t_shift = { id: 't_shift', name: '試験用・転移', kind: 'unit', rarity: 'C', cost: 2, atk: 2, hp: 3, reload: 2, keywords: ['shift'], text: '転移', flavor: '', motif: 'gear' };
 CARDS.t_bellshot = { id: 't_bellshot', name: '試験用・鐘鳴', kind: 'unit', rarity: 'R', cost: 3, atk: 2, hp: 3, reload: 2, bell: 'shot2', text: '鐘鳴：2ダメージ', flavor: '', motif: 'bell' };
@@ -66,6 +66,7 @@ assert.equal(sameAction({ t: 'move', lane: 1, to: 2 }, { t: 'move', lane: 1, to:
 {
   const s = game();
   apply(s, { t: 'play', hand: give(s, 't_shift'), lane: 0 });
-  for (let i = 0; i < 30 && !s.over; i++) { const pi = s.players[0].time <= s.players[1].time ? 0 : 1; apply(s, chooseAction(s, pi as 0 | 1, 'hard')); }
+  const ai = lvBoth(4);
+  for (let i = 0; i < 30 && !s.over; i++) { const pi = s.players[0].time <= s.players[1].time ? 0 : 1; apply(s, ai(s, pi as 0 | 1)); }
 }
 console.log('keywords ok');

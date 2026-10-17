@@ -205,5 +205,3 @@ export function rivalTitle(r: Rival): string | undefined {
 const rivalHash = (n: string) => { let h = 2166136261; for (const ch of n) { h ^= ch.codePointAt(0)!; h = Math.imul(h, 16777619) >>> 0; } return h; };
 /** What the battle needs to play a rival. */
 export const rivalCfg = (r: Rival, deck: string): RivalCfg => ({ name: r.name, lv: r.lv, persona: r.persona, deck, quirks: quirksOf(r.name) });
-/** The rival's strength as one of the four plain levels (rewards and statistics). */
-export const rivalLevel = (lv: number) => (lv <= 1 ? 'easy' : lv <= 3 ? 'normal' : lv <= 5 ? 'hard' : 'expert') as 'easy' | 'normal' | 'hard' | 'expert';

@@ -1,8 +1,8 @@
-/* Card power check: `npm run balance -- [card ids…|all] [--games N] [--level hard] [--csv out.csv]`
+/* Card power check: `npm run balance -- [card ids…|all] [--games N] [--lv 4] [--csv out.csv]`
  *
  * How strong is a card compared with a plain one? Four host decks (均衡・秒針突撃・城塞・残響) each carry two
  * 振り子兵 (a vanilla 2-cost 2/3). The card replaces them (one copy for a legend) and each deck plays every test
- * deck with the chosen AI. The card's value is the change in win % against the unchanged host, averaged over the
+ * deck, both sides played by the AI of the chosen Lv (default Lv4). The card's value is the change in win % against the unchanged host, averaged over the
  * hosts. Around ±3 is noise at the default size; above +7 or below −6 is worth a look.
  *
  * Examples
@@ -17,7 +17,7 @@ import { fork } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { cpus } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { chooseAction, type AiLevel } from '../core/ai';
+import { SIM_LV, lvAi } from './lvplay';
 import { CARDS, CARD_LIST, cardDef } from '../core/cards';
 import { PRESET_DECKS } from '../core/decks';
 import { actor, apply, createGame, mulberry32, type PlayerIndex } from '../core/engine';
@@ -55,18 +55,19 @@ function deckFor(host: string, card: string | null): string[] {
   for (let k = 0; k < n; k++) d[d.indexOf(REF)] = card;
   return d;
 }
-function runJob(j: Job, level: AiLevel): Res {
+function runJob(j: Job, lv: number): Res {
   const r: Res = { wins: 0, games: 0, used: 0 };
   const deck = deckFor(j.host, j.card);
   let seed = 50000; // the same seeds for every card: less noise between rows
   for (const opp of OPP) for (let i = 0; i < j.per; i++, seed++) {
     const { state } = createGame([deck, opp.cards], seed, (seed % 2) as PlayerIndex);
     const rand = mulberry32(seed * 7 + 1);
+    const ais = [lvAi(lv, j.host, rand), lvAi(lv, opp.id, rand)];
     let used = false;
     for (let g = 0; !state.over && g < 400; g++) {
       const pi = actor(state);
       if (pi === -1) break;
-      for (const e of apply(state, chooseAction(state, pi, level, rand))) {
+      for (const e of apply(state, ais[pi](state, pi))) {
         if (!j.card || !('pi' in e) || e.pi !== 0) continue;
         if ((e.e === 'summon' && e.fromHand >= 0 && e.unit.card === j.card) || ((e.e === 'cast' || e.e === 'reserve') && e.card === j.card)) used = true;
       }
@@ -80,10 +81,10 @@ function runJob(j: Job, level: AiLevel): Res {
 
 // ------------------------------------------------------------------ worker process
 if (proc.argv[2] === '--worker') {
-  const level = proc.argv[3] as AiLevel;
+  const lv = +proc.argv[3];
   proc.on('message', (m) => {
     if (m === 'bye') proc.exit(0);
-    else proc.send({ i: m.i, res: runJob(m.job, level) });
+    else proc.send({ i: m.i, res: runJob(m.job, lv) });
   });
 } else void main();
 
@@ -91,7 +92,8 @@ async function main() {
   const args = proc.argv.slice(2);
   const opt = (k: string, d: string) => { const i = args.indexOf(k); if (i < 0) return d; const v = args[i + 1]; args.splice(i, 2); return v; };
   const per = +opt('--games', '40');
-  const level = opt('--level', 'hard') as AiLevel;
+  const lv = +opt('--lv', String(SIM_LV));
+  if (!Number.isInteger(lv) || lv < 1 || lv > 12) { console.error('--lv は 1〜12 で指定してください'); proc.exit(1); }
   const csv = opt('--csv', '');
   const workers = Math.max(1, +opt('--jobs', String(cpus().length)));
   const si = args.indexOf('--set2'); if (si >= 0) args.splice(si, 1);
@@ -107,13 +109,13 @@ async function main() {
   const hosts = Object.keys(HOSTS);
   const jobs: Job[] = [...hosts.map((h) => ({ host: h, card: null, per: per * 5 })), ...cards.flatMap((c) => hosts.map((h) => ({ host: h, card: c, per })))];
   const games = jobs.reduce((n, j) => n + j.per * OPP.length, 0);
-  console.log(`${cards.length}枚 × ${hosts.length}デッキ、AI「${level}」、合計 約${games.toLocaleString()}戦（${workers}並列）`);
+  console.log(`${cards.length}枚 × ${hosts.length}デッキ、AI Lv${lv}同士、合計 約${games.toLocaleString()}戦（${workers}並列）`);
 
   const results: Res[] = new Array(jobs.length);
   let next = 0, done = 0;
   const t0 = Date.now();
   await Promise.all(Array.from({ length: Math.min(workers, jobs.length) }, () => new Promise<void>((resolve) => {
-    const w = fork(fileURLToPath(import.meta.url), ['--worker', level, WITH_SET2 ? '1' : '0', WITH_SET1X ? '1' : '0'], { execArgv: proc.execArgv });
+    const w = fork(fileURLToPath(import.meta.url), ['--worker', String(lv), WITH_SET2 ? '1' : '0', WITH_SET1X ? '1' : '0'], { execArgv: proc.execArgv });
     const feed = () => { if (next < jobs.length) { const i = next++; w.send({ i, job: jobs[i] }); } else { w.send('bye'); resolve(); } };
     w.on('message', (m: { i: number; res: Res }) => {
       results[m.i] = m.res; done++;

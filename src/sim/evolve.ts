@@ -3,7 +3,7 @@
  * players' deck mix, the play-pattern check against the 設計図, and grouping players' lists into new decks and 型.
  * Pure (no network): src/sim/daily.ts feeds it the server's tables and publishes the result.
  */
-import { chooseAction, type AiLevel } from '../core/ai';
+import { SIM_LV, lvAi } from './lvplay';
 import { CARD_LIST, cardDef } from '../core/cards';
 import { actor, apply, createGame, mulberry32, worldTime, type PlayerIndex } from '../core/engine';
 import { RULES } from '../core/rules';
@@ -69,17 +69,21 @@ export function candidates(arche: string, cards: string[], n: number, seed: numb
 // ------------------------------------------------------------------ simulation
 export interface Opp { id: string; cards: string[]; w: number }
 export interface GameOut { score: number; end: number; ko: boolean; dmg20: number; atk: number; resv: number; cast: number; hpEnd: number }
-/** One game: `cards` against `opp`, seat and first player from the seed, both sides at `level`. */
-export function playOne(cards: string[], opp: string[], seed: number, level: AiLevel = 'hard'): GameOut {
+/**
+ * One game: `cards` against `opp`, seat and first player from the seed, both sides played by the AI of Lv `lv`
+ * (each with its deck's plan when `ids` names the decks).
+ */
+export function playOne(cards: string[], opp: string[], seed: number, lv = SIM_LV, ids: [string, string] = ['', '']): GameOut {
   const me = (seed % 2) as PlayerIndex;
   const { state } = createGame(me === 0 ? [cards, opp] : [opp, cards], seed, ((seed >> 1) % 2) as PlayerIndex);
   const rand = mulberry32(seed * 7 + 1);
+  const ais = me === 0 ? [lvAi(lv, ids[0], rand), lvAi(lv, ids[1], rand)] : [lvAi(lv, ids[1], rand), lvAi(lv, ids[0], rand)];
   const o: GameOut = { score: 0, end: 0, ko: false, dmg20: 0, atk: 0, resv: 0, cast: 0, hpEnd: 0 };
   let d20: number | null = null;
   for (let k = 0; !state.over && k < 500; k++) {
     const pi = actor(state);
     if (pi === -1) break;
-    for (const e of apply(state, chooseAction(state, pi, level, rand))) {
+    for (const e of apply(state, ais[pi](state, pi))) {
       if (!('pi' in e) || e.pi !== me) continue;
       if (e.e === 'attack') o.atk++;
       else if (e.e === 'reserve') o.resv++;
@@ -104,25 +108,25 @@ function oppFor(opps: Opp[], seed: number): Opp {
 }
 export interface Paired { n: number; base: number; cand: number; diff: number; se: number }
 /** `n` games each for `base` and `cand` on the same seeds and opponents: the score difference and its standard error. */
-export function paired(base: string[], cand: string[], opps: Opp[], n: number, seed0: number, level: AiLevel = 'hard'): Paired {
+export function paired(base: string[], cand: string[], opps: Opp[], n: number, seed0: number, lv = SIM_LV, self = ''): Paired {
   let sb = 0, sc = 0;
   const ds: number[] = [];
   for (let i = 0; i < n; i++) {
     const seed = seed0 + i * 7919;
     const o = oppFor(opps, seed);
-    const b = playOne(base, o.cards, seed, level).score, c = playOne(cand, o.cards, seed, level).score;
+    const b = playOne(base, o.cards, seed, lv, [self, o.id]).score, c = playOne(cand, o.cards, seed, lv, [self, o.id]).score;
     sb += b; sc += c; ds.push(c - b);
   }
   const mean = ds.reduce((a, b) => a + b, 0) / n;
   const sd = Math.sqrt(ds.reduce((a, d) => a + (d - mean) ** 2, 0) / Math.max(1, n - 1));
   return { n, base: sb / n, cand: sc / n, diff: mean, se: sd / Math.sqrt(n) };
 }
-/** The play numbers of a list as the 設計図 measured them: against every roster deck (src/sim/rosterDecks.ts), at 'hard'. */
+/** The play numbers of a list as the 設計図 measured them: against every roster deck (src/sim/rosterDecks.ts), both sides AI Lv SIM_LV. */
 export function playProfile(cards: string[], n: number, seed0: number, self: string): PlayProfile & { cast: number } {
-  const opps = ROSTER_DECKS.filter((d) => d.id !== self).map((d) => d.cards).filter((c) => c.every((x) => { try { cardDef(x); return true; } catch { return false; } }));
+  const opps = ROSTER_DECKS.filter((d) => d.id !== self && d.cards.every((x) => { try { cardDef(x); return true; } catch { return false; } }));
   let end = 0, koW = 0, wins = 0, dmg = 0, atk = 0, resv = 0, cast = 0, hp = 0;
   for (let i = 0; i < n; i++) {
-    const o = playOne(cards, opps[i % opps.length], seed0 + i * 104729);
+    const d = opps[i % opps.length], o = playOne(cards, d.cards, seed0 + i * 104729, SIM_LV, [self, d.id]);
     end += o.end; dmg += o.dmg20; atk += o.atk; resv += o.resv; cast += o.cast; hp += o.hpEnd;
     if (o.score === 1) { wins++; if (o.ko) koW++; }
   }
@@ -143,12 +147,12 @@ export function improve(arche: string, cur: string[], opps: Opp[], mode: 'hi' | 
   // never land on (or next to) a list another build plays today
   const cands = candidates(arche, cur, o.candidates * 2, o.seed).filter((c) => !(o.others ?? []).some((x) => RULES.DECK_SIZE - shared(c, x) < MIN_APART)).slice(0, o.candidates);
   log(`${arche} ${mode}: ${cands.length} candidates`);
-  const screened = cands.map((c) => ({ c, p: paired(cur, c, opps, o.screen, o.seed) }));
+  const screened = cands.map((c) => ({ c, p: paired(cur, c, opps, o.screen, o.seed, SIM_LV, arche) }));
   const order = mode === 'hi'
     ? screened.filter((x) => x.p.diff > 0).sort((a, b) => b.p.diff - a.p.diff)
     : screened.filter((x) => Math.abs(x.p.diff) <= 0.04).sort((a, b) => Math.abs(a.p.diff) - Math.abs(b.p.diff));
   for (const x of order.slice(0, 3)) {
-    const p = paired(cur, x.c, opps, o.confirm, o.seed + 1_000_003);
+    const p = paired(cur, x.c, opps, o.confirm, o.seed + 1_000_003, SIM_LV, arche);
     const ok = mode === 'hi' ? p.diff >= 0.02 && p.diff - 1.96 * p.se > 0 : Math.abs(p.diff) <= 0.02;
     log(`  ${diffText(cur, x.c)}: ${(p.diff * 100).toFixed(1)}±${(p.se * 196).toFixed(1)} ${ok ? 'ok' : 'no'}`);
     if (!ok) continue;

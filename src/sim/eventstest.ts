@@ -5,7 +5,7 @@ import { maxCopies } from '../core/decks';
 import { resvCount } from '../core/engine';
 import { PRESET_DECKS } from '../core/decks';
 import { actor, apply, createGame } from '../core/engine';
-import { chooseAction } from '../core/ai';
+import { lvBoth } from './lvplay';
 import { CARDS, cardDef } from '../core/cards';
 import { RULES } from '../core/rules';
 import { mulberry32 } from '../core/engine';
@@ -35,7 +35,8 @@ for (const ev of EVENTS) {
     }
     if (ev.id === 'quick') assert.equal(set.turnMs, 10_000);
     let n = 0;
-    while (!state.over && n++ < 900) { const pi = actor(state); if (pi === -1) break; apply(state, chooseAction(state, pi, 'easy')); }
+    const ai = lvBoth(1);
+    while (!state.over && n++ < 900) { const pi = actor(state); if (pi === -1) break; apply(state, ai(state, pi)); }
     assert.ok(state.over, `${ev.id}: the game ends`);
   }
 }

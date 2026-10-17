@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { CARD_LIST, setOf } from '../core/cards';
 import { mulberry32 } from '../core/engine';
-import { CRAFT_COST, DAILY_BONUS, DAILY_MATCH_CAP, DEFAULT_LOOK, DUPE_SHARDS, LOOKS, MATCH_REWARD, NEW_WALLET, PACKS, PITY, applyReward, buyLook, canOpen, craft, craftBlock, lookBlock, lookById, missingCards, openPack, ownedCount, ownsLook, reward, setProgress , THEMES, buyTheme, themeOffer, THEME_PRICES, THEME_SET_PRICE, refundRetired} from '../meta/economy';
+import { CRAFT_COST, DAILY_BONUS, DAILY_MATCH_CAP, DEFAULT_LOOK, DUPE_SHARDS, LOOKS, AI_REWARD, ONLINE_REWARD, aiReward, NEW_WALLET, PACKS, PITY, applyReward, buyLook, canOpen, craft, craftBlock, lookBlock, lookById, missingCards, openPack, ownedCount, ownsLook, reward, setProgress , THEMES, buyTheme, themeOffer, THEME_PRICES, THEME_SET_PRICE, refundRetired} from '../meta/economy';
 
 const rand = mulberry32(99);
 const pack = PACKS[0];
@@ -17,23 +17,26 @@ assert.throws(() => openPack(w, pack, rand));
 
 // rewards
 const today = '2026-09-30';
-const r1 = reward(w, { mode: 'ai', level: 'normal', winner: 0, reason: 'ko', myActions: 12, today });
-const WIN = MATCH_REWARD['ai-normal'][0];
+const r1 = reward(w, { mode: 'ai', lv: 3, winner: 0, reason: 'ko', myActions: 12, today });
+const WIN = aiReward(3)[0];
 assert.equal(r1.total, WIN + DAILY_BONUS, 'win + daily bonus');
 applyReward(w, r1, today);
-assert.equal(reward(w, { mode: 'ai', level: 'normal', winner: 0, reason: 'ko', myActions: 12, today }).total, WIN, 'bonus once a day');
-assert.equal(reward(w, { mode: 'online', level: 'normal', winner: 1, reason: 'surrender', myActions: 12, today }).total, 0, 'surrendering pays nothing');
-assert.equal(reward(w, { mode: 'online', level: 'normal', winner: 0, reason: 'surrender', myActions: 2, today: '2026-10-01' }).total, 0, 'instant wins pay nothing');
-assert.equal(reward(w, { mode: 'ai', level: 'hard', winner: 1, reason: 'ko', myActions: 9, today }).total, MATCH_REWARD['ai-hard'][1]);
+assert.equal(reward(w, { mode: 'ai', lv: 3, winner: 0, reason: 'ko', myActions: 12, today }).total, WIN, 'bonus once a day');
+assert.equal(reward(w, { mode: 'online', lv: 3, winner: 1, reason: 'surrender', myActions: 12, today }).total, 0, 'surrendering pays nothing');
+assert.equal(reward(w, { mode: 'online', lv: 3, winner: 0, reason: 'surrender', myActions: 2, today: '2026-10-01' }).total, 0, 'instant wins pay nothing');
+assert.equal(reward(w, { mode: 'ai', lv: 5, winner: 1, reason: 'ko', myActions: 9, today }).total, aiReward(5)[1]);
 
+assert.equal(aiReward(1)[0], AI_REWARD[0].pay[0]);
+assert.equal(aiReward(12)[0], AI_REWARD[AI_REWARD.length - 1].pay[0], 'Lv11–12 pay as Lv7+');
+assert.ok(ONLINE_REWARD[0] > 0);
 // daily cap on match coins (the first-win bonus is on top)
 const cw = NEW_WALLET();
 let earned = 0;
-for (let i = 0; i < 40; i++) { const r = reward(cw, { mode: 'ai', level: 'hard', winner: 0, reason: 'ko', myActions: 12, today }); applyReward(cw, r, today); earned += r.total; }
+for (let i = 0; i < 40; i++) { const r = reward(cw, { mode: 'ai', lv: 5, winner: 0, reason: 'ko', myActions: 12, today }); applyReward(cw, r, today); earned += r.total; }
 assert.equal(earned, DAILY_MATCH_CAP + DAILY_BONUS, 'match coins stop at the daily cap');
-const capped = reward(cw, { mode: 'ai', level: 'hard', winner: 0, reason: 'ko', myActions: 12, today });
+const capped = reward(cw, { mode: 'ai', lv: 5, winner: 0, reason: 'ko', myActions: 12, today });
 assert.ok(capped.capped && capped.total === 0, 'capped result says so');
-assert.ok(reward(cw, { mode: 'ai', level: 'hard', winner: 0, reason: 'ko', myActions: 12, today: '2026-10-02' }).total > 0, 'cap resets the next day');
+assert.ok(reward(cw, { mode: 'ai', lv: 5, winner: 0, reason: 'ko', myActions: 12, today: '2026-10-02' }).total > 0, 'cap resets the next day');
 
 // odds over many packs
 const big = NEW_WALLET();

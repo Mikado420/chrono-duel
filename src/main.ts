@@ -13,15 +13,14 @@ import { COLORS, DESIGN } from './render/theme';
 import { Tweener } from './render/tween';
 import { PackOpenScene } from './render/packOpen';
 import { MIN_ACTIONS, applyReward, canOpen, localDate, openPack, packById, reward, type Reward } from './meta/economy';
-import { bump, dailyView, grantAdjustment, grantEventPrize, grantPersonalGift, grantSeasonReward, recordBattle, recordMatch, track } from './meta/progress';
+import { STRONG_LV, bump, dailyView, grantAdjustment, grantEventPrize, grantPersonalGift, grantSeasonReward, recordBattle, recordMatch, track } from './meta/progress';
 import { haptics } from './render/haptics';
 import { LOOKS, PITY, refundRetired } from './meta/economy';
 import { deckKey, deckLook, favCard, shownTitle } from './ui/profile';
 import { CARD_LIST } from './core/cards';
-import { SEASON_REWARDS, SHIN_RESET_COINS, TIERS, applyRatingResets, finishRated, foeById, foeLevel, makeOpponent, rollSeason, startRated, tierOf, type RatedGame } from './meta/rating';
+import { SEASON_REWARDS, SHIN_RESET_COINS, TIERS, applyRatingResets, finishRated, makeOpponent, rollSeason, startRated, tierOf, type RatedGame } from './meta/rating';
 import { seasonById } from './meta/ranks';
 import { eventOf, eventProgress, recordEventGame } from './meta/events';
-import { levelOfLv } from './core/ai';
 import { quirksOf, type RivalCfg } from './core/rival';
 import { rivalById, rivalCfg, rivalDeckCards, rivalDeckName } from './meta/roster';
 import { deckBook, fetchGifts, loadReplay, refreshDeckBook, replayFromHash, replayLink, reportMatch, saveLiveGame, shareReplay, syncRated, takeLiveGame } from './net/api';
@@ -189,12 +188,12 @@ async function boot() {
     if (online) store.saveOnlineRecord(); else store.saveRecord();
     // coins for playing
     const today = localDate();
-    const rw: Reward = reward(store.wallet, { mode: online ? 'online' : lastCfg?.rated ? 'rated' : 'ai', level: lastCfg?.level ?? 'normal', lv: !lastCfg?.rated ? lastCfg?.rival?.lv : undefined, winner: r.winner, reason: r.reason, myActions: r.myActions, today });
+    const rw: Reward = reward(store.wallet, { mode: online ? 'online' : lastCfg?.rated ? 'rated' : 'ai', lv: lastCfg?.rival?.lv, winner: r.winner, reason: r.reason, myActions: r.myActions, today });
     applyReward(store.wallet, rw, today);
     store.saveWallet();
     // rank and missions
     const xp = recordBattle(store.meta, {
-      won: r.winner === 0, played: r.myActions >= MIN_ACTIONS, hard: !online && (lastCfg?.level === 'hard' || lastCfg?.level === 'expert'), online,
+      won: r.winner === 0, played: r.myActions >= MIN_ACTIONS, strong: !online && (lastCfg?.rival?.lv ?? 0) >= STRONG_LV, online,
       spells: r.stats.spells, summons: r.stats.summons, reserves: r.stats.reserves, attacks: r.stats.attacks,
     }, today);
     const missions: MissionDelta[] = dailyView(store.meta, today0).flatMap((v) => {
@@ -235,7 +234,7 @@ async function boot() {
     // (an event's games start from a changed position, so they are left out)
     if (!lastCfg?.event) void reportMatch({
       gid: !online && liveGid ? liveGid : newId(), id: store.account().id, v: VERSION,
-      mode: online ? 'online' : lastCfg?.rated ? 'rated' : 'free', ai: online ? undefined : lastCfg?.level,
+      mode: online ? 'online' : lastCfg?.rated ? 'rated' : 'free', lv: online ? undefined : lastCfg?.rival?.lv,
       deck: online ? flow.myDeck : lastCfg?.myDeck ?? [], played: r.played,
       score: r.winner === 0 ? 1 : r.winner === -1 ? 0.5 : 0, reason: r.reason, actions: r.myActions, ms: Date.now() - battleStartedAt,
       // games against the AI carry the whole record (online games are recorded by the server)
@@ -262,7 +261,6 @@ async function boot() {
     for (const g of [...store.rated.history].reverse()) if (g.foe) last[g.foe] = g.score;
     const o = makeOpponent(store.rated.rating, store.settings.name, recent, Math.random, last);
     const r = rivalById(o.ai);
-    const level = foeLevel(o.ai);
     const aiDeckId = o.deck ?? 'balance';
     // the rival's list: the deck book's (checked against its 設計図), or the built-in one
     const list = listFor(deckBook(), bookKey(aiDeckId, r?.lv ?? 1), newId(), rivalDeckCards(aiDeckId));
@@ -273,8 +271,8 @@ async function boot() {
       store.saveRated();
       screens.clear();
       run({
-        myDeck: deck.cards, myDeckName: deck.name, myDeckId: deck.id, aiDeck: list.cards, aiDeckV: list.v, aiDeckName: rivalDeckName(aiDeckId), level,
-        rival: r ? rivalCfg(r, aiDeckId) : undefined, aiSpec: r ? undefined : foeById(o.ai)?.spec, rated: true, foeName: o.name, first, looks: looksFor(deck.id, true),
+        myDeck: deck.cards, myDeckName: deck.name, myDeckId: deck.id, aiDeck: list.cards, aiDeckV: list.v, aiDeckName: rivalDeckName(aiDeckId),
+        rival: r ? rivalCfg(r, aiDeckId) : undefined, rated: true, foeName: o.name, first, looks: looksFor(deck.id, true),
       });
     }, () => screens.rated());
   };
@@ -381,7 +379,7 @@ async function boot() {
     screens.versus(me, foe, () => { tw.speed = store.settings.speed || speed || 1; });
   };
   /** The AI of free play and events: the rated opponents' brain at `lv`, moving without a person's pauses. */
-  const aiAt = (lv: number, deck: string): { rival: RivalCfg; level: ReturnType<typeof levelOfLv> } => ({ rival: { name: 'AI', lv, persona: 'steady', deck, quirks: quirksOf('AI') }, level: levelOfLv(lv) });
+  const aiAt = (lv: number, deck: string): { rival: RivalCfg } => ({ rival: { name: 'AI', lv, persona: 'steady', deck, quirks: quirksOf('AI') } });
   /** This week's event: its decks and opening, then the VS screen as for a free game. */
   const startEvent = (deck: DeckDef | null, drafted?: string[]) => {
     const ev = eventOf(localDate()).event;
@@ -392,7 +390,7 @@ async function boot() {
   /** Plays a shared game back (from a replay link). */
   const watchReplay = (r: SharedReplay) => {
     screens.clear();
-    run({ myDeck: r.log.decks[0], myDeckName: r.info.decks[0], aiDeck: r.log.decks[1], aiDeckName: r.info.decks[1], level: 'normal', replay: { log: r.log, names: [r.info.names[0] || 'プレイヤー', r.info.names[1] || '相手'] }, looks: { back: 'back:brass', dial: deckLook(store.settings.lastDeck ?? '', 'dial'), still: store.settings.reduced } });
+    run({ myDeck: r.log.decks[0], myDeckName: r.info.decks[0], aiDeck: r.log.decks[1], aiDeckName: r.info.decks[1], replay: { log: r.log, names: [r.info.names[0] || 'プレイヤー', r.info.names[1] || '相手'] }, looks: { back: 'back:brass', dial: deckLook(store.settings.lastDeck ?? '', 'dial'), still: store.settings.reduced } });
   };
   const run = (cfg: BattleConfig) => {
     endBattle();
@@ -403,7 +401,7 @@ async function boot() {
     const live: BattleConfig = cfg.net || cfg.event ? cfg : {
       ...cfg,
       onProgress: (log, n) => saveLiveGame({
-        gid, id: store.account().id, v: VERSION, mode: cfg.rated ? 'rated' : 'free', ai: cfg.level, deck: cfg.myDeck, played: [],
+        gid, id: store.account().id, v: VERSION, mode: cfg.rated ? 'rated' : 'free', lv: cfg.rival?.lv, deck: cfg.myDeck, played: [],
         score: 0, reason: 'disconnect', actions: n, ms: Date.now() - battleStartedAt, log, deckName: cfg.myDeckName, foe: cfg.aiDeckName,
       }),
     };
@@ -443,7 +441,7 @@ async function boot() {
     showError: (msg) => { endBattle(); screens.error(msg, () => screens.onlineMenu()); },
     startBattle: (link) => {
       screens.clear();
-      const cfg: BattleConfig = { myDeck: [], myDeckName: '', aiDeck: [], aiDeckName: link.foeName, level: 'normal', net: link };
+      const cfg: BattleConfig = { myDeck: [], myDeckName: '', aiDeck: [], aiDeckName: link.foeName, net: link };
       if (!link.init.fresh) { run(cfg); return; }
       const f = link.init.foe, first = link.init.first;
       if (link.watch) {

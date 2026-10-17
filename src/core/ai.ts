@@ -1,21 +1,17 @@
 import { CARD_LIST, cardDef } from './cards';
 import { RULES } from './rules';
 import {
-  actor, apply, attackTarget, cardCost, clone, mulberry32, legalActions, other, rushActive, worldTime,
+  actor, apply, attackTarget, cardCost, clone, legalActions, other, rushActive, worldTime,
   type Action, type GameState, type PlayerIndex, type PlayerState,
 } from './engine';
 
-/** easy/normal add noise to a greedy choice; hard looks one reply ahead; expert searches its own streak of moves and the opponent's. */
-export type AiLevel = 'easy' | 'normal' | 'hard' | 'expert';
-export const AI_LEVEL_NAMES: Record<AiLevel, string> = { easy: 'やさしい', normal: 'ふつう', hard: 'つよい', expert: '超つよい' };
 /**
- * The AI of free play and events is shown and chosen as Lv1–10 (the same brain as the rated opponents). Rewards and
- * play records still use the four old levels: Lv1–2 やさしい, Lv3–4 ふつう, Lv5–6 つよい, Lv7–10 超つよい.
+ * The pieces every AI is built from: the static evaluation, the one-reply and deeper reads, the guessed worlds and
+ * rollouts. The AI itself — its strength given only as Lv1–12 — is src/core/rival.ts (free play, events and rated
+ * play all use it; the simulation tools too, see src/sim/lvplay.ts).
  */
+/** The highest Lv a player can pick for free play (Lv11–12 appear only in rated play). */
 export const AI_LV_MAX = 10;
-export const levelOfLv = (lv: number): AiLevel => (lv <= 2 ? 'easy' : lv <= 4 ? 'normal' : lv <= 6 ? 'hard' : 'expert');
-/** Where an old choice of level lands on the Lv scale. */
-export const LV_OF_LEVEL: Record<AiLevel, number> = { easy: 1, normal: 3, hard: 5, expert: 8 };
 
 /**
  * The fixes from the 0.22.0 rated-play review (all on in the game; balance tools may switch them off per move to
@@ -54,11 +50,11 @@ export function rushValue(s: GameState, pi: PlayerIndex): number {
 /** How much a card in hand is still worth to a player whose clock is at `time` (1 until 10 ticks before the end). */
 export const handWorth = (time: number) => (AI_FIX.fade ? Math.min(1, Math.max(0, (RULES.END - time) / 10)) : 1);
 
-/** Weights of the static evaluation. Each AI level can use its own set (超つよい uses tuned ones). */
+/** Weights of the static evaluation. The searching Lv (6+) can use their own set (the rollouts use EXPERT_WEIGHTS). */
 export interface Weights { hp: number; danger: number; atk: number; body: number; open: number; hand: number; handExtra: number; resv: number; tempo: number; ready: number }
 export const BASE_WEIGHTS: Weights = { hp: 1.5, danger: 1.5, atk: 1.1, body: 0.7, open: 0.7, hand: 1.4, handExtra: 0.6, resv: 1.8, tempo: 0.85, ready: 0 };
 export const EXPERT_WEIGHTS: Weights = { ...BASE_WEIGHTS };
-/** For balance tools only: try other weights for 超つよい. */
+/** For balance tools only: try other weights for the rollouts. */
 export function setExpertWeights(w: Partial<Weights>) { Object.assign(EXPERT_WEIGHTS, w); }
 
 function unitValue(u: NonNullable<PlayerState['field'][number]>, W: Weights): number {
@@ -213,7 +209,7 @@ export function bestReply(s: GameState, pi: PlayerIndex, depth = 0, skipLane = -
 }
 
 /**
- * Deeper search for 超つよい: follows its own consecutive moves (the lagging clock keeps acting) up to `mine`
+ * Deeper search: follows its own consecutive moves (the lagging clock keeps acting) up to `mine`
  * plies, then lets the opponent answer with its known threats (attacks, drawing, waiting) for up to `theirs` plies.
  * The opponent's hand is never used, so the AI does not peek at hidden cards.
  */
@@ -262,31 +258,6 @@ export function chooseChoice(s: GameState, pi: PlayerIndex): Action {
   return { t: 'choose', i: best };
 }
 
-/** Tunables of the 超つよい rollout search (the balance tools may change them). */
-export const EXPERT_SEARCH = { candidates: 6, rollouts: 12, depth: 30 };
-export type SearchCfg = { candidates: number; rollouts: number; depth: number };
-
-/**
- * An AI strength between or above the four levels (rated play): each move is played at `level`, or at `mix.level`
- * with probability `mix.p`; `search` makes 超つよい think harder.
- */
-export interface AiSpec { level: AiLevel; mix?: { level: AiLevel; p: number }; search?: SearchCfg }
-function specMove(spec: AiSpec, rand: () => number): { level: AiLevel; search?: SearchCfg } {
-  const level = spec.mix && rand() < spec.mix.p ? spec.mix.level : spec.level;
-  return { level, search: level === 'expert' ? spec.search : undefined };
-}
-/** chooseAction for an AiSpec. */
-export function chooseActionSpec(s: GameState, pi: PlayerIndex, spec: AiSpec, rand: () => number = Math.random): Action {
-  const m = specMove(spec, rand);
-  return m.level === 'expert' ? chooseExpert(s, pi, rand, m.search) : chooseAction(s, pi, m.level, rand);
-}
-/** chooseActionAsync for an AiSpec. */
-export async function chooseActionSpecAsync(s: GameState, pi: PlayerIndex, spec: AiSpec, rand: () => number = Math.random): Promise<Action> {
-  const m = specMove(spec, rand);
-  if (m.level !== 'expert') return chooseAction(s, pi, m.level, rand);
-  return runSteps(expertSteps(s, pi, rand, m.search));
-}
-
 /**
  * One guess of the hidden information for `pi`: the opponent's hand and deck become random cards, our own deck
  * is our real remaining cards in a random order (we know our deck list but not its order).
@@ -322,73 +293,4 @@ export function rollout(s: GameState, pi: PlayerIndex, depth: number, rand: () =
     apply(s, best);
   }
   return rollScore(s, pi, EXPERT_WEIGHTS, end);
-}
-
-/** A generator so the UI can pause between candidates and keep animating while 超つよい thinks. */
-function* expertSteps(s: GameState, pi: PlayerIndex, rand: () => number, search: SearchCfg = EXPERT_SEARCH): Generator<void, Action> {
-  if (s.pending) return chooseChoice(s, pi);
-  const base = fogged(s, pi);
-  const acts = pruneReserves(base, pi, legalActions(base, pi));
-  // 1) shortlist with the deterministic search
-  const scored = acts.map((a) => {
-    const c = clone(base);
-    apply(c, a);
-    return { a, v: deepValue(c, pi, 2, 2) + intentBonus(base, pi, a) + breakBonus(s, pi, a) };
-  }).sort((x, y) => y.v - x.v);
-  const short = scored.slice(0, search.candidates);
-  if (short.length <= 1) return short[0]?.a ?? { t: 'wait' };
-  // 2) settle it by playing each candidate out against several guesses of the hidden cards
-  const ownDeck = s.players[pi].deck.slice();
-  const worlds = Array.from({ length: search.rollouts }, () => determinize(s, pi, ownDeck, rand));
-  const seeds = worlds.map(() => Math.floor(rand() * 2 ** 32));
-  let best = short[0].a, bestV = -Infinity;
-  for (const cand of short) {
-    yield;
-    let sum = 0;
-    for (let wi = 0; wi < worlds.length; wi++) {
-      const c = clone(worlds[wi]);
-      try { apply(c, cand.a); } catch { sum -= 1000; continue; }
-      sum += rollout(c, pi, search.depth, AI_FIX.crn ? mulberry32(seeds[wi]) : rand);
-    }
-    // keep a little of the search score: it knows about reservations that rollouts do not play
-    const v = sum / worlds.length + cand.v * 0.25;
-    if (v > bestV) { bestV = v; best = cand.a; }
-  }
-  return best;
-}
-
-function chooseExpert(s: GameState, pi: PlayerIndex, rand: () => number, search?: SearchCfg): Action {
-  const it = expertSteps(s, pi, rand, search);
-  for (;;) { const r = it.next(); if (r.done) return r.value; }
-}
-async function runSteps(it: Generator<void, Action>): Promise<Action> {
-  for (;;) {
-    const r = it.next();
-    if (r.done) return r.value;
-    await new Promise((res) => setTimeout(res, 0));
-  }
-}
-/** Same as chooseAction, but gives the browser a frame between 超つよい's candidates. */
-export async function chooseActionAsync(s: GameState, pi: PlayerIndex, level: AiLevel, rand: () => number = Math.random): Promise<Action> {
-  if (level !== 'expert') return chooseAction(s, pi, level, rand);
-  return runSteps(expertSteps(s, pi, rand));
-}
-
-export function chooseAction(s: GameState, pi: PlayerIndex, level: AiLevel, rand: () => number = Math.random): Action {
-  if (s.pending) return chooseChoice(s, pi);
-  if (level === 'expert') return chooseExpert(s, pi, rand);
-  const base = fogged(s, pi);
-  const acts = pruneReserves(base, pi, legalActions(base, pi));
-  let best: Action = { t: 'wait' };
-  let bestV = -Infinity;
-  for (const a of acts) {
-    const c = clone(base);
-    apply(c, a);
-    let v = level === 'hard' ? bestReply(c, pi) : evaluate(c, pi);
-    v += intentBonus(base, pi, a) + breakBonus(s, pi, a);
-    if (level === 'normal') v += (rand() - 0.5) * 4;
-    if (level === 'easy') v += (rand() - 0.5) * 22;
-    if (v > bestV) { bestV = v; best = a; }
-  }
-  return best;
 }

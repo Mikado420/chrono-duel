@@ -198,7 +198,7 @@ assert.equal((r2.body as { env: boolean }).env, false);
   }
   assert.deepEqual(candidates('rush', rush, 20, 7), cs, 'the same day gives the same candidates');
   // a paired run of a list against itself shows no difference
-  const p = paired(rush, rush, [{ id: 'titan', cards: originList('titan')!, w: 1 }], 6, 3, 'normal');
+  const p = paired(rush, rush, [{ id: 'titan', cards: originList('titan')!, w: 1 }], 6, 3, 3);
   assert.equal(p.diff, 0);
   assert.equal(bookKey('rush', 9), 'rush');
   assert.equal(archeOf(bookKey('rush', 3)), 'rush');

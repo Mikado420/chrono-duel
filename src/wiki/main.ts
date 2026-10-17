@@ -6,7 +6,7 @@
 import './wiki.css';
 import { CARD_LIST, KEYWORD_HELP, SET_NAMES, keywordsOf, setOf, type CardDef, type CardSet, type Rarity } from '../core/cards';
 import { RULES } from '../core/rules';
-import { CRAFT_COST, DAILY_BONUS, DAILY_MATCH_CAP, DUPE_SHARDS, LAST_SLOT, LOOKS, MATCH_REWARD, MIN_ACTIONS, PACKS, PITY, THEMES, THEME_PRICES, THEME_SET_PRICE } from '../meta/economy';
+import { CRAFT_COST, DAILY_BONUS, DAILY_MATCH_CAP, DUPE_SHARDS, LAST_SLOT, LOOKS, AI_REWARD, ONLINE_REWARD, MIN_ACTIONS, PACKS, PITY, THEMES, THEME_PRICES, THEME_SET_PRICE } from '../meta/economy';
 import { NEWS } from '../meta/progress';
 import { cardFace, loadCardPics, setCardPicBase } from '../render/cardArt';
 import { VERSION } from '../version';
@@ -14,7 +14,7 @@ import { GLOSS, KW_TIPS, MEMO } from './content';
 import { STATS } from './stats';
 import { CARD_VALUE } from './cardvalue';
 import { serverUrl } from '../net/server';
-import { impacts, type StatsAgg, type StoredLog } from '../server/statsCore';
+import { impacts, lvText as recLv, modeText, type StatsAgg, type StoredLog } from '../server/statsCore';
 import { narrate } from '../core/narrate';
 import { fxSegments } from '../core/cardText';
 import { ROSTER_DECKS, type RosterDeck } from '../sim/rosterDecks';
@@ -540,12 +540,13 @@ function initKeywords() {
   }).join('');
 }
 function initPacks() {
-  const [nw, nl, nd] = MATCH_REWARD['ai-normal'], [hw, hl, hd] = MATCH_REWARD['ai-hard'], [ow, ol, od] = MATCH_REWARD['online'];
+  const ow = ONLINE_REWARD[0];
+  const all = [...AI_REWARD.map((b) => b.pay), ONLINE_REWARD];
   const range = (...xs: number[]) => (Math.min(...xs) === Math.max(...xs) ? `${xs[0]}` : `${Math.min(...xs)}〜${Math.max(...xs)}`);
   const row = (l: string, v: string | number) => `<tr><td>${l}</td><td class="num"><b class="n">${v}</b></td></tr>`;
   $('rewards').innerHTML = '<tr><th>結果</th><th class="num">コイン</th></tr>' +
-    row('AI（ふつう）に勝利', nw) + row('AI（つよい）に勝利', hw) + row('オンラインで勝利', ow) +
-    row('敗北', range(nl, hl, ol)) + row('引き分け', range(nd, hd, od)) + row('その日の初勝利ボーナス', `+${DAILY_BONUS}`);
+    AI_REWARD.map((b) => row(`AI Lv${b.from}〜${b.to}に勝利`, b.pay[0])).join('') + row('オンラインで勝利', ow) +
+    row('敗北', range(...all.map((p) => p[1]))) + row('引き分け', range(...all.map((p) => p[2]))) + row('その日の初勝利ボーナス', `+${DAILY_BONUS}`);
   $('shards').innerHTML = '<tr><th>レアリティ</th><th class="num">もらえる欠片</th><th class="num">作成に必要</th></tr>' +
     (['C', 'R', 'E', 'L'] as Rarity[]).map((r) => `<tr><td><span class="rar ${r}">${RN[r]}</span></td><td class="num"><b class="n">${DUPE_SHARDS[r]}</b></td><td class="num"><b class="n">${CRAFT_COST[r]}</b></td></tr>`).join('');
 }
@@ -576,7 +577,6 @@ function drawClock() {
 
 // ------------------------------------------------------------------ play statistics from real games
 const REAL_MIN = 20;
-const MODE_NAMES: Record<string, string> = { 'free-easy': 'フリー（やさしい）', 'free-normal': 'フリー（ふつう）', 'free-hard': 'フリー（つよい）', 'free-expert': 'フリー（超つよい）', rated: 'レート戦', online: 'フレンド対戦' };
 async function initReal(ver?: string) {
   const body = $('real-body'), sel = $('real-ver') as HTMLSelectElement, sum = $('real-sum');
   const base = serverUrl()?.replace(/^ws/, 'http');
@@ -593,7 +593,7 @@ async function initReal(ver?: string) {
   const agg = res.agg;
   if (!agg) { body.innerHTML = '<p class="mute">まだ対戦データがありません。遊ぶと自動で集まります。</p>'; sum.textContent = ''; return; }
   const total = Object.values(agg.games).reduce((n, [g]) => n + g, 0);
-  sum.textContent = `${total}試合 ・ ` + Object.entries(agg.games).map(([k, [g]]) => `${MODE_NAMES[k] ?? k} ${g}`).join(' / ');
+  sum.textContent = `${total}試合 ・ ` + Object.entries(agg.games).map(([k, [g]]) => `${modeText(k)} ${g}`).join(' / ');
   const rows = impacts(agg).filter((x) => C[x.id] && x.used > 0).sort((a, b) => (b.used >= REAL_MIN ? 1 : 0) - (a.used >= REAL_MIN ? 1 : 0) || b.lift - a.lift);
   const sign = (n: number) => `${n > 0 ? '+' : ''}${n.toFixed(1)}`;
   body.innerHTML = `<div class="tw"><table class="gt list"><tr><th>カード</th><th class="num">使用</th><th class="num">勝率</th><th class="num">影響</th><th class="num">評価</th></tr>` +
@@ -616,7 +616,7 @@ function initAdmin() {
   if (!base) { sum.textContent = 'この環境ではサーバーにつながっていません。'; return; }
   let items: StoredLog[] = [];
   let versions: string[] = [];
-  const seatNames = (r: StoredLog): [string, string] => [r.names?.[0] || (r.src === 'report' ? `未登録(${(r.id ?? '').slice(-6)})` : '?'), r.src === 'report' ? `AI（${r.deckNames?.[1] || '?'}・${r.ai ?? ''}）` : r.names?.[1] || '?'];
+  const seatNames = (r: StoredLog): [string, string] => [r.names?.[0] || (r.src === 'report' ? `未登録(${(r.id ?? '').slice(-6)})` : '?'), r.src === 'report' ? `AI ${recLv(r) || ''}（${r.deckNames?.[1] || '?'}）` : r.names?.[1] || '?'];
   const copy = async (text: string, btn: HTMLButtonElement) => {
     try { await navigator.clipboard.writeText(text); btn.textContent = 'コピーしました'; }
     catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); btn.textContent = 'コピーしました'; }

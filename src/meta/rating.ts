@@ -1,16 +1,13 @@
 /**
  * Rated play. Opponents are AI players presented as ordinary players (a name and a rating, never "AI" or a
- * difficulty). Their strength is picked near the player's rating from nine steps (RATED_FOES).
+ * difficulty). They are the rivals of the roster (src/meta/roster.ts), picked near the player's rating.
  * Pure logic: the client uses it for instant feedback and the ranking server runs the same code to keep the
  * authoritative number, so both always agree.
  */
-import type { AiLevel, AiSpec } from '../core/ai';
-import { ROSTER, rivalById, rivalCard, rivalDeck, rivalId, rivalLevel, rivalTitle } from './roster';
+import { ROSTER, rivalById, rivalCard, rivalDeck, rivalId, rivalTitle } from './roster';
 
 export const START_RATING = 1000;
 export const MIN_RATING = 100;
-/** Each AI level plays at a fixed rating. Spacing follows AI-vs-AI results (each level beats the one below ~60–70%). */
-export const AI_RATING: Record<AiLevel, number> = { easy: 850, normal: 1000, hard: 1200, expert: 1450 };
 /** Bigger swings while the rating is still settling in. */
 export const PLACEMENT_GAMES = 10;
 export const K_PLACEMENT = 40;
@@ -21,32 +18,21 @@ import { SEASONS, TIERS, seasonAt, shinLv, type Season, type Tier } from './rank
 export { SEASONS, seasonAt, type Season };
 
 /**
- * Rated opponents: the four AI levels plus steps between and above them, so there is always one near the player.
- * A step between two levels plays each move at one or the other (half and half); the steps above 超つよい search
- * harder. Ratings keep the scale of the four levels; the steps are placed by AI-vs-AI games (scripts in README):
- * easy→normal +127, normal→hard +40, hard→expert +108 Elo in AI games, mapped onto the existing 850/1000/1200/1450.
- * The ids are stored in players' records and sent to the ranking server, so existing ids never change meaning.
+ * A rated opponent: one of the rivals of the roster ('rv:' + name), with its rating and Lv. Games recorded before the
+ * roster (until 0.13) name one of nine older strength steps instead; those ids are still in players' records and on
+ * the ranking server, so they stay readable, each with the rating it played at and the Lv it was closest to.
  */
-export interface RatedFoe { id: string; rating: number; spec: AiSpec }
-export const RATED_FOES: RatedFoe[] = [
-  { id: 'easy', rating: 850, spec: { level: 'easy' } },
-  { id: 'easy+', rating: 925, spec: { level: 'easy', mix: { level: 'normal', p: 0.5 } } },
-  { id: 'normal', rating: 1000, spec: { level: 'normal' } },
-  { id: 'normal+', rating: 1100, spec: { level: 'normal', mix: { level: 'hard', p: 0.5 } } },
-  { id: 'hard', rating: 1200, spec: { level: 'hard' } },
-  { id: 'hard+', rating: 1325, spec: { level: 'hard', mix: { level: 'expert', p: 0.5 } } },
-  { id: 'expert', rating: 1450, spec: { level: 'expert' } },
-  { id: 'expert+', rating: 1530, spec: { level: 'expert', search: { candidates: 8, rollouts: 24, depth: 30 } } },
-  { id: 'expert++', rating: 1600, spec: { level: 'expert', search: { candidates: 12, rollouts: 40, depth: 30 } } },
+export interface RatedFoe { id: string; rating: number; lv: number }
+export const LEGACY_FOES: RatedFoe[] = [
+  { id: 'easy', rating: 850, lv: 1 }, { id: 'easy+', rating: 925, lv: 2 }, { id: 'normal', rating: 1000, lv: 3 },
+  { id: 'normal+', rating: 1100, lv: 4 }, { id: 'hard', rating: 1200, lv: 5 }, { id: 'hard+', rating: 1325, lv: 6 },
+  { id: 'expert', rating: 1450, lv: 8 }, { id: 'expert+', rating: 1530, lv: 9 }, { id: 'expert++', rating: 1600, lv: 10 },
 ];
-/** A rated opponent by id: the 120 rivals of the roster ('rv:' + name), or one of the older strength steps (games recorded before the roster). */
 export function foeById(id: string): RatedFoe | undefined {
   const r = rivalById(id);
-  if (r) return { id, rating: r.rating, spec: { level: rivalLevel(r.lv) } };
-  return RATED_FOES.find((f) => f.id === id);
+  if (r) return { id, rating: r.rating, lv: r.lv };
+  return LEGACY_FOES.find((f) => f.id === id);
 }
-/** The plain level a rated opponent is closest to (rewards, statistics, which decks it may use). */
-export const foeLevel = (id: string): AiLevel => foeById(id)?.spec.level ?? 'normal';
 /** How wide the choice around the player's rating is: steps further away than this are rare. */
 export const MATCH_WIDTH = 90;
 
@@ -127,23 +113,6 @@ export function tierOf(rating: number): { tier: Tier; next: Tier | null; into: n
   while (i + 1 < TIERS.length && rating >= TIERS[i + 1].min) i++;
   const tier = TIERS[i], next = TIERS[i + 1] ?? null;
   return { tier, next, into: rating - tier.min, span: next ? next.min - tier.min : 0 };
-}
-
-/**
- * Which rated opponents can appear at a rating, with their weights: the nearest steps, more likely the nearer they
- * are. Below the weakest or above the strongest step, that step.
- */
-export function opponentPool(rating: number): [string, number][] {
-  const raw = RATED_FOES.map((f) => [f.id, Math.exp(-(((rating - f.rating) / MATCH_WIDTH) ** 2))] as [string, number]).filter(([, w]) => w > 0.05);
-  if (!raw.length) return [[(rating < RATED_FOES[0].rating ? RATED_FOES[0] : RATED_FOES[RATED_FOES.length - 1]).id, 1]];
-  const sum = raw.reduce((a, [, w]) => a + w, 0);
-  return raw.map(([id, w]) => [id, w / sum]);
-}
-export function pickOpponent(rating: number, rand: () => number = Math.random): string {
-  const pool = opponentPool(rating);
-  let r = rand();
-  for (const [id, w] of pool) { if (r < w) return id; r -= w; }
-  return pool[pool.length - 1][0];
 }
 
 export const expected = (me: number, them: number) => 1 / (1 + Math.pow(10, (them - me) / 400));

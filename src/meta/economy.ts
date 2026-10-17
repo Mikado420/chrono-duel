@@ -4,7 +4,6 @@
  */
 import { CARD_LIST, cardDef, setOf, type CardSet, type Rarity } from '../core/cards';
 import { maxCopies } from '../core/decks';
-import { AI_LEVEL_NAMES, type AiLevel } from '../core/ai';
 
 export interface PackDef { id: string; set: CardSet; name: string; sub: string; price: number; size: number }
 export const PACKS: PackDef[] = [
@@ -164,11 +163,16 @@ export function craft(w: Wallet, id: string): boolean {
 }
 
 // ------------------------------------------------------------------ rewards
-export interface RewardInput { mode: 'ai' | 'online' | 'rated'; level: AiLevel; /** Lv of the AI (free play and events). */ lv?: number; winner: 0 | 1 | -1; reason: string; myActions: number; today: string }
+export interface RewardInput { mode: 'ai' | 'online' | 'rated'; /** Lv of the AI (free play, events and rated play). */ lv?: number; winner: 0 | 1 | -1; reason: string; myActions: number; today: string }
 export interface Reward { lines: { label: string; coins: number }[]; total: number; capped?: boolean }
 
-/** [win, loss, draw] coins per match type. */
-export const MATCH_REWARD: Record<string, [number, number, number]> = { 'ai-easy': [20, 8, 12], 'ai-normal': [25, 10, 15], 'ai-hard': [35, 12, 18], 'ai-expert': [45, 15, 22], online: [30, 12, 18] };
+/** [win, loss, draw] coins against the AI, by its Lv (from–to), and in online play. */
+export const AI_REWARD: { from: number; to: number; pay: [number, number, number] }[] = [
+  { from: 1, to: 2, pay: [20, 8, 12] }, { from: 3, to: 4, pay: [25, 10, 15] }, { from: 5, to: 6, pay: [35, 12, 18] }, { from: 7, to: 12, pay: [45, 15, 22] },
+];
+export const ONLINE_REWARD: [number, number, number] = [30, 12, 18];
+/** The coins against an AI of Lv `lv`. */
+export const aiReward = (lv: number) => (AI_REWARD.find((b) => lv >= b.from && lv <= b.to) ?? AI_REWARD[1]).pay;
 /** Matches you give up on almost at once pay nothing, so surrendering in a loop cannot farm coins. */
 export const MIN_ACTIONS = 5;
 export const DAILY_BONUS = 50;
@@ -177,15 +181,14 @@ export const DAILY_MATCH_CAP = 250;
 
 export function reward(w: Wallet, r: RewardInput): Reward {
   const lines: Reward['lines'] = [];
-  const key = r.mode === 'online' ? 'online' : `ai-${r.level}`;
-  const [win, lose, draw] = MATCH_REWARD[key];
+  const [win, lose, draw] = r.mode === 'online' ? ONLINE_REWARD : aiReward(r.lv ?? 3);
   // matches over almost at once (either side gave up) pay nothing, so two devices cannot farm coins
   if (r.myActions < MIN_ACTIONS) return { lines: [], total: 0 };
   const used = w.matchDay === r.today ? w.matchCoins : 0;
   const room = Math.max(0, DAILY_MATCH_CAP - used);
   const base = r.winner === 0 ? win : r.winner === -1 ? draw : r.reason !== 'surrender' ? lose : 0;
   const pay = Math.min(base, room);
-  if (r.winner === 0) lines.push({ label: r.mode === 'online' ? 'オンライン勝利' : r.mode === 'rated' ? 'レート戦勝利' : r.lv ? `勝利（AI Lv${r.lv}）` : r.level === 'normal' ? '勝利' : `勝利（${AI_LEVEL_NAMES[r.level]}）`, coins: pay });
+  if (r.winner === 0) lines.push({ label: r.mode === 'online' ? 'オンライン勝利' : r.mode === 'rated' ? 'レート戦勝利' : r.lv ? `勝利（AI Lv${r.lv}）` : '勝利', coins: pay });
   else if (r.winner === -1) lines.push({ label: '引き分け', coins: pay });
   else lines.push({ label: '対戦に参加', coins: pay });
   if (r.winner === 0 && w.dailyWin !== r.today) lines.push({ label: '本日の初勝利ボーナス', coins: DAILY_BONUS });

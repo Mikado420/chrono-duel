@@ -2,9 +2,8 @@ import type { DeckDef } from '../core/decks';
 import { CARDS } from '../core/cards';
 import { PRESET_DECKS, validateDeck } from '../core/decks';
 import { NEW_WALLET, missingCards, type Wallet } from '../meta/economy';
-import { NEW_META, type Meta } from '../meta/progress';
+import { NEW_META, migrateMeta, type Meta } from '../meta/progress';
 import { NEW_RATED, type Rated } from '../meta/rating';
-import type { AiLevel } from '../core/ai';
 
 /** localStorage wrapper that never throws (private mode, blocked storage). */
 function read<T>(key: string, fallback: T): T {
@@ -18,7 +17,7 @@ function write(key: string, v: unknown) {
 }
 
 export interface Settings {
-  volume: number; bgm: number; muted: boolean; speed: number; reduced: boolean; level: AiLevel; /** AI strength for free play (Lv1–10); missing on older saves (then from `level`). */ aiLv?: number; lastDeck: string; guided: boolean; name: string;
+  volume: number; bgm: number; muted: boolean; speed: number; reduced: boolean; /** AI strength for free play (Lv1–10). */ aiLv: number; lastDeck: string; guided: boolean; name: string;
   /** Vibrate on the big moments (a legend, the finishing blow, a heavy hit on your base). */
   vibeBig: boolean;
   /** Short taps of vibration for your own actions (placing a card, attacking). */
@@ -28,7 +27,15 @@ export interface Settings {
   /** Ask before spending a ticket or coins on a pack. */
   packConfirm: boolean;
 }
-const DEFAULT_SETTINGS: Settings = { volume: 0.7, bgm: 0.5, muted: false, speed: 1, reduced: false, level: 'normal', lastDeck: 'balance', guided: false, name: '', vibeBig: true, vibeTap: true, attackPreview: true, packConfirm: true };
+const DEFAULT_SETTINGS: Settings = { volume: 0.7, bgm: 0.5, muted: false, speed: 1, reduced: false, aiLv: 3, lastDeck: 'balance', guided: false, name: '', vibeBig: true, vibeTap: true, attackPreview: true, packConfirm: true };
+
+/** Settings with the defaults filled in. Older saves kept a word for the AI's strength instead of its Lv; it becomes the Lv it stood for. */
+function loadSettings(): Settings {
+  const raw = read<Partial<Settings> & { level?: string }>('cd.settings', {});
+  const { level, ...rest } = raw;
+  const fromWord: Record<string, number> = { easy: 1, normal: 3, hard: 5, expert: 8 };
+  return { ...DEFAULT_SETTINGS, ...(raw.aiLv === undefined && level && fromWord[level] ? { aiLv: fromWord[level] } : {}), ...rest } as Settings;
+}
 
 /** Per-deck looks and the card shown for the deck (presets included, so it is kept apart from the deck list). */
 export interface DeckLook { back?: string; dial?: string; mat?: string; key?: string }
@@ -36,7 +43,7 @@ export interface DeckLook { back?: string; dial?: string; mat?: string; key?: st
 export interface OnlineSession { code: string; token: string; name: string; at: number }
 
 export const store = {
-  settings: { ...DEFAULT_SETTINGS, ...read<Partial<Settings>>('cd.settings', {}) } as Settings,
+  settings: loadSettings(),
   saveSettings() { write('cd.settings', this.settings); },
 
   customDecks: read<DeckDef[]>('cd.decks', []).filter((d) => d && Array.isArray(d.cards)),
@@ -80,7 +87,7 @@ export const store = {
   },
 
   /** Rank, missions, login bonus, presents and news. */
-  meta: { ...NEW_META(), ...read<Partial<Meta>>('cd.meta', {}) } as Meta,
+  meta: migrateMeta({ ...NEW_META(), ...read<Partial<Meta>>('cd.meta', {}) } as Meta),
   saveMeta() { write('cd.meta', this.meta); },
 
   /** Starter decks the player removed from their list (they can be brought back at any time). */

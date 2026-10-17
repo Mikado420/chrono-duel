@@ -1,6 +1,7 @@
 import { Container, FederatedPointerEvent, Graphics, Sprite, Texture, type Ticker } from 'pixi.js';
-import { AI_LEVEL_NAMES, chooseAction, chooseActionAsync, chooseActionSpecAsync, type AiLevel, type AiSpec } from '../core/ai';
-import { chooseRivalAsync, newMind, thinkMs, type RivalCfg, type RivalMind } from '../core/rival';
+import { chooseRival, chooseRivalAsync, newMind, quirksOf, thinkMs, type RivalCfg, type RivalMind } from '../core/rival';
+/** The AI used when a game against the AI starts without one (should not happen; also the debug autoplay): Lv3. */
+const FALLBACK_AI: RivalCfg = { name: 'AI', lv: 3, persona: 'steady', deck: '', quirks: quirksOf('AI') };
 import { KEYWORD_HELP, cardDef, keywordsOf } from '../core/cards';
 import {
   actor, apply, attackTarget, canShift, cardCost, createGame, isReady, legalActions, other, resvCount, resvRange, worldTime,
@@ -33,11 +34,8 @@ export interface BattleConfig {
   myDeckId?: string;
   aiDeck: string[];
   aiDeckName: string;
-  level: AiLevel;
-  /** Rated play: the opponent's exact strength (may sit between or above the levels). Defaults to `level`. */
-  aiSpec?: AiSpec;
   seed?: number;
-  /** Rated play: the rival of the roster playing the opponent's side (its Lv, persona, deck plan and quirks). */
+  /** The AI on the opponent's side (its Lv, persona, deck plan and quirks): free play, events and rated play. */
   rival?: RivalCfg;
   /** Version of the rival's list (AIのデッキ帳; 1 = the built-in list). */
   aiDeckV?: number;
@@ -179,7 +177,7 @@ export class BattleScene extends Container {
     this.foeMat.mask = this.foeMatMask; this.myMat.mask = this.myMatMask;
     if (isArtMat(cfg.looks?.mat)) void this.loadMyMat(cfg.looks.mat);
     if (isArtMat(cfg.looks?.foeMat)) void this.loadFoeMat(cfg.looks.foeMat);
-    this.huds = [new Hud(0, cfg.replay?.names[0] ?? cfg.net?.watch?.names[0] ?? 'あなた'), new Hud(1, cfg.replay ? cfg.replay.names[1] : cfg.net?.watch ? cfg.net.watch.names[1] : cfg.net ? cfg.net.foeName : cfg.foeName ?? (cfg.rival ? `AI Lv${cfg.rival.lv} ・ ${cfg.aiDeckName}` : `AI（${AI_LEVEL_NAMES[cfg.level]}）・ ${cfg.aiDeckName}`))];
+    this.huds = [new Hud(0, cfg.replay?.names[0] ?? cfg.net?.watch?.names[0] ?? 'あなた'), new Hud(1, cfg.replay ? cfg.replay.names[1] : cfg.net?.watch ? cfg.net.watch.names[1] : cfg.net ? cfg.net.foeName : cfg.foeName ?? `AI Lv${(cfg.rival ?? FALLBACK_AI).lv} ・ ${cfg.aiDeckName}`)];
     this.huds[1].x = 16; this.huds[1].y = 44;
     this.huds[0].x = 16;
     this.drawBtn = new Button('ドロー', 124, 66, 'plain', `${RULES.COST_DRAW}刻`, () => this.tryAction({ t: 'draw' }));
@@ -461,8 +459,8 @@ export class BattleScene extends Container {
         const t0 = performance.now();
         let act: Action;
         let hesitate = false;
-        if (this.cfg.rival) {
-          const rv = this.cfg.rival;
+        {
+          const rv = this.cfg.rival ?? FALLBACK_AI;
           const mv = await chooseRivalAsync(this.s, 1, rv, (this.mind ??= newMind()));
           if (this.destroyed_) return;
           if (mv.surrender) { await this.tw.wait(1200); if (!this.destroyed_) this.foeSurrender(); return; }
@@ -473,7 +471,7 @@ export class BattleScene extends Container {
             // 迷いの演出: a card is lifted from the hand and put back before the one played
             hesitate = mv.kind === 'torn' && mv.alt !== undefined && Math.random() < 0.3;
           }
-        } else act = this.cfg.aiSpec ? await chooseActionSpecAsync(this.s, 1, this.cfg.aiSpec) : await chooseActionAsync(this.s, 1, this.cfg.level);
+        }
         if (this.destroyed_) return;
         const left = Math.max(0, pause - (performance.now() - t0));
         if (hesitate && left > 900) { await this.tw.wait(left - 900); if (this.destroyed_) return; await this.liftFoeCard(); }
@@ -681,7 +679,7 @@ export class BattleScene extends Container {
     this.toast(`${this.foe}が降参しました`);
     this.onEnd({ winner: 0, reason: 'surrender', myHp: this.s.players[0].hp, foeHp: this.s.players[1].hp, actions: this.s.actions, myActions: this.myActs, stats: { ...this.stats }, played: [...this.played], feats: this.feats.result(this.s), ...(this.log ? { log: this.log } : {}) });
   }
-  debug() { return { s: this.s, busy: this.busy, mode: this.mode.k, use: (uid: number, lane: number | null) => this.use(uid, lane), act: (a: Action) => this.tryAction(a), auto: () => (this.cfg.net ? legalActions(this.s, 0).filter((x) => x.t !== 'wait' && x.t !== 'draw')[0] ?? { t: 'wait' } : chooseAction(this.s, 0, 'normal')), finished: this.finished, hand: () => [...this.handViews].map(([uid, v]) => ({ uid, card: v.card, x: v.x, y: v.y })), lanes: { x: [...LANE_X], y: ROW_Y[0] }, redraw: () => this.syncAll(false), handN: () => this.handLayer.children.length, giveUp: () => this.surrender('surrender'), plan: () => this.openPlan() }; }
+  debug() { return { s: this.s, busy: this.busy, mode: this.mode.k, use: (uid: number, lane: number | null) => this.use(uid, lane), act: (a: Action) => this.tryAction(a), auto: () => (this.cfg.net ? legalActions(this.s, 0).filter((x) => x.t !== 'wait' && x.t !== 'draw')[0] ?? { t: 'wait' } : chooseRival(this.s, 0, FALLBACK_AI, newMind()).action), finished: this.finished, hand: () => [...this.handViews].map(([uid, v]) => ({ uid, card: v.card, x: v.x, y: v.y })), lanes: { x: [...LANE_X], y: ROW_Y[0] }, redraw: () => this.syncAll(false), handN: () => this.handLayer.children.length, giveUp: () => this.surrender('surrender'), plan: () => this.openPlan() }; }
   surrender(reason: 'surrender' | 'timeout' = 'surrender') {
     if (this.cfg.net) { this.cfg.net.send({ t: 'surrender' }); return; }
     if (this.s.over || this.finished) return;

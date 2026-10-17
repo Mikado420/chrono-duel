@@ -30,8 +30,8 @@ assert.equal(new Set(a).size, 3);
 const days = new Set(Array.from({ length: 20 }, (_, i) => dailyMissions(`2026-11-${String(i + 1).padStart(2, '0')}`).map((x) => x.id).join()));
 assert.ok(days.size > 3, 'missions vary by day');
 const today = '2026-10-05';
-recordBattle(m, { won: true, played: true, hard: false, online: false, spells: 3, summons: 4, reserves: 3, attacks: 12 }, today);
-recordBattle(m, { won: false, played: true, hard: false, online: false, spells: 2, summons: 5, reserves: 0, attacks: 3 }, today);
+recordBattle(m, { won: true, played: true, strong: false, online: false, spells: 3, summons: 4, reserves: 3, attacks: 12 }, today);
+recordBattle(m, { won: false, played: true, strong: false, online: false, spells: 2, summons: 5, reserves: 0, attacks: 3 }, today);
 const dv = dailyView(m, today);
 assert.ok(dv.find((x) => x.m.id === 'd_play2')!.done);
 assert.ok(claimable(m, today) > 0);
@@ -49,14 +49,14 @@ assert.equal(BEGINNER.length, 8);
 
 // rank: EXP, rank-ups deliver presents, unplayed matches count for nothing
 const r = NEW_META();
-const res = recordBattle(r, { won: true, played: false, hard: true, online: false, spells: 0, summons: 0, reserves: 0, attacks: 0 }, today);
+const res = recordBattle(r, { won: true, played: false, strong: true, online: false, spells: 0, summons: 0, reserves: 0, attacks: 0 }, today);
 assert.equal(res.exp, 0);
 let ups = 0;
-for (let i = 0; i < 12; i++) { const x = recordBattle(r, { won: true, played: true, hard: true, online: false, spells: 0, summons: 0, reserves: 0, attacks: 0 }, today); ups += x.after - x.before; }
+for (let i = 0; i < 12; i++) { const x = recordBattle(r, { won: true, played: true, strong: true, online: false, spells: 0, summons: 0, reserves: 0, attacks: 0 }, today); ups += x.after - x.before; }
 assert.equal(rankOf(r.exp).rank - 1, ups);
 assert.equal(r.presents.length, ups, 'one present per rank-up');
 assert.ok(r.presents.some((p) => p.prize.tickets), 'rank 5 gives a ticket');
-console.log(`rank after 12 hard wins: ${rankOf(r.exp).rank}`);
+console.log(`rank after 12 wins against Lv5+: ${rankOf(r.exp).rank}`);
 
 // match history and deck shares
 const hm = NEW_META();

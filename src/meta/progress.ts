@@ -134,7 +134,7 @@ export function checkLogin(m: Meta, today: string): number | null {
 }
 
 // ------------------------------------------------------------------ missions
-export type Stat = 'play' | 'win' | 'spell' | 'summon' | 'reserve' | 'attack' | 'hardWin' | 'online' | 'pack' | 'deck';
+export type Stat = 'play' | 'win' | 'spell' | 'summon' | 'reserve' | 'attack' | 'lv5Win' | 'online' | 'pack' | 'deck';
 export interface Mission { id: string; text: string; stat: Stat; goal: number; prize: Prize }
 
 /** Daily missions are drawn from this pool, three per day. */
@@ -154,7 +154,7 @@ export const BEGINNER: Mission[] = [
   { id: 'b_deck', text: '自分のデッキを保存する', stat: 'deck', goal: 1, prize: { tickets: 1 } },
   { id: 'b_resv', text: '未来予約を合計10回する', stat: 'reserve', goal: 10, prize: { coins: 150 } },
   { id: 'b_win5', text: '合計5回勝利する', stat: 'win', goal: 5, prize: { tickets: 1 } },
-  { id: 'b_hard', text: 'Lv5以上のAIに勝利する', stat: 'hardWin', goal: 1, prize: { tickets: 1 } },
+  { id: 'b_hard', text: 'Lv5以上のAIに勝利する', stat: 'lv5Win', goal: 1, prize: { tickets: 1 } },
   { id: 'b_online', text: 'オンライン対戦をする', stat: 'online', goal: 1, prize: { coins: 200 } },
 ];
 
@@ -217,21 +217,28 @@ export function track(meta: Meta, stat: Stat, n: number, today: string) {
 }
 
 // ------------------------------------------------------------------ battles
-export interface BattleStats { won: boolean; played: boolean; hard: boolean; online: boolean; spells: number; summons: number; reserves: number; attacks: number }
+/** Wins against an AI of this Lv or above count for 「Lv5以上のAIに勝利する」 and give more EXP. */
+export const STRONG_LV = 5;
+export interface BattleStats { won: boolean; played: boolean; /** Against an AI of Lv STRONG_LV or above. */ strong: boolean; online: boolean; spells: number; summons: number; reserves: number; attacks: number }
 /** Counts a finished match towards missions and rank. Returns EXP gained and any rank-ups (rewards go to presents). */
+/** Older saves counted these wins under another name. */
+export function migrateMeta(meta: Meta): Meta {
+  for (const box of [meta.counters, meta.daily] as Record<string, number>[]) if (box && 'hardWin' in box) { box.lv5Win = (box.lv5Win ?? 0) + box.hardWin; delete box.hardWin; }
+  return meta;
+}
 export function recordBattle(meta: Meta, b: BattleStats, today: string): { exp: number; before: number; after: number } {
   const before = rankOf(meta.exp).rank;
   if (!b.played) return { exp: 0, before, after: before };
   meta.battles++;
   track(meta, 'play', 1, today);
   if (b.won) track(meta, 'win', 1, today);
-  if (b.won && b.hard) track(meta, 'hardWin', 1, today);
+  if (b.won && b.strong) track(meta, 'lv5Win', 1, today);
   if (b.online) track(meta, 'online', 1, today);
   track(meta, 'spell', b.spells + b.reserves, today);
   track(meta, 'summon', b.summons, today);
   track(meta, 'reserve', b.reserves, today);
   track(meta, 'attack', b.attacks, today);
-  const exp = Math.round((b.won ? 100 : 40) * (b.hard ? 1.5 : 1) * (b.online ? 1.2 : 1));
+  const exp = Math.round((b.won ? 100 : 40) * (b.strong ? 1.5 : 1) * (b.online ? 1.2 : 1));
   meta.exp += exp;
   const after = rankOf(meta.exp).rank;
   for (let r = before + 1; r <= after; r++) give(meta, 'ランクアップ', `ランク${r}到達のお祝い`, rankPrize(r), today);

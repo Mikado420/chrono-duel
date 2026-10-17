@@ -1,6 +1,6 @@
 /* 第2弾: every card resolves, a few effects checked, then AI games with the test decks. `npm run test:set2` */
 import assert from 'node:assert/strict';
-import { chooseAction } from '../core/ai';
+import { lvBoth } from './lvplay';
 import { CARDS, cardDef } from '../core/cards';
 import { validateDeck } from '../core/decks';
 import { actor, apply, createGame, legalActions, mulberry32, type GameState, type PlayerIndex, type Unit } from '../core/engine';
@@ -69,7 +69,8 @@ for (const A of SET2_TEST_DECKS) for (const B of all) for (let i = 0; i < 3; i++
   const seed = 100 + games;
   const { state } = createGame([A.cards, B.cards], seed, (seed % 2) as PlayerIndex);
   const r = mulberry32(seed);
-  for (let g = 0; !state.over && g < 400; g++) { const pi = actor(state); if (pi === -1) break; apply(state, chooseAction(state, pi, 'hard', r)); }
+  const ai = lvBoth(4, r);
+  for (let g = 0; !state.over && g < 400; g++) { const pi = actor(state); if (pi === -1) break; apply(state, ai(state, pi)); }
   assert.ok(state.over, 'games end');
   games++;
 }

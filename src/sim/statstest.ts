@@ -1,8 +1,8 @@
 /* Play statistics: `npm run test:stats` */
 import assert from 'node:assert/strict';
 import type { KV } from '../server/leaderboard';
-import { PlayStats, impacts, type MatchReport, type StatsAgg, type StoredLog } from '../server/stats';
-import { chooseAction } from '../core/ai';
+import { PlayStats, impacts, lvText, modeText, type MatchReport, type StatsAgg, type StoredLog } from '../server/stats';
+import { lvBoth } from './lvplay';
 import { PRESET_DECKS } from '../core/decks';
 import { actor, apply, createGame, mulberry32, type Action } from '../core/engine';
 import type { GameLog } from '../core/gamelog';
@@ -18,7 +18,8 @@ function game(seed: number, stopAt = Infinity): { log: GameLog; score: 0 | 0.5 |
   const { state } = createGame(decks, seed, 0);
   const log: GameLog = { seed, first: 0, decks, actions: [] };
   const r = mulberry32(seed);
-  while (!state.over && log.actions.length < stopAt) { const a: Action = chooseAction(state, actor(state) as 0 | 1, 'easy', r); log.actions.push(a); apply(state, a); }
+  const ai = lvBoth(1, r);
+  while (!state.over && log.actions.length < stopAt) { const a: Action = ai(state, actor(state) as 0 | 1); log.actions.push(a); apply(state, a); }
   if (!state.over) return { log, score: 0, reason: 'surrender' };
   return { log, score: state.over.winner === 0 ? 1 : state.over.winner === -1 ? 0.5 : 0, reason: state.over.reason };
 }
@@ -43,6 +44,14 @@ const base = (o: Partial<MatchReport>): MatchReport => ({ gid: Math.random().toS
   assert.deepEqual(old.games['free-normal'], [2, 1]);
   assert.deepEqual(old.games.online, [1, 0.5]);
   assert.deepEqual(old.cards.arrow['free-normal'], [2, 1, 1, 1], 'deck twice (1 point), used once and won');
+  // clients from 0.23 send the AI's Lv; older ones a word, which still counts (under its own key) and reads as a Lv range
+  await st.record(base({ v: '0.23.0', ai: undefined, lv: 5 }));
+  assert.equal((await st.record(base({ v: '0.23.0', ai: undefined, lv: 13 }))).status, 400, 'a Lv outside 1–12 is refused');
+  assert.equal((await st.record(base({ v: '0.23.0', ai: undefined }))).status, 400, 'a game against the AI needs its Lv');
+  const now23 = ((await st.summary({ v: '0.23.0' })).body as { agg: StatsAgg }).agg;
+  assert.deepEqual(now23.games['free-lv5'], [1, 1]);
+  assert.deepEqual([modeText('free-lv5'), modeText('free-normal'), modeText('rated')], ['フリー（Lv5）', 'フリー（Lv3〜4）', 'レート戦']);
+  assert.deepEqual([lvText({ mode: 'free', lv: 7 }), lvText({ mode: 'free', ai: 'expert' }), lvText({ mode: 'rated', ai: 'easy' })], ['Lv7', 'Lv7〜10', 'Lv1']);
   const imp = Object.fromEntries(impacts(old).map((x) => [x.id, x]));
   assert.equal(imp.arrow.used, 1);
   assert.equal(imp.arrow.lift, 50, 'won the only game it was used in, the mode average is 50%');
@@ -51,6 +60,7 @@ const base = (o: Partial<MatchReport>): MatchReport => ({ gid: Math.random().toS
   const g = game(11);
   const rep = (o: Partial<MatchReport>) => base({ v: '0.13.0', deck: g.log.decks[0], played: [], score: g.score, reason: g.reason, log: g.log, deckName: '均衡の刻', foe: '秒針突撃', ...o });
   assert.equal(((await st.record(rep({ gid: 'L1' }))).body as { logged: boolean }).logged, true, 'a real game is kept');
+  assert.equal(((await st.record(rep({ gid: 'L1b', ai: undefined, lv: 4 }))).body as { logged: boolean }).logged, true, 'a record with a Lv is kept');
   const bent = structuredClone(g.log); bent.actions[3] = { t: 'wait' };
   const kept = async (o: Partial<MatchReport>) => ((await st.record(rep(o))).body as { logged: boolean }).logged;
   assert.equal(await kept({ gid: 'L2', log: bent }), true, 'a record that does not replay is kept, marked');
@@ -73,10 +83,12 @@ const base = (o: Partial<MatchReport>): MatchReport => ({ gid: Math.random().toS
     all.push(...pg.items); after = pg.next; pages++;
   } while (after);
   assert.ok(pages >= 3, 'paged');
-  assert.deepEqual(all.map((x) => x.gid), ['L1', 'L2', 'L3', 'L4', 'L5', 'L7', 'ROOM-1'], 'kept records in time order');
-  assert.deepEqual(all.map((x) => x.problem ?? ''), ['', '途中から再現できない', '結果が再現と違う', 'デッキが報告と違う', '', '', ''], 'problems are marked');
+  assert.deepEqual(all.map((x) => x.gid), ['L1', 'L1b', 'L2', 'L3', 'L4', 'L5', 'L7', 'ROOM-1'], 'kept records in time order');
+  assert.equal(all.find((x) => x.gid === 'L1b')!.lv, 4, 'the Lv is stored');
+  assert.equal(all.find((x) => x.gid === 'L1')!.ai, 'normal', 'an older record keeps its word');
+  assert.deepEqual(all.map((x) => x.problem ?? ''), ['', '', '途中から再現できない', '結果が再現と違う', 'デッキが報告と違う', '', '', ''], 'problems are marked');
   assert.deepEqual(all[0].names, ['レジあいす', '秒針突撃'], 'ranked players are named');
-  assert.equal(all[4].winner, 1);
-  assert.equal(all[6].src, 'room');
+  assert.equal(all[5].winner, 1);
+  assert.equal(all[7].src, 'room');
   console.log('stats ok');
 })();

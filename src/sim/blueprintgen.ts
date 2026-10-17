@@ -1,7 +1,8 @@
 /*
  * Prints the 設計図 lines for the rated rivals' decks (src/sim/rosterDecks.ts): `npx tsx src/sim/blueprintgen.ts [games]`.
  * core = what the 型 is built on (the cards shared by every build of the type, then the cards that tell the build apart),
- * list / roles from the list itself, play measured at 'hard' against every roster deck (the same opponents playProfile uses).
+ * list / roles from the list itself, play measured with AI Lv4 on both sides against every roster deck (the same games
+ * playProfile plays).
  */
 import { ROSTER_DECKS } from './rosterDecks';
 import { listProfile, rolesOf, styleOf } from '../meta/blueprints';

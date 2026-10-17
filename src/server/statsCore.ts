@@ -4,7 +4,6 @@
  */
 import type { GameLog } from '../core/gamelog';
 import type { PlayerIndex } from '../core/engine';
-import type { AiLevel } from '../core/ai';
 
 export type PlayMode = 'free' | 'rated' | 'online';
 /** One stored game record (GET via POST /api/logs with the admin token). */
@@ -15,7 +14,10 @@ export interface StoredLog {
   /** 'report': sent by a player after a game against the AI (seat 0 is that player). 'room': an online game, kept by the server. */
   src: 'report' | 'room';
   mode: PlayMode;
-  ai?: AiLevel;
+  /** The AI's Lv (games against the AI). */
+  lv?: number;
+  /** Records from before 0.23 name the AI's strength with an older word instead (see lvText). */
+  ai?: string;
   /** The reporting device (report) — the same id the ranking uses. */
   id?: string;
   /** Seat names: online, the players' names; report, filled in from the ranking (if the device is ranked) when exported. */
@@ -34,10 +36,34 @@ export interface StoredLog {
 export type Cell = [number, number, number, number];
 export interface StatsAgg {
   v: string;
-  /** Per mode key (free-easy … free-expert, rated, online): [games, points]. */
+  /** Per mode key (free-lv1 … free-lv10, rated, online; older versions free-easy … free-expert): [games, points]. */
   games: Record<string, [number, number]>;
   cards: Record<string, Record<string, Cell>>;
   updated: number;
+}
+
+/**
+ * The Lv range an older record's word stood for. Free play mapped Lv1–2, 3–4, 5–6 and 7–10 to the four words; rated
+ * play (a rival's Lv) mapped Lv1, 2–3, 4–5 and 6+ to them.
+ */
+const OLD_WORDS: Record<string, { free: [number, number]; rated: [number, number] }> = {
+  easy: { free: [1, 2], rated: [1, 1] }, normal: { free: [3, 4], rated: [2, 3] }, hard: { free: [5, 6], rated: [4, 5] }, expert: { free: [7, 10], rated: [6, 12] },
+};
+/** The AI's strength of a record as text: "Lv5", or a range for older records ("Lv5〜6"). */
+export function lvText(r: { mode?: string; lv?: number; ai?: string }): string {
+  if (r.lv) return `Lv${r.lv}`;
+  const w = r.ai ? OLD_WORDS[r.ai] : undefined;
+  if (!w) return '';
+  const [a, b] = r.mode === 'rated' ? w.rated : w.free;
+  return a === b ? `Lv${a}` : `Lv${a}〜${b}`;
+}
+/** A mode key of the totals as text: フリー（Lv5）, フリー（Lv5〜6） for an older key, レート戦, フレンド対戦. */
+export function modeText(key: string): string {
+  if (key === 'rated') return 'レート戦';
+  if (key === 'online') return 'フレンド対戦';
+  const m = key.match(/^free-(?:lv(\d+)|(\w+))$/);
+  if (!m) return key;
+  return `フリー（${m[1] ? `Lv${m[1]}` : lvText({ mode: 'free', ai: m[2] }) || m[2]}）`;
 }
 
 export interface CardImpact {

@@ -20,7 +20,7 @@ import { cardDef } from '../core/cards';
 import { replay } from '../core/gamelog';
 import { narrate } from '../core/narrate';
 import type { PlayerIndex } from '../core/engine';
-import type { StoredLog } from '../server/stats';
+import { lvText, type StoredLog } from '../server/statsCore';
 
 const proc = process as unknown as { argv: string[]; exit(c: number): never };
 const args = proc.argv.slice(2);
@@ -80,7 +80,7 @@ function seatsOf(rec: StoredLog): Seat[] {
     const foeSeat = (1 - seat) as PlayerIndex;
     const name = rec.names?.[seat] || (rec.src === 'report' ? `未登録(${(rec.id ?? '').slice(-6)})` : '?');
     const deck = rec.src === 'report' ? rec.deckNames?.[0] || '?' : 'オンライン';
-    const foe = rec.src === 'report' ? `${rec.deckNames?.[1] || '?'}（AI ${rec.ai ?? ''}）` : rec.names?.[foeSeat] ?? '?';
+    const foe = rec.src === 'report' ? `${rec.deckNames?.[1] || '?'}（AI ${lvText(rec)}）` : rec.names?.[foeSeat] ?? '?';
     const won = rec.winner === -1 ? 0.5 : rec.winner === seat ? 1 : 0;
     return {
       rec, seat, name, deck, foe, won, reason: rec.reason, actions: rec.log.actions.length,
@@ -120,7 +120,7 @@ const groupBy = (xs: Seat[], key: (x: Seat) => string) => { const m = new Map<st
 
   const reasons = groupBy(seats, (x) => x.reason);
   console.log(`決着: ${[...reasons].map(([k, xs]) => `${({ ko: '拠点破壊', time: '時間切れ', surrender: '降参', timeout: '時間切れ放置', disconnect: '切断' } as Record<string, string>)[k] ?? k} ${pct(xs.length, seats.length)}`).join(' / ')}`);
-  table('モード別', groupBy(seats, (x) => (x.rec.mode === 'free' ? `フリー ${x.rec.ai}` : x.rec.mode === 'rated' ? `レート ${x.rec.ai}` : 'オンライン')));
+  table('モード別', groupBy(seats, (x) => (x.rec.mode === 'free' ? `フリー ${lvText(x.rec)}` : x.rec.mode === 'rated' ? `レート ${lvText(x.rec)}` : 'オンライン')));
   table('攻撃の回数と勝率（降参・切断を除く）', groupBy(seats.filter((x) => x.reason === 'ko' || x.reason === 'time'), (x) => (x.attacks <= 2 ? '攻撃 0〜2回' : x.attacks <= 5 ? '攻撃 3〜5回' : x.attacks <= 9 ? '攻撃 6〜9回' : '攻撃 10回以上')));
   table('デッキ別（3試合以上）', groupBy(seats, (x) => x.deck), 3);
   table('プレイヤー別（3試合以上）', groupBy(seats, (x) => x.name), 3);
@@ -142,7 +142,7 @@ const groupBy = (xs: Seat[], key: (x: Seat) => string) => { const m = new Map<st
 
   if (csv) {
     const head = '日時,ID,モード,AI,名前,デッキ,相手,結果,決着,行動数,攻撃,拠点への攻撃,拠点ダメ(ユニット),拠点ダメ(その他),受けたダメ,回復,予約,残り体力,相手の残り体力,使ったカード';
-    const rows = seats.map((x) => [new Date(x.rec.at).toISOString(), x.rec.gid, x.rec.mode, x.rec.ai ?? '', x.name, x.deck, x.foe, x.won, x.reason, x.actions, x.attacks, x.attacksOnBase, x.baseDmgUnits, x.baseDmgOther, x.dmgTaken, x.heals, x.reserves, x.hpLeft, x.foeHpLeft, x.cards.map((c) => cardDef(c).name).join(' ')].map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','));
+    const rows = seats.map((x) => [new Date(x.rec.at).toISOString(), x.rec.gid, x.rec.mode, lvText(x.rec), x.name, x.deck, x.foe, x.won, x.reason, x.actions, x.attacks, x.attacksOnBase, x.baseDmgUnits, x.baseDmgOther, x.dmgTaken, x.heals, x.reserves, x.hpLeft, x.foeHpLeft, x.cards.map((c) => cardDef(c).name).join(' ')].map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','));
     writeFileSync(csv, '﻿' + [head, ...rows].join('\n') + '\n');
     console.log(`\n→ ${csv}`);
   }

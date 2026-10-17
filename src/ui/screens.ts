@@ -10,11 +10,11 @@ import type { BattleResult } from '../render/battle';
 import { DIAL_SKINS } from '../render/dial';
 import { DIAL_ART, MAT_ART, dialPreviewSvg, matFlatSvg } from '../render/lookArt';
 import {
-  CRAFT_COST, DAILY_BONUS, DAILY_MATCH_CAP, DUPE_SHARDS, LAST_SLOT, LOOKS, MATCH_REWARD, MIN_ACTIONS, PACKS, PITY,
+  CRAFT_COST, DAILY_BONUS, DAILY_MATCH_CAP, DUPE_SHARDS, LAST_SLOT, LOOKS, AI_REWARD, ONLINE_REWARD, MIN_ACTIONS, PACKS, PITY,
   THEMES, THEME_SET_PRICE, buyLook, buyTheme, canOpen, craft, craftBlock, craftable, localDate, lookBlock, lookById, ownedCount, ownsLook, setProgress, themeOffer, type LookKind, type PackDef, type Reward,
 } from '../meta/economy';
 import {
-  DAILY_ALL_BONUS, LOGIN_CALENDAR, NEWS, beginnerView, bump, track, checkLogin, claimMission, claimPresents, claimable, dailyView, prizeText, rankOf, recentShares, deckShares, unreadNews,
+  DAILY_ALL_BONUS, LOGIN_CALENDAR, NEWS, STRONG_LV, beginnerView, bump, track, checkLogin, claimMission, claimPresents, claimable, dailyView, prizeText, rankOf, recentShares, deckShares, unreadNews,
   type MissionView, type News, type Prize, type Stat,
 } from '../meta/progress';
 import { TITLES, TONE_NAMES } from '../meta/titles';
@@ -22,7 +22,7 @@ import { DRAFT_PICKS, EVENT_PRIZES, draftOffer, eventOf, eventProgress } from '.
 import { VERSION } from '../version';
 import { pwa } from '../pwa';
 import { store } from './storage';
-import { AI_LV_MAX, LV_OF_LEVEL, levelOfLv } from '../core/ai';
+import { AI_LV_MAX } from '../core/ai';
 import { PLACEMENT_GAMES, SEASON_REWARDS, TIERS, seasonAt, tierOf, type Opponent, type RatedGame } from '../meta/rating';
 import { seasonById } from '../meta/ranks';
 import { fetchRanking, issueTransfer, rankingAvailable, redeemTransfer, syncRated } from '../net/api';
@@ -52,7 +52,7 @@ const RANK = { C: 0, R: 1, E: 2, L: 3 } as const;
 const RARE_COLOR: Record<Rarity, string> = { C: '#9fb3b8', R: '#5fd0b5', E: '#c9a8ff', L: '#ffd66e' };
 const fmt = (n: number) => n.toLocaleString('ja-JP');
 /** The free-play AI strength (Lv1–10; older saves only had the four levels). */
-const aiLv = () => store.settings.aiLv ?? LV_OF_LEVEL[store.settings.level] ?? 3;
+const aiLv = () => store.settings.aiLv ?? 3;
 const hasTokens = (d: { cards: string[] }) => d.cards.filter((c) => CARDS[c] && !CARDS[c].token);
 
 /** A playmat as a picture (shop, deck slot); 'mat:none' is the plain board. */
@@ -645,7 +645,7 @@ export class Screens {
     switch (stat) {
       case 'pack': return () => this.packShop(PACKS[0]);
       case 'deck': return () => this.decks();
-      case 'hardWin': return () => this.setup(Math.max(5, aiLv()));
+      case 'lv5Win': return () => this.setup(Math.max(STRONG_LV, aiLv()));
       case 'online': return flow.available ? () => this.onlineMenu() : null;
       default: return () => this.battleTab();
     }
@@ -984,7 +984,7 @@ export class Screens {
         h('p', { class: 'shop-note', style: 'text-align:left;margin:-4px 0 0' }, 'レート戦の対戦相手と同じ頭脳です。Lv1〜2ははじめての人向け、Lv5〜6で手強く、Lv8以上は上級者向け。'),
         h('button', {
           class: 'hexbtn gold big', onclick: () => {
-            store.settings.lastDeck = mine.id; store.settings.aiLv = level; store.settings.level = levelOfLv(level); store.saveSettings();
+            store.settings.lastDeck = mine.id; store.settings.aiLv = level; store.saveSettings();
             const aiDeck = ai === 'random' ? PRESET_DECKS[Math.floor(Math.random() * PRESET_DECKS.length)] : ai;
             audio.play('summon');
             this.clear();
@@ -1597,7 +1597,7 @@ export class Screens {
         door('create', '部屋を作る', 'CREATE', 'あいことばと招待リンクを\n友達に送ります', '<svg viewBox="0 0 92 104" fill="none"><path d="M46 4l40 22v52L46 100 6 78V26z" fill="#0f3a35" stroke="#5fd0b5" stroke-width="3"/><path d="M46 30v40M26 50h40" stroke="#b9ffe9" stroke-width="5" stroke-linecap="round"/></svg>', () => this.createRoom()),
         door('join', 'あいことばで入る', 'JOIN', `友達から聞いた\n${NET.CODE_LEN}文字を入れます`, '<svg viewBox="0 0 92 104" fill="none"><rect x="14" y="10" width="54" height="84" rx="4" fill="#2a1d07" stroke="#e0b25c" stroke-width="3"/><circle cx="56" cy="54" r="4" fill="#e0b25c"/><path d="M90 52H40M54 38l-14 14 14 14" stroke="#fff3d4" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>', () => this.codeSheet('join')),
         door('watch', '観戦する', '', 'あいことばで友達の対戦を見る', '<svg viewBox="0 0 60 60" fill="none"><path d="M4 30s10-16 26-16 26 16 26 16-10 16-26 16S4 30 4 30z" stroke="#c2d2d4" stroke-width="3"/><circle cx="30" cy="30" r="8" fill="#c2d2d4"/></svg>', () => this.codeSheet('watch'))),
-      h('div', { class: 'pn' }, h('p', { style: 'margin:10px 0 0;font-size:12px;line-height:1.7;color:#c2d2d4' }, '招待リンクを開いた友達は、名前とデッキを選ぶだけで入れます。部屋の中でもデッキと名前を変えられます。', h('br', {}), `フレンド対戦の戦績 ${o.win}勝 ${o.lose}敗${o.draw ? ` ${o.draw}分` : ''} ・ 勝利でコイン${MATCH_REWARD.online[0]}`)),
+      h('div', { class: 'pn' }, h('p', { style: 'margin:10px 0 0;font-size:12px;line-height:1.7;color:#c2d2d4' }, '招待リンクを開いた友達は、名前とデッキを選ぶだけで入れます。部屋の中でもデッキと名前を変えられます。', h('br', {}), `フレンド対戦の戦績 ${o.win}勝 ${o.lose}敗${o.draw ? ` ${o.draw}分` : ''} ・ 勝利でコイン${ONLINE_REWARD[0]}`)),
     ]);
     // an invite link: with a name and a deck ready, go straight in (whoever arrives first waits for the other)
     if (invite) {
@@ -1750,8 +1750,8 @@ export class Screens {
         tile('欠片で作る', `時の欠片 ${fmt(w.shards)}`, h('span', { html: '<svg viewBox="0 0 130 120" fill="none"><path d="M34 30l14 14-14 26-14-26z" fill="#9fe8ff" stroke="#e0f9ff" stroke-width="1.4"/><path d="M96 24l12 12-12 22-12-22z" fill="#9fe8ff" stroke="#e0f9ff" stroke-width="1.4"/><rect x="44" y="40" width="44" height="62" rx="5" fill="#13323b" stroke="#e0b25c" stroke-width="2.5"/><path d="M66 56v22M55 67h22" stroke="#e0b25c" stroke-width="3" stroke-linecap="round"/></svg>' }), () => this.collection('craft'))),
       h('div', { class: 'sec-title' }, 'コインの集め方'),
       h('ul', { class: 'earn' },
-        h('li', {}, `AI Lv3〜4に勝利 ${MATCH_REWARD['ai-normal'][0]} ・ AI Lv5〜6に勝利 ${MATCH_REWARD['ai-hard'][0]} ・ オンラインで勝利 ${MATCH_REWARD.online[0]}`),
-        h('li', {}, `負けても参加で ${MATCH_REWARD['ai-normal'][1]}〜${MATCH_REWARD.online[1]}、引き分け ${MATCH_REWARD['ai-normal'][2]}〜${MATCH_REWARD.online[2]}`),
+        h('li', {}, `${AI_REWARD.slice(1).map((b) => `AI Lv${b.from}〜${Math.min(b.to, AI_LV_MAX)}に勝利 ${b.pay[0]}`).join(' ・ ')} ・ オンラインで勝利 ${ONLINE_REWARD[0]}`),
+        h('li', {}, `負けても参加で ${AI_REWARD[0].pay[1]}〜${AI_REWARD[AI_REWARD.length - 1].pay[1]}、引き分け ${AI_REWARD[0].pay[2]}〜${AI_REWARD[AI_REWARD.length - 1].pay[2]}`),
         h('li', {}, `その日はじめての勝利で +${DAILY_BONUS}（対戦の報酬は1日${DAILY_MATCH_CAP}コインまで）`),
         h('li', {}, 'ログインボーナス・デイリーミッション・ランクアップでも手に入ります')),
       h('p', { class: 'shop-note' }, 'すべてゲーム内で手に入る通貨で交換できます。現金では買えません。'),

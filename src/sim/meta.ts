@@ -1,38 +1,38 @@
-/* Environment round robin for the wiki: `npm run meta -- [--games 6] [--level expert++] [--jobs 2]`
+/* Environment round robin for the wiki: `npm run meta -- [--games 6] [--lv 8] [--jobs 2]`
  *
- * Every deck of src/sim/metaDecks.ts plays every other one with the given rated AI strength on both sides (the
- * strongest, 超つよい＋＋, by default). Results are saved in logs/meta-results.json as they come in, so a run that
+ * Every deck of src/sim/metaDecks.ts plays every other one, both sides played by the AI of the given Lv (Lv8 by
+ * default). Results are saved in logs/meta-results.json as they come in, so a run that
  * stops can simply be started again and continues. When all games are in, src/wiki/meta.ts is written: the deck
  * ranking, the matchup table and, for every card, how much better a deck did in the games where the card was used
  * than that deck's own average ("影響").
- * About 25 s per game on one core: 16 decks × 6 games ≈ 720 games ≈ 2.5 h on 2 cores.
+ * About 11 s per game at Lv8 on one core: 16 decks × 6 games ≈ 720 games ≈ 1.1 h on 2 cores.
  */
 import { fork } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { chooseActionSpec } from '../core/ai';
+import { lvAi } from './lvplay';
 import { actor, apply, createGame, mulberry32, type PlayerIndex } from '../core/engine';
-import { foeById } from '../meta/rating';
 import { META_DECKS } from './metaDecks';
 
 const proc = process as unknown as { argv: string[]; execArgv: string[]; on(ev: 'message', f: (m: Job | 'bye') => void): void; send(m: unknown): void; exit(code: number): never };
-interface Job { a: number; b: number; i: number; level: string }
+interface Job { a: number; b: number; i: number; lv: number }
 interface Res { a: number; b: number; i: number; sa: number; reason: string; usedA: string[]; usedB: string[]; acts: number; ms: number }
 const OUT = 'logs/meta-results.json';
 
 function play(j: Job): Res {
-  const t = Date.now(), spec = foeById(j.level)!.spec;
+  const t = Date.now();
   const seed = 70000 + j.a * 1000 + j.b * 37 + j.i;
   const sa = (j.i % 2) as PlayerIndex; // deck a's seat
   const A = META_DECKS[j.a].cards, B = META_DECKS[j.b].cards;
   const { state } = createGame(sa === 0 ? [A, B] : [B, A], seed, (Math.floor(j.i / 2) % 2) as PlayerIndex);
   const r = mulberry32(seed);
+  const ais = sa === 0 ? [lvAi(j.lv, META_DECKS[j.a].id, r), lvAi(j.lv, META_DECKS[j.b].id, r)] : [lvAi(j.lv, META_DECKS[j.b].id, r), lvAi(j.lv, META_DECKS[j.a].id, r)];
   const used: [Set<string>, Set<string>] = [new Set(), new Set()];
   let acts = 0;
   for (; !state.over && acts < 600; acts++) {
     const pi = actor(state);
     if (pi === -1) break;
-    for (const e of apply(state, chooseActionSpec(state, pi, spec, r))) {
+    for (const e of apply(state, ais[pi](state, pi))) {
       if (e.e === 'summon' && e.fromHand >= 0) used[e.pi].add(e.unit.card);
       if (e.e === 'cast' || e.e === 'reserve') used[e.pi].add(e.card);
     }
@@ -41,7 +41,7 @@ function play(j: Job): Res {
   return { a: j.a, b: j.b, i: j.i, sa: w === -1 ? 0.5 : w === sa ? 1 : 0, reason: state.over?.reason ?? 'none', usedA: [...used[sa]], usedB: [...used[(1 - sa) as PlayerIndex]], acts, ms: Date.now() - t };
 }
 
-function writeWiki(R: Res[], per: number, level: string) {
+function writeWiki(R: Res[], per: number, lv: number) {
   const N = META_DECKS.length;
   const W = Array.from({ length: N }, () => Array(N).fill(0) as number[]), G = Array.from({ length: N }, () => Array(N).fill(0) as number[]);
   for (const r of R) { W[r.a][r.b] += r.sa; W[r.b][r.a] += 1 - r.sa; G[r.a][r.b]++; G[r.b][r.a]++; }
@@ -52,7 +52,7 @@ function writeWiki(R: Res[], per: number, level: string) {
     for (const c of usedCards) { const x = (card[c] ??= [0, 0, 0]); x[0] += pts - avg[d]; x[1]++; }
   }
   const meta = {
-    date: new Date().toISOString().slice(0, 10), games: R.length, perPair: per, level,
+    date: new Date().toISOString().slice(0, 10), games: R.length, perPair: per, level: `Lv${lv}`,
     decks: META_DECKS.map((d, i) => ({ id: d.id, win: Math.round(1000 * avg[i]) / 10 })),
     matrix: META_DECKS.map((_, d) => META_DECKS.map((__, o) => (d === o || !G[d][o] ? -1 : Math.round((100 * W[d][o]) / G[d][o])))),
     cards: Object.fromEntries(Object.entries(card).map(([c, [s, u, n]]) => [c, [u ? Math.round((1000 * s) / u) / 10 : 0, u, n]])),
@@ -76,14 +76,14 @@ if (proc.argv[2] === '--worker') {
 } else void (async () => {
   const args = proc.argv.slice(2);
   const opt = (k: string, d: string) => { const i = args.indexOf(k); return i < 0 ? d : args[i + 1]; };
-  const per = +opt('--games', '6'), level = opt('--level', 'expert++'), jobsN = +opt('--jobs', '2');
-  if (!foeById(level)) { console.error(`知らない強さ: ${level}`); proc.exit(1); }
+  const per = +opt('--games', '6'), lv = +opt('--lv', '8'), jobsN = +opt('--jobs', '2');
+  if (!Number.isInteger(lv) || lv < 1 || lv > 12) { console.error('--lv は 1〜12 で指定してください'); proc.exit(1); }
   mkdirSync('logs', { recursive: true });
   const done: Res[] = existsSync(OUT) ? JSON.parse(readFileSync(OUT, 'utf8')) : [];
   const have = new Set(done.map((x) => `${x.a}-${x.b}-${x.i}`));
   const jobs: Job[] = [];
-  for (let i = 0; i < per; i++) for (let a = 0; a < META_DECKS.length; a++) for (let b = a + 1; b < META_DECKS.length; b++) if (!have.has(`${a}-${b}-${i}`)) jobs.push({ a, b, i, level });
-  console.log(`残り${jobs.length}試合（${META_DECKS.length}デッキ×各${per}戦、AI ${level}、${jobsN}並列）`);
+  for (let i = 0; i < per; i++) for (let a = 0; a < META_DECKS.length; a++) for (let b = a + 1; b < META_DECKS.length; b++) if (!have.has(`${a}-${b}-${i}`)) jobs.push({ a, b, i, lv });
+  console.log(`残り${jobs.length}試合（${META_DECKS.length}デッキ×各${per}戦、AI Lv${lv}、${jobsN}並列）`);
   let next = 0, n = 0;
   const t0 = Date.now();
   await Promise.all(Array.from({ length: Math.min(jobsN, jobs.length) }, () => new Promise<void>((res) => {
@@ -97,5 +97,5 @@ if (proc.argv[2] === '--worker') {
     feed();
   })));
   writeFileSync(OUT, JSON.stringify(done));
-  writeWiki(done.filter((r) => r.i < per), per, level);
+  writeWiki(done.filter((r) => r.i < per), per, lv);
 })();

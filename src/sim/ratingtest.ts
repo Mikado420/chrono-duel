@@ -1,6 +1,6 @@
 /* Rated play and the friends' ranking: `npm run test:rating` */
 import assert from 'node:assert/strict';
-import { AI_RATING, NEW_RATED, SEASONS, rollSeason, seasonStartRating, RATING_RESET, applyRatingReset, applyRatingResets, resetRating, RATED_FOES, START_RATING, finishRated, foeById, makeOpponent, nextRating, opponentPool, pickOpponent, rivalPool, startRated, tierOf } from '../meta/rating';
+import { LEGACY_FOES, NEW_RATED, SEASONS, rollSeason, seasonStartRating, RATING_RESET, applyRatingReset, applyRatingResets, resetRating, START_RATING, finishRated, foeById, makeOpponent, nextRating, rivalPool, startRated, tierOf } from '../meta/rating';
 import { ROSTER, deckAvailable, rivalById, rivalDeck, rivalId } from '../meta/roster';
 import { Leaderboard, MIN_GAME_MS, rankDay, type KV } from '../server/leaderboard';
 import { mulberry32 } from '../core/engine';
@@ -15,35 +15,25 @@ assert.equal(tierOf(1200).tier.name, '刻士');
 assert.equal(tierOf(1999).tier.name, '刻聖');
 assert.equal(tierOf(2000).tier.name, '刻神Ⅰ');
 assert.deepEqual([2099, 2100, 2250, 2399, 2400].map((r) => tierOf(r).tier.name), ['刻神Ⅰ', '刻神Ⅱ', '刻神Ⅲ', '刻神Ⅳ', '刻神Ⅴ']);
-const top = RATED_FOES[RATED_FOES.length - 1].rating, bottom = RATED_FOES[0].rating;
-for (let r = 0; r < 2200; r += 25) {
-  const pool = opponentPool(r);
-  assert.ok(Math.abs(pool.reduce((a, [, w]) => a + w, 0) - 1) < 1e-9, `weights sum to 1 at ${r}`);
-  assert.ok(pool.every(([id]) => foeById(id)), 'known opponents only');
-  // inside the range of opponents, the expected gap stays small
-  const gap = pool.reduce((a, [id, w]) => a + w * Math.abs(foeById(id)!.rating - r), 0);
-  if (r >= bottom && r <= top) assert.ok(gap <= 70, `opponents near ${r} (average gap ${gap.toFixed(0)})`);
-}
-assert.deepEqual(opponentPool(3000), [[RATED_FOES[RATED_FOES.length - 1].id, 1]], 'the strongest above the top');
-assert.ok(RATED_FOES.every((f, i) => i === 0 || f.rating > RATED_FOES[i - 1].rating), 'steps in order');
-assert.deepEqual(['easy', 'normal', 'hard', 'expert'].map((id) => foeById(id)!.rating), [AI_RATING.easy, AI_RATING.normal, AI_RATING.hard, AI_RATING.expert], 'the old ids keep their ratings');
+// games recorded before the roster name an older strength step: still readable, each with its rating and Lv
+assert.deepEqual(['easy', 'normal', 'hard', 'expert'].map((id) => foeById(id)!.rating), [850, 1000, 1200, 1450], 'the old ids keep their ratings');
+assert.ok(LEGACY_FOES.every((f, i) => i === 0 || (f.rating > LEGACY_FOES[i - 1].rating && f.lv >= LEGACY_FOES[i - 1].lv)), 'steps in order');
 const rand = mulberry32(1);
-assert.ok(Array.from({ length: 200 }, () => pickOpponent(1290, rand)).every((l) => l !== 'normal' && l !== 'easy'), 'no weak opponent for a 1290 player any more');
-assert.ok(Array.from({ length: 200 }, () => pickOpponent(800, rand)).every((l) => l === 'easy' || l === 'easy+'), 'beginners meet the weaker AIs');
+const LV1 = 850, LV3 = 1000, LV5 = 1200, LV8 = 1450;
 
 // Elo: beating a stronger AI is worth more; every result moves the number
-const upHard = nextRating(1000, 50, AI_RATING.hard, 1) - 1000, upEasy = nextRating(1000, 50, AI_RATING.easy, 1) - 1000;
+const upHard = nextRating(1000, 50, LV5, 1) - 1000, upEasy = nextRating(1000, 50, LV1, 1) - 1000;
 assert.ok(upHard > upEasy && upEasy >= 1, 'bigger gain against a stronger AI');
-assert.ok(nextRating(1000, 50, AI_RATING.easy, 0) < 1000);
+assert.ok(nextRating(1000, 50, LV1, 0) < 1000);
 assert.equal(nextRating(1500, 50, 1800, 0.5), 1500, "a draw moves nobody"); assert.equal(nextRating(1500, 3, 1200, 0.5), 1500);
-assert.ok(nextRating(1000, 0, AI_RATING.normal, 1) - 1000 > nextRating(1000, 50, AI_RATING.normal, 1) - 1000, 'placement games swing more');
-assert.ok(nextRating(2400, 50, AI_RATING.expert, 1) > 2400, 'a win always gains');
-assert.equal(nextRating(100, 50, AI_RATING.expert, 0), 100, 'floor');
-// where does a player settle who wins 60% against 超つよい? (sanity: above the AI's own rating)
+assert.ok(nextRating(1000, 0, LV3, 1) - 1000 > nextRating(1000, 50, LV3, 1) - 1000, 'placement games swing more');
+assert.ok(nextRating(2400, 50, LV8, 1) > 2400, 'a win always gains');
+assert.equal(nextRating(100, 50, LV8, 0), 100, 'floor');
+// where does a player settle who wins 60% against a 1450 opponent? (sanity: above the AI's own rating)
 let r = START_RATING, g = 0;
 const rr = mulberry32(9);
-for (let i = 0; i < 3000; i++) { r = nextRating(r, g++, AI_RATING.expert, rr() < 0.6 ? 1 : 0); }
-assert.ok(r > AI_RATING.expert && r < AI_RATING.expert + 200, `60% vs 超つよい settles near ${r}`);
+for (let i = 0; i < 3000; i++) { r = nextRating(r, g++, LV8, rr() < 0.6 ? 1 : 0); }
+assert.ok(r > LV8 && r < LV8 + 200, `60% vs a 1450 opponent settles near ${r}`);
 
 // local record: pending → finished, outbox
 // opponents are the roster's rivals: near the player's rating, never the player's own name or a recent one
@@ -96,11 +86,11 @@ const game = (gid: string, score: 0 | 0.5 | 1, at: number, ms = 5 * 60_000, acti
 let res = await lb.submit({ ...A, games: [game('a1', 1, now)] });
 assert.equal(res.status, 200);
 const r1 = (res.body as { rating: number }).rating;
-assert.equal(r1, nextRating(START_RATING, 0, AI_RATING.hard, 1), 'server uses the shared rules');
+assert.equal(r1, nextRating(START_RATING, 0, LV5, 1), 'server uses the shared rules');
 // a made-up very strong opponent falls back to the level's rating
 { const lb2 = new Leaderboard(kv, () => now); const C = { id: 'cccccccccccccccccccc', secret: 'uuuuuuuuuuuuuuuuuuuuuu', name: 'c' };
   const x = await lb2.submit({ ...C, games: [game('c1', 1, now, 5 * 60_000, 15, 2400)] });
-  assert.equal((x.body as { rating: number }).rating, nextRating(START_RATING, 0, AI_RATING.hard, 1), 'opponent rating is bounded by its level');
+  assert.equal((x.body as { rating: number }).rating, nextRating(START_RATING, 0, LV5, 1), 'opponent rating is bounded by its level');
   mem.delete(`p:${C.id}`);
   // the steps between levels are known to the server; an unknown opponent is refused
   const y = await lb2.submit({ ...C, games: [{ ...game('c2', 1, now), ai: 'hard+' }, { ...game('c3', 1, now + 2 * MIN_GAME_MS), ai: 'super' }] });
@@ -201,7 +191,7 @@ assert.deepEqual([2000, 2150, 2450, 1999, 1850].map(seasonStartRating), [1800, 1
   assert.deepEqual(applyRatingResets(older), { before: 2300, shinCut: 0 }, 'a record from before both resets: 1400 first, nothing left to cut');
   assert.equal(older.rating, 1400);
 }
-console.log(`rating after one hard win: ${r1}; ranking ok`);
+console.log(`rating after one win against a 1200 opponent: ${r1}; ranking ok`);
 // two sends at once (a slow store between the reads): the second must not count its games on an older copy
 {
   const slow: KV = { ...kv, get: async (k) => { await new Promise((r) => setTimeout(r, 5)); return structuredClone(mem.get(k)) as never; } };

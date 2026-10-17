@@ -9,15 +9,14 @@
  * replayed before they are stored; online games are handed over by the room that ran them. Only the admin token
  * reads them back (POST /api/logs, used by `npm run logs`).
  */
-import type { AiLevel } from '../core/ai';
 import { CARDS } from '../core/cards';
 import { isGameLog, replay, type GameLog } from '../core/gamelog';
 import type { PlayerIndex } from '../core/engine';
 import type { ApiResult, KV, PlayerRec } from './leaderboard';
 import { EnvStats, type RatedInfo } from './env';
 
-import { impacts, type PlayMode, type StoredLog, type Cell, type StatsAgg, type CardImpact } from './statsCore';
-export { impacts, type PlayMode, type StoredLog, type Cell, type StatsAgg, type CardImpact };
+import { impacts, lvText, modeText, type PlayMode, type StoredLog, type Cell, type StatsAgg, type CardImpact } from './statsCore';
+export { impacts, lvText, modeText, type PlayMode, type StoredLog, type Cell, type StatsAgg, type CardImpact };
 export interface MatchReport extends RatedInfo {
   gid: string;
   /** Anonymous device id (the same one the ranking uses). */
@@ -25,8 +24,10 @@ export interface MatchReport extends RatedInfo {
   /** Game version (src/version.ts). */
   v: string;
   mode: PlayMode;
-  /** The AI level for free and rated play. */
-  ai?: AiLevel;
+  /** The AI's Lv for free and rated play. */
+  lv?: number;
+  /** Clients before 0.23 send a word for the AI's strength instead (kept as it came; see lvText). */
+  ai?: string;
   deck: string[];
   played: string[];
   score: 0 | 0.5 | 1;
@@ -43,7 +44,9 @@ export interface MatchReport extends RatedInfo {
 /** What an online room hands over when a game ends. */
 export interface RoomLog { gid: string; v: string; at: number; names: [string, string]; winner: PlayerIndex | -1; reason: string; ms: number; log: GameLog }
 
-const LEVELS: AiLevel[] = ['easy', 'normal', 'hard', 'expert'];
+/** The words older clients send instead of a Lv. */
+const OLD_WORDS = ['easy', 'normal', 'hard', 'expert'];
+const okLv = (lv: unknown) => Number.isInteger(lv) && (lv as number) >= 1 && (lv as number) <= 12;
 const MODES: PlayMode[] = ['free', 'rated', 'online'];
 const REASONS = ['ko', 'time', 'surrender', 'timeout', 'disconnect'];
 /** Games shorter than this say nothing about the cards (an early surrender). */
@@ -55,7 +58,7 @@ const shortText = (x: unknown, n = 40) => (typeof x === 'string' ? x.slice(0, n)
 const sameCards = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join() === [...b].sort().join();
 const isCard = (c: unknown): c is string => typeof c === 'string' && !!CARDS[c] && !CARDS[c].token;
 const bad = (status: number, error: string): ApiResult => ({ status, body: { error } });
-export const modeKey = (r: Pick<MatchReport, 'mode' | 'ai'>) => (r.mode === 'free' ? `free-${r.ai}` : r.mode);
+export const modeKey = (r: Pick<MatchReport, 'mode' | 'lv' | 'ai'>) => (r.mode !== 'free' ? r.mode : okLv(r.lv) ? `free-lv${r.lv}` : `free-${r.ai}`);
 
 export class PlayStats {
   /** `adminToken`: the secret that unlocks /api/logs (unset = the logs cannot be read through the API). */
@@ -70,7 +73,7 @@ export class PlayStats {
     const r = body;
     if (typeof r.gid !== 'string' || r.gid.length > 64 || typeof r.id !== 'string' || !/^[A-Za-z0-9-]{16,64}$/.test(r.id)) return bad(400, 'bad id');
     if (typeof r.v !== 'string' || !/^\d+\.\d+\.\d+$/.test(r.v)) return bad(400, 'bad version');
-    if (!MODES.includes(r.mode as PlayMode) || (r.mode !== 'online' && !LEVELS.includes(r.ai as AiLevel))) return bad(400, 'bad mode');
+    if (!MODES.includes(r.mode as PlayMode) || (r.mode !== 'online' && !okLv(r.lv) && !OLD_WORDS.includes(r.ai as string))) return bad(400, 'bad mode');
     if (![0, 0.5, 1].includes(r.score as number) || !REASONS.includes(r.reason as string)) return bad(400, 'bad result');
     if (!Array.isArray(r.deck) || r.deck.length > 20 || !r.deck.every(isCard)) return bad(400, 'bad deck');
     if (!Array.isArray(r.played) || r.played.length > 40 || !r.played.every(isCard)) return bad(400, 'bad cards');
@@ -118,7 +121,7 @@ export class PlayStats {
     else if (end.over || winner !== 1) problem = '結果が再現と違う';
     const at = this.now();
     const rec: StoredLog = {
-      gid: r.gid, v: r.v, at, src: 'report', mode: r.mode, ...(r.ai ? { ai: r.ai } : {}), id: r.id,
+      gid: r.gid, v: r.v, at, src: 'report', mode: r.mode, ...(okLv(r.lv) ? { lv: r.lv } : r.ai ? { ai: r.ai } : {}), id: r.id,
       deckNames: [shortText(r.deckName) ?? '', shortText(r.foe) ?? ''], winner, reason: r.reason, ms: r.ms,
       log: { seed: r.log.seed, first: r.log.first, decks: [r.log.decks[0].slice(), r.log.decks[1].slice()], actions: r.log.actions },
       ...(problem ? { problem } : {}),
