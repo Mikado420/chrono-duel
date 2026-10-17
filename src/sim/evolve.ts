@@ -130,15 +130,18 @@ export function playProfile(cards: string[], n: number, seed0: number, self: str
   return { end: r1(end), koShare: wins ? Math.round((100 * koW) / wins) : 0, dmg20: r1(dmg), atk: r1(atk), resv: r1(resv), cast: r1(cast), hpEnd: r1(hp) };
 }
 
+/** Lists of two different builds stay at least this many cards apart. */
+export const MIN_APART = 3;
 export interface Pick { cards: string[]; diff: number; se: number; play: PlayProfile & { cast: number }; why: string }
 /**
  * The day's improvement for one book entry, or null. `mode` 'hi' (Lv8–10): the best list that wins at least 2 points
  * more with the lower end of its 95% range above 0. 'lo' (Lv1–7): a list as strong as the current one (within ±2
  * points) that uses a card the current list does not — new, not stronger. Both must keep the 設計図's play pattern.
  */
-export function improve(arche: string, cur: string[], opps: Opp[], mode: 'hi' | 'lo', o: { candidates: number; screen: number; confirm: number; profile: number; seed: number; log?: (s: string) => void }): Pick | null {
+export function improve(arche: string, cur: string[], opps: Opp[], mode: 'hi' | 'lo', o: { candidates: number; screen: number; confirm: number; profile: number; seed: number; others?: string[][]; log?: (s: string) => void }): Pick | null {
   const log = o.log ?? (() => {});
-  const cands = candidates(arche, cur, o.candidates, o.seed);
+  // never land on (or next to) a list another build plays today
+  const cands = candidates(arche, cur, o.candidates * 2, o.seed).filter((c) => !(o.others ?? []).some((x) => RULES.DECK_SIZE - shared(c, x) < MIN_APART)).slice(0, o.candidates);
   log(`${arche} ${mode}: ${cands.length} candidates`);
   const screened = cands.map((c) => ({ c, p: paired(cur, c, opps, o.screen, o.seed) }));
   const order = mode === 'hi'

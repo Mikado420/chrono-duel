@@ -4,7 +4,7 @@
  * so a bad book can never put a broken or off-plan deck in front of a player.
  */
 import { canonDeck } from '../sim/rosterDecks';
-import { checkList, originList } from './blueprints';
+import { ROSTER_IDS, checkList, originList } from './blueprints';
 
 export interface BookEntry {
   /** Version of this archetype's list (1 = the built-in list). */
@@ -27,13 +27,17 @@ export const archeOf = (key: string) => canonDeck(key.replace(/~lo$/, ''));
 const canonKey = (key: string) => (key.endsWith('~lo') ? `${archeOf(key)}~lo` : archeOf(key));
 export const EMPTY_BOOK: DeckBook = { version: 0, at: 0, decks: {} };
 
-/** The book with every entry that fails its checks removed (a bad trial is dropped on its own). */
+/**
+ * The book with every entry that fails its checks removed (a bad trial is dropped on its own). Only today's builds
+ * (the roster's decks) are kept: entries of the older archetypes are no longer played by anyone.
+ */
 export function cleanBook(raw: unknown): DeckBook {
   const b = raw as Partial<DeckBook> | null;
   if (!b || typeof b !== 'object' || typeof b.version !== 'number' || typeof b.decks !== 'object' || !b.decks) return EMPTY_BOOK;
   const decks: Record<string, BookEntry> = {};
   for (const [rawId, e] of Object.entries(b.decks as Record<string, Partial<BookEntry>>)) {
     const id = canonKey(rawId);
+    if (!ROSTER_IDS.has(archeOf(id))) continue;
     if (!e || typeof e.v !== 'number' || !Array.isArray(e.cards) || checkList(archeOf(id), e.cards as string[]).length) continue;
     const t = e.trial;
     const trialOk = t && typeof t.v === 'number' && Array.isArray(t.cards) && typeof t.share === 'number' && t.share > 0 && t.share <= 1 && !checkList(archeOf(id), t.cards).length;

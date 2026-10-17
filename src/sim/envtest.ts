@@ -1,6 +1,6 @@
 /* 環境の集計・設計図・AIのデッキ帳: `npm run test:env` */
 import assert from 'node:assert/strict';
-import { BLUEPRINTS, MAX_FROM_ORIGIN, checkList, checkPlay, classify, listProfile, originList, shared, styleOf } from '../meta/blueprints';
+import { BLUEPRINTS, MAX_FROM_ORIGIN, checkList, checkPlay, classify, listProfile, originList, shared, signatureOf, styleOf, tooNear } from '../meta/blueprints';
 import { cleanBook, listFor, type DeckBook } from '../meta/deckbook';
 import { EnvStats, jstDay } from '../server/env';
 import { PlayStats } from '../server/stats';
@@ -47,22 +47,38 @@ for (const [id, b] of Object.entries(BLUEPRINTS)) {
   assert.equal(listProfile(rush).units, BLUEPRINTS.rush.list.units);
   assert.equal(classify(Array(20).fill('scout')), null, 'far from everything: 未分類');
 }
-// the deck book: bad lists are dropped, trials go to their share of games
+// the deck book: bad lists are dropped, trials go to their share of games, only today's builds are kept
 {
-  const rush = originList('rush')!;
-  const tweak = rush.slice(); tweak[tweak.indexOf('pendulum')] = 'e_page';
+  const id = 'raid_aggro_ram';
+  const ram = originList(id)!;
+  const tweak = oneSwaps(id, ram)[0];
+  assert.ok(tweak, 'a one-card change that passes');
   const book = cleanBook({ version: 3, at: 1, decks: {
-    rush: { v: 2, cards: rush, trial: { v: 3, cards: tweak, share: 0.5 } },
-    titan: { v: 2, cards: Array(20).fill('scout') },
-    nope: { v: 2, cards: rush },
+    [id]: { v: 2, cards: ram, trial: { v: 3, cards: tweak, share: 0.5 } },
+    titan_control_cage: { v: 2, cards: Array(20).fill('scout') },
+    rush: { v: 2, cards: originList('rush')! },
+    nope: { v: 2, cards: ram },
   } });
-  assert.deepEqual(Object.keys(book.decks), ['rush'], 'only lists that pass their 設計図');
+  assert.deepEqual(Object.keys(book.decks), [id], 'only lists that pass their 設計図, and only the roster\'s builds');
   let trial = 0;
-  for (let i = 0; i < 1000; i++) if (listFor(book, 'rush', `g${i}`, rush).v === 3) trial++;
+  for (let i = 0; i < 1000; i++) if (listFor(book, id, `g${i}`, ram).v === 3) trial++;
   assert.ok(trial > 430 && trial < 570, `trial share ${trial}/1000`);
-  assert.equal(listFor(book, 'titan', 'x', originList('titan')!).v, 1, 'a missing entry: the built-in list');
-  assert.equal(listFor(book, 'rush', 'g1', rush).v, listFor(book, 'rush', 'g1', rush).v, 'the same game always gets the same list');
+  assert.equal(listFor(book, 'titan_control_cage', 'x', originList('titan_control_cage')!).v, 1, 'a missing entry: the built-in list');
+  assert.equal(listFor(book, id, 'g1', ram).v, listFor(book, id, 'g1', ram).v, 'the same game always gets the same list');
   assert.deepEqual(cleanBook('junk'), { version: 0, at: 0, decks: {} });
+}
+// 型: the named cards stay, and a list never drifts onto a sibling build
+{
+  for (const d of ROSTER_DECKS) assert.deepEqual(checkList(d.id, d.cards), [], `${d.id}: its own first list passes`);
+  assert.deepEqual(signatureOf('raid_tempo_raider_guard'), { e_raider: 2, e_guard: 2 });
+  const g = originList('raid_tempo_guard')!.slice();
+  g[g.indexOf('e_guard')] = 'e_shot';
+  assert.ok(checkList('raid_tempo_guard', g).some((x) => x.startsWith('型の')), 'without 時計塔の守衛 it is not the 守衛型');
+  // 籠城 バーン（祈り型） with ミレア's cards in place of its own 2 different cards is the ミレア型
+  const pray = originList('siege_burn_pray')!, mirea = originList('siege_burn_mirea')!;
+  assert.equal(tooNear('siege_burn_pray', mirea), 'siege_burn_mirea');
+  for (const x of oneSwaps('siege_burn_pray', pray)) assert.equal(tooNear('siege_burn_pray', x), null);
+  for (const x of ROSTER_DECKS) for (const c of oneSwaps(x.id, x.cards).slice(0, 8)) assert.deepEqual(checkList(x.id, c), []);
 }
 
 // the server side
@@ -101,9 +117,10 @@ assert.equal(lists.lists[0].arche, 'second_aggro_pendulum');
 assert.equal(lists.lists[0].players, 2);
 // the deck book: admin only, checked, versions go up, the previous one is kept
 assert.deepEqual((await env.book()).body, { version: 0, at: 0, decks: {} });
-const good: DeckBook = { version: 1, at: 0, decks: { rush: { v: 2, cards: myRush } } };
+const good: DeckBook = { version: 1, at: 0, decks: { raid_aggro_ram: { v: 2, cards: originList('raid_aggro_ram')! } } };
 assert.equal((await env.publish({ token: 'nope', book: good })).status, 403);
-assert.equal((await env.publish({ token: 'secret', book: { version: 1, at: 0, decks: { rush: { v: 2, cards: Array(20).fill('scout') } } } })).status, 400, 'a list off its 設計図 is refused');
+assert.equal((await env.publish({ token: 'secret', book: { version: 1, at: 0, decks: { raid_aggro_ram: { v: 2, cards: Array(20).fill('scout') } } } })).status, 400, 'a list off its 設計図 is refused');
+assert.equal((await env.publish({ token: 'secret', book: { version: 1, at: 0, decks: { rush: { v: 2, cards: myRush } } } })).status, 400, 'an older archetype is refused');
 assert.equal((await env.publish({ token: 'secret', book: good })).status, 200);
 assert.equal((await env.publish({ token: 'secret', book: good })).status, 409, 'the version must go up');
 assert.equal(((await env.book()).body as DeckBook).version, 1);

@@ -149,12 +149,42 @@ export function classify(cards: string[]): string | null {
   return best;
 }
 
+// ------------------------------------------------------------------ 型: what tells a build from its siblings
+/** The decks of today's environment (the roster's 37 builds). Older archetypes stay only for old records. */
+export const ROSTER_IDS = new Set(ROSTER_DECKS.map((d) => d.id));
+const SIG = new Map<string, Record<string, number>>();
+/**
+ * The cards a build is named after (「急襲 テンポ（時計塔の守衛型）」 → 時計塔の守衛), at the number its first list
+ * has. A changed list must keep them, or it stops being that 型 (and may turn into one of its siblings).
+ */
+export function signatureOf(id: string): Record<string, number> {
+  let sig = SIG.get(id);
+  if (sig) return sig;
+  sig = {};
+  const d = ROSTER_DECKS.find((x) => x.id === id), o = originList(id);
+  const m = d?.name.match(/（(.+)型）$/);
+  if (m && o) for (const nm of m[1].split('・')) {
+    const c = Object.values(CARDS).find((x) => !x.token && x.name === nm);
+    if (c && o.includes(c.id)) sig[c.id] = o.filter((x) => x === c.id).length;
+  }
+  SIG.set(id, sig);
+  return sig;
+}
+/** The other build whose first list `cards` is at least as near to as to `id`'s own, if any (only for the roster's builds). */
+export function tooNear(id: string, cards: string[]): string | null {
+  const own = originList(id);
+  if (!own || !ROSTER_IDS.has(id)) return null;
+  const n = shared(own, cards);
+  for (const d of ROSTER_DECKS) if (d.id !== id && shared(d.cards, cards) >= n) return d.id;
+  return null;
+}
+
 // ------------------------------------------------------------------ the checks a changed list must pass
 /** Most cards a list may differ from its archetype's first version by. */
 export const MAX_FROM_ORIGIN = 6;
 /**
  * Everything wrong with `cards` as a list of archetype `id` (empty = fine): legal deck, only cards in the game,
- * the core kept, at most 6 cards away from the first version, the list and role numbers inside their ranges.
+ * the core and the 型's named cards kept, nearer to its own first version than to any other build's, at most 6 cards away from the first version, the list and role numbers inside their ranges.
  */
 export function checkList(id: string, cards: string[]): string[] {
   const bp = BLUEPRINTS[id];
@@ -170,6 +200,9 @@ export function checkList(id: string, cards: string[]): string[] {
   if (out.length) return out;
   for (const [c, n] of Object.entries(count)) if (n > (cardDef(c).rarity === 'L' ? RULES.MAX_LEGEND_COPIES : RULES.MAX_COPIES)) out.push(`${c}が多すぎる`);
   for (const [c, n] of Object.entries(bp.core)) if ((count[c] ?? 0) < n) out.push(`核の${c}が足りない`);
+  for (const [c, n] of Object.entries(signatureOf(id))) if ((count[c] ?? 0) < n) out.push(`型の${c}が足りない`);
+  const near = tooNear(id, cards);
+  if (near) out.push(`${near}の最初の版と同じくらい近い`);
   if (RULES.DECK_SIZE - shared(o, cards) > MAX_FROM_ORIGIN) out.push(`最初の版から${RULES.DECK_SIZE - shared(o, cards)}枚違う`);
   const p = listProfile(cards), b = bp.list;
   if (Math.abs(p.avgCost - b.avgCost) > 0.3) out.push(`平均コスト${p.avgCost}`);

@@ -59,20 +59,22 @@ async function post<T>(path: string, body: unknown): Promise<T | null> {
 }
 
 // ---- 1. read
-let env: EnvRes | null, lists: ListRow[], book: DeckBook;
+let env: EnvRes | null, lists: ListRow[], book: DeckBook, rawDecks: Record<string, { trial?: unknown }> = {};
 let envTier: EnvRes | null = null;
 /** The first day the environment tables classify players' lists to the roster's decks. */
 const TIER_FROM = '2026-10-14';
 if (E.FAKE) {
   const f = JSON.parse(readFileSync(E.FAKE, 'utf8')) as { env: EnvRes; lists: ListRow[]; book?: DeckBook };
-  env = f.env; lists = f.lists; book = cleanBook(f.book ?? EMPTY_BOOK);
+  env = f.env; lists = f.lists; rawDecks = (f.book?.decks ?? {}) as typeof rawDecks; book = cleanBook(f.book ?? EMPTY_BOOK);
 } else {
   env = await post<EnvRes>('/api/env', { days: 7 });
   // 環境Tier: the players' lists were classified to the roster's decks from 2026-10-14 on (before, most of them went
   // to the older archetypes), so the tier list reads only the days since then until a whole week has passed
   envTier = await post<EnvRes>('/api/env', { days: Math.max(1, Math.min(7, 1 + Math.floor((Date.parse(today) - Date.parse(TIER_FROM)) / 86_400_000))) });
   lists = E.ADMIN_TOKEN ? (await post<{ lists: ListRow[] }>('/api/env/lists', { token: E.ADMIN_TOKEN, min: 1 }))?.lists ?? [] : [];
-  book = cleanBook(await post<DeckBook>('/api/decks', {}));
+  const raw = await post<DeckBook>('/api/decks', {});
+  rawDecks = (raw?.decks ?? {}) as typeof rawDecks;
+  book = cleanBook(raw);
 }
 if (!env) { log('サーバーから集計を読めませんでした（SERVER を確かめてください）。シミュレーションだけで進めます。'); env = { days: [today, today], bands: {}, rivals: {}, friends: {} }; }
 mkdirSync(OUT, { recursive: true });
@@ -119,10 +121,17 @@ const perf = (c?: Cell) => (c && c.games ? (c.score - c.expected) / c.games : 0)
 const pct = (x: number) => `${x >= 0 ? '+' : ''}${(x * 100).toFixed(1)}`;
 const next: DeckBook = { version: book.version, at: Date.now(), decks: structuredClone(book.decks) };
 let changed = false;
+// entries the checks removed: older archetypes nobody plays now, and lists that lost their 型 or drifted onto another build
+const nowKey = (k: string) => bookKey(archeOf(k), k.endsWith('~lo') ? 1 : 8);
+const dropped = Object.keys(rawDecks).filter((k) => !book.decks[nowKey(k)]);
+const droppedTrials = Object.keys(rawDecks).filter((k) => rawDecks[k]?.trial && book.decks[nowKey(k)] && !book.decks[nowKey(k)].trial);
+if (dropped.length || droppedTrials.length) changed = true;
 const maxV = () => Math.max(1, ...Object.values(next.decks).flatMap((e) => [e.v, e.trial?.v ?? 0]));
 
 // ---- 2. trials
 report.push('## お試し中のリスト', '');
+if (dropped.length) report.push(`外したリスト：${dropped.join('・')}（今の37型にない古いデッキ、または型の札を失った・他の型に近づいたリスト）`, '');
+if (droppedTrials.length) report.push(`取り下げたお試し：${droppedTrials.map((k) => rivalDeckName(archeOf(k))).join('・')}（型の札を失った、または他の型に近づいた）`, '');
 let anyTrial = false;
 for (const [key, e] of Object.entries(next.decks)) {
   if (!e.trial) continue;
@@ -158,7 +167,10 @@ for (const e of todays) {
   const total = Object.values(mix).reduce((x, y) => x + y, 0);
   const opps: Opp[] = total >= 50 ? Object.entries(mix).map(([id, w]) => ({ id, w, cards: originList(id)! })) : usable.map((id) => ({ id, w: 1, cards: originList(id)! }));
   const cur = entryOf(e.key);
-  const pick = improve(e.arche, cur.cards, opps, e.mode, { candidates: sz(20), screen: sz(60), confirm: sz(300), profile: sz(150), seed: dayIndex * 1000 + keys.indexOf(e.key), log });
+  // the lists the other builds play today (their current version and any trial)
+  const others = Object.entries(next.decks).filter(([k]) => archeOf(k) !== e.arche).flatMap(([, x]) => [x.cards, ...(x.trial ? [x.trial.cards] : [])]);
+  for (const k of entries.keys()) if (archeOf(k) !== e.arche && !next.decks[k]) others.push(originList(archeOf(k))!);
+  const pick = improve(e.arche, cur.cards, opps, e.mode, { others, candidates: sz(20), screen: sz(60), confirm: sz(300), profile: sz(150), seed: dayIndex * 1000 + keys.indexOf(e.key), log });
   const label = `${rivalDeckName(e.arche)}（${e.mode === 'hi' ? 'Lv8〜10・強さ' : 'Lv1〜7・新しさ'}、相手は${total >= 50 ? 'プレイヤーの使用比率' : '全デッキ均等'}）`;
   if (!pick) { report.push(`- ${label}：変更なし`); continue; }
   const v = maxV() + 1;
