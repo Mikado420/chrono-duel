@@ -1,5 +1,6 @@
 import './ui/style.css';
 import './ui/skin.css';
+import './ui/skin2.css';
 import { Application, Container } from 'pixi.js';
 import type { DeckDef } from './core/decks';
 import { audio } from './render/audio';

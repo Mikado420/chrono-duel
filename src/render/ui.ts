@@ -55,9 +55,18 @@ export class Button extends Container {
   private draw() {
     const { w, h } = this;
     const g = this.bg.clear();
+    const y = -h / 2 + (this.pressed ? 2 : 0), r = Math.min(12, h / 4);
     const fill = this.tone === 'primary' ? COLORS.brass : this.tone === 'danger' ? COLORS.foeDeep : COLORS.ink3;
-    g.roundRect(-w / 2, -h / 2 + (this.pressed ? 2 : 0), w, h, h / 2.6).fill({ color: fill, alpha: this.tone === 'plain' ? 0.92 : 1 });
-    g.roundRect(-w / 2, -h / 2 + (this.pressed ? 2 : 0), w, h, h / 2.6).stroke({ color: this.tone === 'primary' ? 0xfff0c8 : COLORS.brassDeep, width: 2, alpha: 0.9 });
-    if (!this.pressed) g.roundRect(-w / 2 + 4, -h / 2 + 3, w - 8, h * 0.42, h / 3).fill({ color: 0xffffff, alpha: 0.06 });
+    g.roundRect(-w / 2, y, w, h, r).fill({ color: fill, alpha: this.tone === 'plain' ? 0.94 : 1 });
+    // a gold hairline (bright when it can be pressed) and a soft light along the top, like the menu buttons
+    g.roundRect(-w / 2, y, w, h, r).stroke({ color: this.tone === 'primary' ? 0xfff0c8 : this._enabled ? COLORS.brass : COLORS.brassDeep, width: 2, alpha: this._enabled ? 0.95 : 0.6 });
+    if (!this.pressed) g.roundRect(-w / 2 + 4, y + 3, w - 8, h * 0.42, r - 2).fill({ color: this.tone === 'plain' && this._enabled ? 0xf4d692 : 0xffffff, alpha: this.tone === 'plain' && this._enabled ? 0.09 : 0.06 });
+    if (this.tone === 'plain' && this._enabled) {
+      // instrument-style corner ticks
+      const t = 8, x0 = -w / 2 + 5, x1 = w / 2 - 5, y0 = y + 5, y1 = y + h - 5;
+      g.moveTo(x0, y0 + t).lineTo(x0, y0).lineTo(x0 + t, y0).moveTo(x1 - t, y0).lineTo(x1, y0).lineTo(x1, y0 + t)
+        .moveTo(x0, y1 - t).lineTo(x0, y1).lineTo(x0 + t, y1).moveTo(x1 - t, y1).lineTo(x1, y1).lineTo(x1, y1 - t)
+        .stroke({ color: COLORS.brass, width: 1.5, alpha: 0.7 });
+    }
   }
 }

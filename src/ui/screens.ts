@@ -61,6 +61,8 @@ function matPreview(id: string, lanes = true): HTMLElement {
   return artImg({ class: 'matpv' }, () => svgImg(matFlatSvg(id, 390, 414, lanes)), id);
 }
 /** What a look looks like, whatever its kind. */
+/** A painted theme picture (public/themes) for menus. */
+const themePic = (name: string) => `./themes/${name}.webp`;
 const lookPreview = (kind: LookKind, id: string) => (kind === 'back' ? artImg({}, () => backImg(id), id) : kind === 'dial' ? dialPreview(id) : matPreview(id));
 const LOOK_TITLE: Record<LookKind, string> = { back: 'スリーブ', dial: '盤面の文字盤', mat: 'プレイマット' };
 
@@ -325,7 +327,7 @@ export class Screens {
         ...imgs.slice(0, 2).map((id, i) => h('img', { class: i ? 'b' : 'a', src: cardImg(id), alt: '' })),
         h('div', { class: 'txt' }, h('small', {}, kicker), h('b', {}, title), h('span', {}, sub)));
     return [
-      b('b-pack', 'SET 1 ・ NOW ON', pack.name, `新カード${setCards.length}種 ・ 伝説は${PITY}パックで確定`, () => this.packShop(pack), setCards.slice(0, 2).map((c) => c.id)),
+      b('b-pack', 'SET 1 ・ NOW ON', pack.name, `新カード${setCards.length}種 ・ ${PITY}パックで伝説確定`, () => this.packShop(pack), setCards.slice(0, 2).map((c) => c.id)),
       b('b-rated', 'RATED', 'レート戦', `いま「${tierOf(store.rated.rating).tier.name}」・ レート${store.rated.rating}`, () => this.rated(), ['e_verna']),
       b('b-online', 'FRIEND', 'フレンド対戦', flow.available ? 'あいことば・招待リンク・観戦' : '準備中', () => this.onlineMenu(), ['e_atra']),
       b('b-mission', 'DAILY', 'デイリーミッション', `全達成でさらに${DAILY_ALL_BONUS.coins}コイン`, () => this.missions('daily'), ['e_bellkeeper']),
@@ -381,15 +383,18 @@ export class Screens {
           tierBadge(t.tier, 'lg'),
           h('div', { class: 'rating' }, h('small', {}, 'RATING'), h('b', {}, String(r.rating))),
           h('div', { class: 'progress tier-prog' }, h('i', { style: `width:${t.next ? (t.into / t.span) * 100 : 100}%` })),
-          h('div', { class: 'small' }, t.next ? `次の段位「${t.next.name}」まで ${t.next.min - r.rating}` : '最高段位', `　・　今季の最高 ${Math.max(r.sPeak ?? r.rating, r.rating)}　・　今季 ${r.sGames ?? 0}戦${r.sWins ?? 0}勝`),
-          h('div', { class: 'small', style: 'margin-top:4px;opacity:.85' }, `今季の報酬（いまの最高ランク）：コイン${reward.coins}${reward.tickets ? `・チケット${reward.tickets}枚` : ''}・季の称号`)),
-        h('ul', { class: 'earn' },
+          h('div', { class: 'rstats' },
+            h('div', {}, h('small', {}, t.next ? `「${t.next.name}」まで` : '段位'), h('b', { class: 'num' }, t.next ? String(t.next.min - r.rating) : '最高')),
+            h('div', {}, h('small', {}, '今季の最高'), h('b', { class: 'num' }, String(Math.max(r.sPeak ?? r.rating, r.rating)))),
+            h('div', {}, h('small', {}, '今季の成績'), h('b', {}, h('span', { class: 'num' }, String(r.sGames ?? 0)), '戦', h('span', { class: 'num' }, String(r.sWins ?? 0)), '勝'))),
+          h('div', { class: 'rreward' }, h('small', {}, '今季の報酬'), h('span', {}, `コイン${reward.coins}${reward.tickets ? `・チケット${reward.tickets}枚` : ''}・季の称号`))),
+        h('details', { class: 'rules' }, h('summary', {}, 'レート戦のルールと報酬'), h('ul', { class: 'earn' },
           h('li', {}, 'レートの近い相手とマッチングします。段位が上がるほど手強い相手が待っています'),
           h('li', {}, '自分よりレートの高い相手に勝つほど大きく上がり、低い相手に負けるほど大きく下がります'),
           h('li', {}, `はじめの${PLACEMENT_GAMES}戦は変動が大きくなります`),
           h('li', {}, '1手45秒の持ち時間があります。降参・途中でアプリを閉じた場合は敗北になります'),
           h('li', {}, 'シーズンは新しい弾が出るたびに切り替わります。そのシーズンの最高ランクに応じてコイン・チケットと、ランクごとに装飾の変わる季の称号（最終順位つき）がもらえ、次のシーズンは1つ下のランクの最初から始まります（刻神Ⅰ〜Ⅴは刻聖から）'),
-          h('li', {}, '刻神はⅠ〜Ⅴの5段階です。刻神Ⅲ・Ⅳでは1手に最大20秒考えるLv11、刻神ⅤではLv12が相手になります')),
+          h('li', {}, '刻神はⅠ〜Ⅴの5段階です。刻神Ⅲ・Ⅳでは1手に最大20秒考えるLv11、刻神ⅤではLv12が相手になります'))),
         h('div', { class: 'sec-title' }, 'デッキ'), h('div', { class: 'opt-list' }, ...deckOpts),
         h('button', { class: 'hexbtn gold big', disabled: !mine.valid, onclick: () => { store.settings.lastDeck = mine.id; store.saveSettings(); audio.play('summon'); this.host.startRated(mine); } }, 'レート戦を開始'),
         hist.length ? h('div', { class: 'sec-title' }, '最近の結果') : null,
@@ -1738,10 +1743,10 @@ export class Screens {
         h('div', {}, h('small', {}, 'NEW PACK'), h('b', {}, `${SET_NAMES[pack.set].replace(/^第1弾/, '第1弾 ')}`), h('span', {}, `新カード${setCards.length}種 ・ 1パック${pack.size}枚、最後の1枚は希少以上`))),
       h('div', { class: 'stiles' },
         tile('パックを引く', 'コイン・チケット', h('span', {}, h('img', { class: 'l', src: cardImg(setCards[1]?.id ?? 'gear'), alt: '' }), h('img', { class: 'r', src: cardImg(setCards[0]?.id ?? 'gear'), alt: '' })), () => this.packShop(pack), canOpen(w, pack) ? h('span', { class: 'new-tag' }, '引ける') : null),
-        tile('スリーブ', backs ? `コインで交換 ・ ${backs}種` : 'すべて持っています', h('span', { html: `<svg viewBox="0 0 120 130" fill="none"><rect x="14" y="14" width="64" height="92" rx="6" fill="#13323b" stroke="#8fa9ad" stroke-width="2" transform="rotate(-10 46 60)"/><rect x="40" y="20" width="64" height="92" rx="6" fill="#3a1a14" stroke="#e0b25c" stroke-width="2.5" transform="rotate(8 72 66)"/><g transform="rotate(8 72 66)"><path d="M72 42l14 24-14 24-14-24z" stroke="#e0b25c" stroke-width="2"/><circle cx="72" cy="66" r="7" fill="#e0b25c"/></g></svg>` }), () => this.looksShop('back')),
-        tile('盤面の文字盤', dials ? `対戦中の時計 ・ ${dials}種` : 'すべて持っています', h('span', { html: '<svg viewBox="0 0 132 132" fill="none"><circle cx="66" cy="66" r="58" fill="#0f2f33" stroke="#c99640" stroke-width="5"/><circle cx="66" cy="66" r="48" stroke="#e0b25c" stroke-width="1" stroke-dasharray="2 5"/><g stroke="#f1e7d0" stroke-width="2.4"><path d="M66 12v10M66 110v10M12 66h10M110 66h10"/></g><path d="M66 66V30" stroke="#fff3d4" stroke-width="4" stroke-linecap="round"/><path d="M66 66l26 16" stroke="#5fd0b5" stroke-width="4" stroke-linecap="round"/><circle cx="66" cy="66" r="6" fill="#e0b25c"/></svg>' }), () => this.looksShop('dial')),
-        tile('プレイマット', mats ? `自分の側の盤面 ・ ${mats}種` : 'すべて持っています', h('span', { html: '<svg viewBox="0 0 132 120" fill="none"><path d="M10 40 L122 40 L114 108 L18 108 Z" fill="#1d170e" stroke="#c99640" stroke-width="3"/><g transform="translate(40 92)"><circle r="26" stroke="#8a6a32" stroke-width="7" stroke-dasharray="5 5"/><circle r="17" fill="#2a2214" stroke="#a7843f" stroke-width="2"/></g><g fill="#0a1418" stroke="#e8dcc0" stroke-opacity=".5" stroke-width="1.5"><rect x="26" y="50" width="22" height="28" rx="3"/><rect x="55" y="50" width="22" height="28" rx="3"/><rect x="84" y="50" width="22" height="28" rx="3"/></g><path d="M10 40 H122" stroke="#e0b25c" stroke-width="2"/></svg>' }), () => this.looksShop('mat')),
-        tile('テーマ一式', `3点セット ・ ${THEME_SET_PRICE}コイン`, h('span', { html: '<svg viewBox="0 0 132 120" fill="none"><rect x="64" y="22" width="44" height="62" rx="5" fill="#2a1f10" stroke="#e0b25c" stroke-width="2.5" transform="rotate(10 86 53)"/><path d="M10 96 A50 50 0 0 1 110 96 Z" fill="#13285e" stroke="#e0b85a" stroke-width="3"/><circle cx="60" cy="96" r="30" fill="none" stroke="#e0b85a" stroke-width="7" stroke-opacity=".5" stroke-dasharray="14 2"/><path d="M60 96 L30 80" stroke="#5fd0b5" stroke-width="4" stroke-linecap="round"/></svg>' }), () => this.themeShop(), h('span', { class: 'new-tag' }, 'NEW')),
+        tile('スリーブ', backs ? `コインで交換 ・ ${backs}種` : 'すべて持っています', h('span', {}, h('img', { class: 'l pic-fan', src: themePic('forge_back'), alt: '' }), h('img', { class: 'r pic-fan', src: themePic('wadokei_back'), alt: '' })), () => this.looksShop('back')),
+        tile('盤面の文字盤', dials ? `対戦中の時計 ・ ${dials}種` : 'すべて持っています', h('img', { class: 'pic dialpic', src: themePic('astro_dial'), alt: '' }), () => this.looksShop('dial')),
+        tile('プレイマット', mats ? `自分の側の盤面 ・ ${mats}種` : 'すべて持っています', h('img', { class: 'pic', src: themePic('cathedral_mat'), alt: '' }), () => this.looksShop('mat')),
+        tile('テーマ一式', `3点セット ・ ${THEME_SET_PRICE}コイン`, h('span', { class: 'pic-set' }, h('img', { class: 'pic dialpic', src: themePic('wadokei_dial'), alt: '' }), h('img', { class: 'pic-fan solo', src: themePic('wadokei_back'), alt: '' })), () => this.themeShop(), h('span', { class: 'new-tag' }, 'NEW')),
         tile('欠片で作る', `時の欠片 ${fmt(w.shards)}`, h('span', { html: '<svg viewBox="0 0 130 120" fill="none"><path d="M34 30l14 14-14 26-14-26z" fill="#9fe8ff" stroke="#e0f9ff" stroke-width="1.4"/><path d="M96 24l12 12-12 22-12-22z" fill="#9fe8ff" stroke="#e0f9ff" stroke-width="1.4"/><rect x="44" y="40" width="44" height="62" rx="5" fill="#13323b" stroke="#e0b25c" stroke-width="2.5"/><path d="M66 56v22M55 67h22" stroke="#e0b25c" stroke-width="3" stroke-linecap="round"/></svg>' }), () => this.collection('craft'))),
       h('div', { class: 'sec-title' }, 'コインの集め方'),
       h('ul', { class: 'earn' },
