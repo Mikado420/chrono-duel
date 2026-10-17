@@ -300,7 +300,7 @@ export function determinize(s: GameState, pi: PlayerIndex, ownDeck: string[], ra
   const pool = CARD_LIST;
   op.hand = op.hand.map((h) => ({ uid: h.uid, card: pool[Math.floor(rand() * pool.length)].id }));
   op.deck = op.deck.map(() => pool[Math.floor(rand() * pool.length)].id);
-  const mine = ownDeck.slice();
+  const mine = ownDeck.slice().sort(); // sorted first, so the true order of the deck can never leak into the guesses
   for (let i = mine.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [mine[i], mine[j]] = [mine[j], mine[i]]; }
   c.players[pi].deck = mine;
   return c;

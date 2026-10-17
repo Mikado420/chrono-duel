@@ -27,6 +27,7 @@
     "sim:rivals": "tsx src/sim/rivals.ts",
     "test:rivals": "tsx src/sim/rivaltest.ts",
     "test:env": "tsx src/sim/envtest.ts",
+    "test:fair": "tsx src/sim/fairtest.ts",
     "daily": "tsx src/sim/daily.ts",
     "test:set1x": "tsx src/sim/x1test.ts"
   },

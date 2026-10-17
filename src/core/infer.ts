@@ -114,7 +114,7 @@ export function guessWorld(real: GameState, pi: PlayerIndex, g: Guess[], seen: S
   op.resv = op.resv.flatMap((r): Reservation[] => (r.revealed || r.echo ? [r] : pins ? [{ ...r, card: take(true), decoy: false }] : []));
   op.hand = op.hand.map((h) => ({ uid: h.uid, card: take() }));
   op.deck = op.deck.map(() => take());
-  const mine = real.players[pi].deck.slice();
+  const mine = real.players[pi].deck.slice().sort(); // sorted first, so the true order of the deck can never leak into the guesses
   for (let i = mine.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [mine[i], mine[j]] = [mine[j], mine[i]]; }
   c.players[pi].deck = mine;
   return c;
