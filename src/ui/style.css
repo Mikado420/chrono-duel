@@ -464,6 +464,13 @@ body.log-open #log-back { display: block; }
 .t-新カード { background: #5a2f94; } .t-機能追加 { background: #1f7f6d; } .t-不具合修正 { background: #8c2d22; } .t-お知らせ { background: #9c7432; }
 .news-detail { display: grid; gap: 8px; justify-items: start; }
 .news-detail h3 { color: var(--ivory); font: 700 18px var(--f-display); letter-spacing: .04em; margin: 0; }
+.news-text { display: grid; gap: 10px; width: 100%; font-size: 14px; line-height: 1.7; color: var(--ivory); }
+.news-text p { margin: 0; }
+.news-text h4 { margin: 8px 0 0; padding-bottom: 4px; border-bottom: 1px solid var(--line); font: 700 14px var(--f-display); letter-spacing: .06em; color: var(--brass, #e0b25c); }
+.news-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.news-list li { display: grid; gap: 2px; padding: 8px 10px; border-radius: 8px; background: var(--ink2); border: 1px solid var(--line); }
+.news-list li b { font-size: 13px; color: var(--ivory); }
+.news-list li span { font-size: 13px; line-height: 1.6; color: var(--mute); }
 /* profile */
 .prof { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; }
 .rank-big { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 50%; font: 700 30px/1 var(--f-num); color: #231605; background: radial-gradient(circle at 35% 30%, #fff3c9, #e0b25c 55%, #8a5f20); box-shadow: 0 0 0 3px rgba(255, 240, 200, .6), 0 6px 20px rgba(224, 178, 92, .4); }

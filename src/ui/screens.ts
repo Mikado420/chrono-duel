@@ -744,7 +744,7 @@ export class Screens {
       if (!m.newsRead.includes(n.id)) { m.newsRead.push(n.id); store.saveMeta(); }
       ref.wrap.querySelector('.modal-body')!.replaceChildren(
         h('button', { class: 'btn small', onclick: list }, '← 一覧へ'),
-        h('div', { class: 'news-detail' }, h('span', { class: `tag t-${n.tag}` }, n.tag), h('h3', {}, n.title), h('small', {}, n.date), h('p', {}, n.body)));
+        h('div', { class: 'news-detail' }, h('span', { class: `tag t-${n.tag}` }, n.tag), h('h3', {}, n.title), h('small', {}, n.date), newsBody(n.body)));
     };
     ref = this.modal('お知らせ', [], { onClose: () => this.refreshHub() });
     list();
@@ -1904,3 +1904,23 @@ function BEGINNER_TOTAL() {
 }
 // keep imports used only in types or in rarely used paths from being dropped by mistake
 void svg;
+
+/**
+ * お知らせの本文: one line per paragraph. "## 見出し" starts a section, "・名前：内容" is a row of a list (the name in bold).
+ * Older entries are one paragraph and show as before.
+ */
+function newsBody(body: string): HTMLElement {
+  const out: HTMLElement[] = [];
+  let ul: HTMLElement | null = null;
+  for (const line of body.split('\n').map((l) => l.trim()).filter(Boolean)) {
+    if (line.startsWith('・')) {
+      ul ??= out[out.push(h('ul', { class: 'news-list' })) - 1];
+      const t = line.slice(1), k = t.indexOf('：');
+      ul.append(k > 0 ? h('li', {}, h('b', {}, t.slice(0, k)), h('span', {}, t.slice(k + 1))) : h('li', {}, h('span', {}, t)));
+      continue;
+    }
+    ul = null;
+    out.push(line.startsWith('## ') ? h('h4', {}, line.slice(3)) : h('p', {}, line));
+  }
+  return h('div', { class: 'news-text' }, ...out);
+}
