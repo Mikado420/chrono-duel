@@ -1,0 +1,135 @@
+{
+ "date": "2026-10-19",
+ "v": "0.23.0",
+ "games": {
+  "free-lv10": [
+   9,
+   8
+  ],
+  "rated": [
+   67,
+   54.5
+  ]
+ },
+ "impacts": [
+  {
+   "id": "e_atra",
+   "used": 71,
+   "winUsed": 86.61971830985915,
+   "lift": 4.532501810197837,
+   "inDeck": 74
+  },
+  {
+   "id": "haste",
+   "used": 67,
+   "winUsed": 88.80597014925372,
+   "lift": 6.44909779460904,
+   "inDeck": 76
+  },
+  {
+   "id": "e_reverse",
+   "used": 62,
+   "winUsed": 79.83870967741936,
+   "lift": -2.3564970844701283,
+   "inDeck": 76
+  },
+  {
+   "id": "x_seer",
+   "used": 51,
+   "winUsed": 81.37254901960785,
+   "lift": -0.7104997886385044,
+   "inDeck": 76
+  },
+  {
+   "id": "insight",
+   "used": 45,
+   "winUsed": 76.66666666666667,
+   "lift": -5.682697622996137,
+   "inDeck": 76
+  },
+  {
+   "id": "stop",
+   "used": 44,
+   "winUsed": 87.5,
+   "lift": 5.299261269410525,
+   "inDeck": 76
+  },
+  {
+   "id": "x_oblivion",
+   "used": 43,
+   "winUsed": 82.55813953488372,
+   "lift": 1.2148559527941656,
+   "inDeck": 70
+  },
+  {
+   "id": "e_break",
+   "used": 42,
+   "winUsed": 78.57142857142857,
+   "lift": -2.951512279870475,
+   "inDeck": 70
+  },
+  {
+   "id": "arrow",
+   "used": 40,
+   "winUsed": 81.25,
+   "lift": -1.2251243781094523,
+   "inDeck": 76
+  },
+  {
+   "id": "rewind",
+   "used": 39,
+   "winUsed": 75.64102564102564,
+   "lift": -6.282689118510021,
+   "inDeck": 76
+  },
+  {
+   "id": "e_pray",
+   "used": 19,
+   "winUsed": 65.78947368421052,
+   "lift": -15.553809897879031,
+   "inDeck": 70
+  },
+  {
+   "id": "bolt",
+   "used": 3,
+   "winUsed": 66.66666666666667,
+   "lift": -22.222222222222218,
+   "inDeck": 6
+  },
+  {
+   "id": "e_page",
+   "used": 2,
+   "winUsed": 50,
+   "lift": -38.888888888888886,
+   "inDeck": 2
+  },
+  {
+   "id": "ghost",
+   "used": 2,
+   "winUsed": 50,
+   "lift": -38.888888888888886,
+   "inDeck": 2
+  },
+  {
+   "id": "warden",
+   "used": 2,
+   "winUsed": 100,
+   "lift": 11.111111111111116,
+   "inDeck": 4
+  },
+  {
+   "id": "archer",
+   "used": 1,
+   "winUsed": 100,
+   "lift": 11.111111111111116,
+   "inDeck": 2
+  },
+  {
+   "id": "x_sentry",
+   "used": 1,
+   "winUsed": 100,
+   "lift": 11.111111111111116,
+   "inDeck": 4
+  }
+ ]
+}

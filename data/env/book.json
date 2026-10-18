@@ -1,6 +1,6 @@
 {
- "version": 14,
- "at": 1792289539666,
+ "version": 15,
+ "at": 1792359530076,
  "decks": {
   "titan_control_cage~lo": {
    "v": 1,
@@ -855,34 +855,7 @@
     "bolt",
     "arrow",
     "arrow"
-   ],
-   "trial": {
-    "v": 31,
-    "cards": [
-     "e_sprite",
-     "scout",
-     "archer",
-     "archer",
-     "e_page",
-     "e_page",
-     "pendulum",
-     "pendulum",
-     "ghost",
-     "ghost",
-     "gear",
-     "gear",
-     "lancer",
-     "lancer",
-     "haste",
-     "haste",
-     "bolt",
-     "bolt",
-     "arrow",
-     "arrow"
-    ],
-    "share": 0.5,
-    "since": 1792188979178
-   }
+   ]
   },
   "second_aggro_sprite~lo": {
    "v": 1,
@@ -1038,6 +1011,110 @@
     ],
     "share": 0.5,
     "since": 1792273506268
+   }
+  },
+  "sweep_control_dragon~lo": {
+   "v": 1,
+   "cards": [
+    "warden",
+    "warden",
+    "pendulum",
+    "pendulum",
+    "scribe",
+    "scribe",
+    "heavy",
+    "heavy",
+    "e_atra",
+    "dragon",
+    "collapse",
+    "e_storm",
+    "arrow",
+    "arrow",
+    "e_shot",
+    "e_shot",
+    "rewind",
+    "rewind",
+    "insight",
+    "insight"
+   ],
+   "trial": {
+    "v": 35,
+    "cards": [
+     "warden",
+     "warden",
+     "archer",
+     "pendulum",
+     "scribe",
+     "scribe",
+     "heavy",
+     "heavy",
+     "e_atra",
+     "dragon",
+     "collapse",
+     "e_storm",
+     "arrow",
+     "arrow",
+     "e_shot",
+     "e_shot",
+     "rewind",
+     "rewind",
+     "insight",
+     "insight"
+    ],
+    "share": 0.5,
+    "since": 1792360045693
+   }
+  },
+  "verna_loop_guard": {
+   "v": 1,
+   "cards": [
+    "warden",
+    "warden",
+    "e_guard",
+    "e_guard",
+    "e_sprite",
+    "e_sprite",
+    "e_draw",
+    "e_draw",
+    "e_pray",
+    "e_pray",
+    "e_reverse",
+    "e_reverse",
+    "rewind",
+    "rewind",
+    "insight",
+    "stop",
+    "bolt",
+    "bolt",
+    "e_eternal",
+    "e_verna"
+   ],
+   "trial": {
+    "v": 36,
+    "cards": [
+     "warden",
+     "warden",
+     "e_guard",
+     "e_guard",
+     "e_sprite",
+     "e_sprite",
+     "e_draw",
+     "e_draw",
+     "e_pray",
+     "e_pray",
+     "e_reverse",
+     "e_reverse",
+     "rewind",
+     "rewind",
+     "scribe",
+     "stop",
+     "bolt",
+     "bolt",
+     "e_eternal",
+     "e_verna"
+    ],
+    "share": 0.5,
+    "since": 1792360338941
    }
   }
  }
