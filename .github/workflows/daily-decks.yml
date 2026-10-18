@@ -1,6 +1,8 @@
 # 毎日の改良と発見（src/sim/daily.ts）: every day at 4:30 JST
 #   reads the online server's tables, settles the lists on trial, improves a few rival lists by simulation,
 #   publishes the deck book, and opens an issue when something needs a person (new decks, 型, balance).
+#   The day's public numbers (環境Tier, card adoption, play statistics, the deck book and the report) are also saved
+#   to data/env/ in the repository, so they can be read later without the server.
 # Needs: Variables > ONLINE_URL (the wss:// address, as for the Pages build) and Secrets > ADMIN_TOKEN (the same
 # value as the server's ADMIN_TOKEN). Without ADMIN_TOKEN it only writes the report.
 name: Daily rival decks
@@ -19,7 +21,7 @@ on:
         default: '4'
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 concurrency:
@@ -49,6 +51,23 @@ jobs:
       - name: Summary
         if: always()
         run: test -f out/daily-report.md && cat out/daily-report.md >> "$GITHUB_STEP_SUMMARY" || true
+      - name: Save the numbers to the repository (data/env)
+        if: success()
+        run: |
+          d=$(TZ=Asia/Tokyo date +%F)
+          mkdir -p data/env/history
+          for f in tier stats book; do
+            if [ -f out/daily-$f.json ]; then cp out/daily-$f.json data/env/$f.json; fi
+          done
+          [ -f out/daily-report.md ] && cp out/daily-report.md data/env/report.md
+          [ -f out/daily-tier.json ] && cp out/daily-tier.json data/env/history/$d-tier.json
+          [ -f out/daily-stats.json ] && cp out/daily-stats.json data/env/history/$d-stats.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/env
+          if git diff --cached --quiet; then echo 'no change'; exit 0; fi
+          git commit -m "環境の数字 $d（毎日の集計）"
+          for i in 1 2 3; do git pull --rebase -q origin main && git push -q origin HEAD:main && break; sleep 5; done
       - uses: actions/upload-artifact@v5
         if: always()
         with:
