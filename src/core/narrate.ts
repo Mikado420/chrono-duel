@@ -76,6 +76,7 @@ export function narrate(log: GameLog, names: [string, string]): string {
         case 'discard': lines.push(`  ${who(e.pi)}が${nm(e.card)}を捨てた`); break;
         case 'fetch': lines.push(`  ${who(e.pi)}が${nm(e.card)}を手札に加えた`); break;
         case 'stealResv': lines.push(`  ${who(e.pi)}の${nm(e.card)}の予約が奪われた（${e.T}刻）`); break;
+        case 'shield': lines.push(`  ${who(e.pi)}の囮の書がダメージを${e.amount}減らした`); break;
         case 'end': lines.push(`■ 終了：${e.winner === -1 ? '引き分け' : `${who(e.winner)}の勝ち`}（${e.reason === 'ko' ? '拠点破壊' : '時間切れ'}）`); break;
         default: break;
       }

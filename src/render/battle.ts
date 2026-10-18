@@ -4,7 +4,7 @@ import { chooseRival, chooseRivalAsync, newMind, quirksOf, thinkMs, type RivalCf
 const FALLBACK_AI: RivalCfg = { name: 'AI', lv: 3, persona: 'steady', deck: '', quirks: quirksOf('AI') };
 import { KEYWORD_HELP, cardDef, keywordsOf } from '../core/cards';
 import {
-  actor, apply, attackTarget, canShift, cardCost, createGame, isReady, legalActions, other, resvCount, resvRange, worldTime,
+  actor, apply, attackTarget, canShift, cardCost, createGame, hasAura, isReady, legalActions, other, resvCount, resvRange, worldTime,
   type Action, type GameEvent, type GameState, type PlayerIndex, type Target,
 } from '../core/engine';
 import type { GameLog } from '../core/gamelog';
@@ -83,7 +83,7 @@ type Mode =
   | { k: 'resv'; uid: number; T: number }
   | { k: 'attack'; lane: number }
   /** 充填: choosing how much extra time to pay. `lane` is set for units. */
-  | { k: 'charge'; uid: number; x: number; lane: number | null }
+  | { k: 'charge'; uid: number; x: number; lane: number | null; T?: number }
   /** 転移: choosing which empty lane next to it a unit moves to (also offered from the attack bar). */
   | { k: 'shift'; lane: number };
 
@@ -624,9 +624,11 @@ export class BattleScene extends Container {
     const pd = this.s.pending;
     if (!pd || pd.pi !== 0) return;
     const hand = this.s.players[0].hand;
-    const cards = pd.options.map((o) => (typeof o === 'number' ? hand.find((h) => h.uid === o)?.card ?? HIDDEN : o));
-    const title = pd.kind === 'seer' ? '手札に加えるカードを1枚選ぶ' : pd.kind === 'discard' ? `${this.foe}の忘却の砂：捨てるカードを1枚選ぶ` : 'もう一度使う呪文を1枚選ぶ';
-    const sub = pd.kind === 'seer' ? '残りは山札の下に置かれます' : pd.kind === 'discard' ? '選んだカードは捨て札になります' : 'コストを払わずに使います';
+    // 刻壊し / 時の簒奪者 choose among the opponent's (revealed) pins
+    const pins = pd.kind === 'break' || pd.kind === 'steal' ? pd.options.map((o) => this.s.players[1].resv.find((r) => r.uid === o)) : null;
+    const cards = pins ? pins.map((r) => r?.card ?? HIDDEN) : pd.options.map((o) => (typeof o === 'number' ? hand.find((h) => h.uid === o)?.card ?? HIDDEN : o));
+    const title = pd.kind === 'seer' ? '手札に加えるカードを1枚選ぶ' : pd.kind === 'discard' ? `${this.foe}の忘却の砂：捨てるカードを1枚選ぶ` : pd.kind === 'break' ? `${this.foe}の予約か残響を1つ選んで破棄` : pd.kind === 'steal' ? `${this.foe}の予約を1つ選んで奪う` : 'もう一度使う呪文を1枚選ぶ';
+    const sub = pd.kind === 'seer' ? '残りは山札の下に置かれます' : pd.kind === 'discard' ? '選んだカードは捨て札になります' : pd.kind === 'break' ? '選んだものは発動しません' : pd.kind === 'steal' ? '奪った予約はすぐに、予約したときの強さで発動します' : 'コストを払わずに使います';
     audio.play('select');
     this.closeModal();
     const c = new Container();
@@ -648,6 +650,12 @@ export class BattleScene extends Container {
       f.eventMode = 'static'; f.cursor = 'pointer';
       f.on('pointertap', (e) => { e.stopPropagation(); this.closeModal(); audio.play('summon'); void this.tryAction({ t: 'choose', i }); });
       c.addChild(f);
+      const r = pins?.[i];
+      if (r) {
+        const tag = label(r.echo ? `残響・${r.T}刻` : `${r.T}刻に発動`, 20, COLORS.brass, { align: 'center' });
+        tag.anchor.set(0.5); tag.x = f.x; tag.y = f.y + 476 * sc / 2 + 14;
+        c.addChild(tag);
+      }
     });
     void rows;
     this.overlay.addChild(c);
@@ -863,7 +871,7 @@ export class BattleScene extends Container {
       this.bar([
         ['−', 'plain', () => this.nudgeResv(-1)],
         ['やめる', 'plain', () => this.setMode({ k: 'idle' })],
-        [`${m.T}刻に予約`, 'primary', () => this.tryAction({ t: 'reserve', hand: m.uid, T: m.T })],
+        [`${m.T}刻に予約`, 'primary', () => this.reserveAt(m.uid, m.T)],
         ['＋', 'plain', () => this.nudgeResv(1)],
       ], '時計をタップ／ドラッグして発動時刻を選ぶ');
     }
@@ -873,12 +881,15 @@ export class BattleScene extends Container {
       const cost = cardCost(this.s, 0, h.card) + m.x;
       this.forecast(cost);
       if (m.lane !== null) this.showLaneHi([m.lane], COLORS.you);
-      const act: Action = d.kind === 'unit' ? { t: 'play', hand: m.uid, lane: m.lane!, x: m.x } : { t: 'cast', hand: m.uid, x: m.x };
-      const nudge = (k: number) => { const x = Math.max(0, Math.min(d.charge!, m.x + k)); if (x !== m.x) { audio.play('tick'); this.setMode({ ...m, x }); } };
+      const act: Action = d.kind === 'unit' ? { t: 'play', hand: m.uid, lane: m.lane!, x: m.x } : m.T !== undefined ? { t: 'reserve', hand: m.uid, T: m.T, x: m.x } : { t: 'cast', hand: m.uid, x: m.x };
+      // reserving (囮の書): every extra tick also moves the earliest time, so X stops where T is still allowed
+      let top = d.charge!;
+      if (m.T !== undefined) while (top > 0 && (resvRange(this.s, 0, cardCost(this.s, 0, h.card) + top)?.[0] ?? Infinity) > m.T) top--;
+      const nudge = (k: number) => { const x = Math.max(0, Math.min(top, m.x + k)); if (x !== m.x) { audio.play('tick'); this.setMode({ ...m, x }); } };
       this.bar([
         ['−', 'plain', () => nudge(-1)],
         ['やめる', 'plain', () => { this.flyFrom = null; this.setMode({ k: 'idle' }); }],
-        [`${d.kind === 'unit' ? '召喚' : '使う'}（${cost}刻）`, 'primary', () => void this.tryAction(act)],
+        [`${d.kind === 'unit' ? '召喚' : m.T !== undefined ? `${m.T}刻に予約` : '使う'}（${cost}刻）`, 'primary', () => void this.tryAction(act)],
         ['＋', 'plain', () => nudge(1)],
       ], this.chargeHint(h.card, m.x));
     }
@@ -1037,7 +1048,7 @@ export class BattleScene extends Container {
       } else {
         const r = resvCount(this.s.players[0]) < RULES.MAX_RESV ? resvRange(this.s, 0, cardCost(this.s, 0, def.id)) : null;
         if (this.dial.hit(p.x, p.y)) {
-          if (r) { const T = Math.max(r[0], Math.min(r[1], this.dial.tFromPoint(p.x, p.y))); this.flyFrom = { x: d.view.x, y: d.view.y }; void this.tryAction({ t: 'reserve', hand: d.view.uid, T }); return; }
+          if (r) { const T = Math.max(r[0], Math.min(r[1], this.dial.tFromPoint(p.x, p.y))); this.flyFrom = { x: d.view.x, y: d.view.y }; this.reserveAt(d.view.uid, T); return; }
           audio.play('deny');
           this.toast(resvCount(this.s.players[0]) >= RULES.MAX_RESV ? `予約は${RULES.MAX_RESV}枚までです` : '予約するには時間が足りません');
         } else if (p.y < L.youHud - 30) {
@@ -1107,8 +1118,8 @@ export class BattleScene extends Container {
     if (this.s.pending?.pi === 0) { this.showChoice(); return; } // answer the choice first
     const d = cardDef(h.card);
     this.flyFrom ??= this.handPos(uid);
-    if (d.charge) { this.setMode({ k: 'charge', uid, x: 0, lane }); return; }
     if (d.reserveOnly) { this.startResv(uid); return; }
+    if (d.charge) { this.setMode({ k: 'charge', uid, x: 0, lane }); return; }
     void this.tryAction(d.kind === 'unit' ? { t: 'play', hand: uid, lane: lane! } : { t: 'cast', hand: uid });
   }
   /** 予約専用 cards (and the 予約する button): choose the time on the clock. */
@@ -1120,11 +1131,22 @@ export class BattleScene extends Container {
     this.flyFrom = null;
     this.setMode({ k: 'resv', uid, T: Math.min(r[1], r[0] + 2) });
   }
+  /** Reserve at `T`; a card whose 充填 is paid on reserving (囮の書) first asks how much. */
+  private reserveAt(uid: number, T: number) {
+    const h = this.s.players[0].hand.find((x) => x.uid === uid);
+    if (h && cardDef(h.card).chargeOnReserve) {
+      // the extra ticks push the earliest time later: keep T inside what X=0 allows, the bar caps X
+      this.setMode({ k: 'charge', uid, x: 0, lane: null, T });
+      return;
+    }
+    void this.tryAction({ t: 'reserve', hand: uid, T });
+  }
   private chargeHint(card: string, x: number): string {
     const d = cardDef(card);
     const head = `充填 ${x}/${d.charge}`;
-    if (d.kind === 'unit') return `${head}：攻撃${d.atk! + x}・体力${d.hp! + x}${card === 'e_colossus' && x >= 3 ? '・挑発' : ''}`;
-    if (d.effect === 'eSlash') return `${head}：敵ユニットに${1 + x}ダメージ`;
+    if (d.kind === 'unit') return `${head}：攻撃${d.atk! + x}・体力${d.hp! + x}${card === 'e_colossus' && x >= 2 ? '・挑発' : ''}`;
+    if (d.effect === 'eSlash') return `${head}：敵ユニットに${(hasAura(this.s, 0) ? 4 : 2) + x}ダメージ`;
+    if (d.effect === 'xDecoy') return `${head}：次に受けるダメージを${3 + x}減らす`;
     return head;
   }
   private handPos(uid: number) { const v = this.handViews.get(uid); return v ? { x: v.x, y: v.y } : null; }
@@ -1502,6 +1524,7 @@ export class BattleScene extends Container {
       case 'unsummon': return this.onLog(`${nm(e.pi)}の${cn(e.unit.card)}が手札に戻された${e.uid < 0 ? '（手札が一杯で失われた）' : ''}`, other(e.pi));
       case 'discard': return this.onLog(`${nm(e.pi)}：${cn(e.card)}を捨てた`, e.pi);
       case 'fetch': return this.onLog(`${nm(e.pi)}：${e.pi === 0 && e.card !== HIDDEN ? cn(e.card) : 'カード'}を手札に加えた`, e.pi);
+      case 'shield': return this.onLog(`${nm(e.pi)}の囮の書が拠点へのダメージを${e.amount}減らした`, e.pi);
       case 'stealResv': return this.onLog(`${nm(other(e.pi))}が${nm(e.pi)}の予約${cn(e.card)}を奪った`, other(e.pi));
       case 'breakResv': return this.onLog(`${nm(e.pi)}の予約${e.card === HIDDEN ? '' : cn(e.card)}が破棄された`, other(e.pi));
       case 'act': if (e.action.t === 'draw' || e.action.t === 'wait') this.onLog(`${nm(e.pi)}：${e.action.t === 'draw' ? 'ドロー' : '待機'}`, e.pi); return;
@@ -1878,6 +1901,17 @@ export class BattleScene extends Container {
           const n = this.foeHandLayer.children.length;
           await tw.to(b, { x: FOE_HAND_POS.x - 140 + ((n - 1) / 2) * 18, y: FOE_HAND_POS.y }, 260);
         }
+        break;
+      }
+      case 'shield': {
+        // 囮の書: the pin breaks over the base and soaks up the hit
+        const at = this.dial.pinAt(e.uid);
+        const c = this.huds[e.pi].center;
+        audio.play('reveal');
+        if (at) void fx.ring(at.x, at.y, COLORS.brass, 6, 70, 420, 5);
+        await this.dial.removePin(e.uid, 'break');
+        void fx.ring(c.x, c.y, COLORS.brass, 20, 120, 520, 6);
+        await fx.floatText(c.x + 60, c.y - 10, `−${e.amount}軽減`, COLORS.brass, 40, 50, 700);
         break;
       }
       case 'stealResv': {

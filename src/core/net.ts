@@ -23,9 +23,9 @@ export const NET = {
   NAME_MAX: 12,
   /**
    * Bumped whenever the two sides must run the same rules (new cards, changed effects). A client with another
-   * number cannot join a room (0.18.0: 第1弾 追加カード = 2; older clients send none = 1).
+   * number cannot join a room (0.18.0: 第1弾 追加カード = 2; 0.23.0: カード調整 = 3; older clients send none = 1).
    */
-  PROTOCOL: 2,
+  PROTOCOL: 3,
 } as const;
 
 export const HIDDEN = '?';
@@ -102,7 +102,8 @@ function viewPlayer(p: PlayerState, own: boolean): PlayerState {
     deck: p.deck.map(() => HIDDEN),
     hand: p.hand.map((h) => (own ? { ...h } : { uid: h.uid, card: HIDDEN })),
     field: p.field.map((u) => (u ? { ...u } : null)),
-    resv: p.resv.map((r) => ({ ...r, card: own || r.revealed ? r.card : HIDDEN })),
+    // a hidden pin keeps its secrets: the card, and 囮の書's shield
+    resv: p.resv.map((r) => { const { shield, ...rest } = r; return own || r.revealed ? { ...r } : { ...rest, card: HIDDEN }; }),
     // the spells a player used were all shown when used (記憶の司書ミレア chooses from them)
     ...(p.used ? { used: p.used.slice() } : {}),
   };
@@ -140,6 +141,8 @@ export function viewEvent(e: GameEvent, v: PlayerIndex): GameEvent {
     case 'attack': return { ...e, pi: f(e.pi), target: e.target ? { pi: f(e.target.pi), lane: e.target.lane } : null };
     case 'draw': return { ...e, pi: f(e.pi), card: e.pi === v ? e.card : HIDDEN };
     case 'reserve': return { ...e, pi: f(e.pi), card: e.pi === v ? e.card : HIDDEN };
+    // the 充填 paid on reserving would give 囮の書 away
+    case 'act': return e.pi !== v && e.action.t === 'reserve' && e.action.x !== undefined ? { ...e, pi: f(e.pi), action: { t: 'reserve', hand: e.action.hand, T: e.action.T } } : { ...e, pi: f(e.pi) };
     // 星読みの占者 / ミレア: a card taken into a hand without a draw is as secret as a drawn one
     case 'fetch': return { ...e, pi: f(e.pi), card: e.pi === v ? e.card : HIDDEN };
     default: return { ...e, pi: f(e.pi) } as GameEvent;
@@ -153,6 +156,7 @@ export function watchState(s: GameState): GameState {
 }
 export function watchEvent(e: GameEvent): GameEvent {
   if (e.e === 'draw' || e.e === 'reserve' || e.e === 'fetch') return { ...e, card: HIDDEN };
+  if (e.e === 'act' && e.action.t === 'reserve' && e.action.x !== undefined) return { ...e, action: { t: 'reserve', hand: e.action.hand, T: e.action.T } };
   return viewEvent(e, 0);
 }
 export const watchEvents = (evs: GameEvent[]): GameEvent[] => evs.map(watchEvent);

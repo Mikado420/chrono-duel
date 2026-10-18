@@ -33,31 +33,46 @@ assert.ok(PACKS.some((p) => p.set === 'echo'));
   apply(s, { t: 'choose', i: 0 });
   assert.equal(s.players[1].hand.length, foe - 1);
 }
-// 囮の書: reservation only; broken by the opponent → their clock +4; fires → its owner draws a card
+// 囮の書: reservation only, 充填 paid on reserving; while it waits it cuts the next hit on its owner's base by 3+X
 {
   const s = fresh(); turn(s, 0);
   const uid = give(s, 0, 'x_decoy');
   const acts = legalActions(s, 0).filter((a) => 'hand' in a && a.hand === uid);
   assert.ok(acts.length > 0 && acts.every((a) => a.t === 'reserve'), 'only reservations');
+  assert.ok(acts.some((a) => a.t === 'reserve' && a.x === 2), 'charge on reserving');
   assert.throws(() => apply(s, { t: 'cast', hand: uid }));
-  apply(s, { t: 'reserve', hand: uid, T: 12 });
-  // the opponent breaks it with 破約の刃
+  apply(s, { t: 'reserve', hand: uid, T: 12, x: 2 });
+  assert.equal(s.players[0].time, 3, '1 + X ticks');
+  // the opponent never sees the charge or the shield
+  const v = viewState(s, 1);
+  assert.equal(v.players[1].resv[0].shield, undefined);
+  assert.equal(v.players[1].resv[0].card, HIDDEN);
+}
+{
+  const s = fresh(); turn(s, 0);
+  const uid = give(s, 0, 'x_decoy');
+  apply(s, { t: 'reserve', hand: uid, T: 30, x: 1 });
+  // a 5-point bolt from the opponent: 4 are cut, the reservation is used up
   s.players[1].time = 0;
-  const br = give(s, 1, 'e_break');
-  const before = s.players[1].time;
-  const ev = apply(s, { t: 'cast', hand: br });
-  assert.ok(ev.some((e) => e.e === 'breakResv' && e.card === 'x_decoy'));
-  assert.equal(s.players[1].time, before + cardDef('e_break').cost + 4, 'the breaker pays 4 more ticks');
+  const hp = s.players[0].hp;
+  const b = give(s, 1, 'bolt');
+  const ev = apply(s, { t: 'cast', hand: b });
+  assert.ok(ev.some((e) => e.e === 'shield' && e.amount === 4));
+  assert.equal(s.players[0].hp, hp, '4 (bolt) - 4 = 0');
+  assert.equal(s.players[0].resv.length, 0);
+  // the next hit lands in full
+  const b2 = give(s, 1, 'bolt');
+  s.players[1].time = 0;
+  apply(s, { t: 'cast', hand: b2 });
+  assert.equal(s.players[0].hp, hp - 4);
 }
 {
   const s = fresh(); turn(s, 0);
   const uid = give(s, 0, 'x_decoy');
   apply(s, { t: 'reserve', hand: uid, T: 5 });
-  const n = s.players[0].hand.length;
-  // let the world clock pass 5: both sides wait
+  // coming due unused, it just ends (and counts as a reservation that fired)
   for (let k = 0; k < 40 && s.players[0].resv.length; k++) { const a = actor(s); if (a === -1) break; apply(s, s.pending ? { t: 'choose', i: 0 } : { t: 'wait' }); }
   assert.equal(s.players[0].resv.length, 0, 'it fired');
-  assert.ok(s.players[0].hand.length >= n + 1, 'and its owner drew');
 }
 // 星読みの占者 online: the chooser sees the three cards, the opponent sees three hidden ones; the card taken stays hidden
 {
@@ -86,14 +101,19 @@ assert.ok(PACKS.some((p) => p.set === 'echo'));
   assert.deepEqual(viewState(s, 1).pending!.options, s.pending!.options);
   assert.deepEqual(viewState(s, 1).players[1].used, ['arrow', 'insight', 'stop']);
 }
-// 時の簒奪者: takes the opponent's earliest reservation and fires it a tick sooner
+// 時の簒奪者: shows the opponent's reservations, takes the one its player picks and fires it at once (reserved strength)
 {
   const s = fresh(); turn(s, 0);
-  s.players[1].resv = [{ uid: 900, card: 'bolt', T: 15, revealed: false }];
+  s.players[1].resv = [{ uid: 900, card: 'bolt', T: 15, revealed: false }, { uid: 901, card: 'insight', T: 20, revealed: false }, { uid: 902, card: 'e_shot', T: 12, revealed: true, echo: 'shot2' }];
   const uid = give(s, 0, 'x_usurper');
   apply(s, { t: 'play', hand: uid, lane: 2 });
-  assert.equal(s.players[1].resv.length, 0);
-  assert.equal(s.players[0].resv[0].card, 'bolt');
-  assert.equal(s.players[0].resv[0].T, 14);
+  assert.equal(s.pending?.kind, 'steal');
+  assert.deepEqual(s.pending!.options, [900, 901], 'echoes cannot be taken');
+  assert.ok(s.players[1].resv.every((r) => r.revealed));
+  const hp = s.players[1].hp;
+  apply(s, { t: 'choose', i: 0 });
+  assert.equal(s.players[1].hp, hp - 5, 'bolt at reserved strength');
+  assert.deepEqual(s.players[1].resv.map((r) => r.uid).sort(), [901, 902]);
+  assert.equal(s.players[0].resv.length, 0);
 }
 console.log('set1x ok');

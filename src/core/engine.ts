@@ -28,6 +28,8 @@ export interface Reservation {
   decoy?: boolean;
   /** Set before the game began (イベント「予約の嵐」): uses no slot. */
   preset?: boolean;
+  /** 囮の書: while it waits, the next damage to its owner's base is cut by this much, and the reservation is used up. */
+  shield?: number;
 }
 export interface PlayerState {
   hp: number;
@@ -53,16 +55,22 @@ export interface GameState {
    * A choice that must be made before anything else happens (星読みの占者, 忘却の砂, 記憶の司書ミレア). `pi` chooses
    * one of `options` with { t: 'choose', i }; it costs no time. `options` are card ids, or hand uids for 'discard'.
    */
-  pending?: { pi: PlayerIndex; kind: 'seer' | 'discard' | 'recall'; options: (string | number)[]; owner: PlayerIndex };
+  pending?: { pi: PlayerIndex; kind: PendingKind; options: (string | number)[]; owner: PlayerIndex };
   /** When doom begins, if not at RULES.DOOM_AT (イベント「終焉開幕」: 0). */
   doomAt?: number;
 }
 
+/**
+ * 星読みの占者 'seer' (card ids), 忘却の砂 'discard' (hand uids), 記憶の司書ミレア 'recall' (card ids), 刻壊し 'break' and
+ * 時の簒奪者 'steal' (uids of the other player's reservations, all revealed first).
+ */
+export type PendingKind = 'seer' | 'discard' | 'recall' | 'break' | 'steal';
 /** `x` is the extra time paid for 充填 (charge) cards; omitted for every other card. */
 export type Action =
   | { t: 'play'; hand: number; lane: number; x?: number }
   | { t: 'cast'; hand: number; x?: number }
-  | { t: 'reserve'; hand: number; T: number }
+  /** `x`: 充填 paid on reserving (囮の書 only). */
+  | { t: 'reserve'; hand: number; T: number; x?: number }
   | { t: 'attack'; lane: number }
   /** 転移: the unit in `lane` moves to the empty lane `to` next to it. */
   | { t: 'move'; lane: number; to: number }
@@ -113,6 +121,8 @@ export type GameEvent =
   | { e: 'fetch'; pi: PlayerIndex; uid: number; card: string }
   /** A reservation or echo changes hands (時の簒奪者): it leaves `pi` and joins the other player. */
   | { e: 'stealResv'; pi: PlayerIndex; uid: number; card: string; T: number }
+  /** 囮の書 took `amount` off a hit on `pi`'s base and is used up. */
+  | { e: 'shield'; pi: PlayerIndex; uid: number; card: string; amount: number }
   | { e: 'end'; winner: PlayerIndex | -1; reason: EndReason };
 
 
@@ -208,8 +218,10 @@ export function legalActions(s: GameState, pi: PlayerIndex): Action[] {
       p.field.forEach((u, l) => { if (!u) for (const x of xs) out.push(x === undefined ? { t: 'play', hand: h.uid, lane: l } : { t: 'play', hand: h.uid, lane: l, x }); });
     } else {
       if (!d.reserveOnly) for (const x of xs) out.push(x === undefined ? { t: 'cast', hand: h.uid } : { t: 'cast', hand: h.uid, x });
-      const r = resvCount(p) < RULES.MAX_RESV ? resvRange(s, pi, cardCost(s, pi, h.card)) : null;
-      if (r) for (let T = r[0]; T <= r[1]; T++) out.push({ t: 'reserve', hand: h.uid, T });
+      if (resvCount(p) < RULES.MAX_RESV) for (const x of d.chargeOnReserve ? xs : [undefined]) {
+        const r = resvRange(s, pi, cardCost(s, pi, h.card) + (x ?? 0));
+        if (r) for (let T = r[0]; T <= r[1]; T++) out.push(x === undefined ? { t: 'reserve', hand: h.uid, T } : { t: 'reserve', hand: h.uid, T, x });
+      }
     }
   });
   p.field.forEach((u, l) => { if (u && isReady(s, pi, u)) out.push({ t: 'attack', lane: l }); });
@@ -223,7 +235,7 @@ export function timeCost(s: GameState, pi: PlayerIndex, a: Action): number {
   switch (a.t) {
     case 'play': case 'cast': case 'reserve': {
       const h = s.players[pi].hand.find((x) => x.uid === a.hand);
-      return h ? cardCost(s, pi, h.card) + (a.t !== 'reserve' ? a.x ?? 0 : 0) : 0;
+      return h ? cardCost(s, pi, h.card) + (a.x ?? 0) : 0;
     }
     case 'attack': return RULES.COST_ATTACK;
     case 'move': return RULES.COST_MOVE + (s.players[pi].field[a.to] ? RULES.COST_SWAP_EXTRA : 0);
@@ -377,8 +389,19 @@ function reap(s: GameState, ev: GameEvent[]) {
 function damageBase(s: GameState, pi: PlayerIndex, amount: number, ev: GameEvent[], byUnit = false) {
   if (amount <= 0) return;
   const doom = byUnit && s.doom > 0;
-  const n = amount + (byUnit ? s.doom : 0);
+  let n = amount + (byUnit ? s.doom : 0);
   const p = s.players[pi];
+  // 囮の書: the soonest one waiting takes the hit (even a 1-point echo uses it up)
+  const g = p.resv.filter((r) => r.shield && !r.echo).sort((a, b) => a.T - b.T)[0];
+  if (g) {
+    const cut = Math.min(n, g.shield!);
+    p.resv = p.resv.filter((r) => r !== g);
+    g.revealed = true;
+    ev.push({ e: 'reveal', pi, uids: [g.uid] });
+    ev.push({ e: 'shield', pi, uid: g.uid, card: g.card, amount: cut });
+    n -= cut;
+    if (n <= 0) return;
+  }
   p.hp -= n;
   ev.push({ e: 'dmgBase', pi, amount: n, hp: p.hp, doom });
 }
@@ -425,18 +448,9 @@ function storm(s: GameState, pi: PlayerIndex, qi: PlayerIndex, n: number, card: 
   if (!any) ev.push({ e: 'fizzle', pi, card });
   reap(s, ev);
 }
-/** A reservation of `qi` was destroyed by the other player: 囮の書 sets the destroyer's clock 4 ticks ahead. */
-function broken(s: GameState, qi: PlayerIndex, x: Reservation, ev: GameEvent[]) {
+/** A reservation of `qi` was destroyed by the other player. */
+function broken(_s: GameState, qi: PlayerIndex, x: Reservation, ev: GameEvent[]) {
   ev.push({ e: 'breakResv', pi: qi, uid: x.uid, card: x.card });
-  if (x.card === 'x_decoy' && !x.echo) shiftClock(s, other(qi), 4, ev);
-}
-function breakNearest(s: GameState, qi: PlayerIndex, ev: GameEvent[]): boolean {
-  const r = s.players[qi].resv;
-  const x = r.slice().sort((a, b) => a.T - b.T)[0];
-  if (!x) return false;
-  r.splice(r.indexOf(x), 1);
-  broken(s, qi, x, ev);
-  return true;
 }
 function breakLatest(s: GameState, qi: PlayerIndex, ev: GameEvent[]): boolean {
   const r = s.players[qi].resv;
@@ -465,6 +479,7 @@ function runEcho(s: GameState, pi: PlayerIndex, card: string, fx: EchoEffect, ev
     case 'ping1': damageBase(s, qi, 1, ev); break;
     case 'ping2': damageBase(s, qi, 2, ev); break;
     case 'shot1': shot(s, qi, 1, 1, ev); break;
+    case 'shot2': shot(s, qi, 2, 1, ev); break;
     case 'heal2': heal(s, pi, 2, ev); break;
     case 'heal3': heal(s, pi, 3, ev); break;
     case 'draw1': drawCard(s, pi, ev); break;
@@ -492,7 +507,7 @@ function resonate(s: GameState, pi: PlayerIndex, ev: GameEvent[]) {
     if (!u) return;
     switch (cardDef(u.card).hook) {
       case 'resonateAtk': u.atk++; ev.push({ e: 'buff', pi, lane: l, atk: u.atk, hp: u.hp }); break;
-      case 'resonatePing': shot(s, other(pi), 1, 0, ev); break;
+      case 'resonatePing': shot(s, other(pi), 2, 0, ev); break;
       case 'resonateRewind': if (p.time > 0) shiftClock(s, pi, -1, ev); break;
     }
   });
@@ -544,7 +559,7 @@ function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, e
     // 第1弾
     case 'eShot': shot(s, qi, 2 + b, 1, ev); break;
     case 'ePray': heal(s, pi, boosted ? 4 : 3, ev); break;
-    case 'eSlash': shot(s, qi, boosted ? 3 : 1 + x, boosted ? 2 : 1, ev); break;
+    case 'eSlash': shot(s, qi, (boosted ? 4 : 2) + x, boosted ? 2 : 1, ev); break;
     case 'ePeek': revealAll(s, qi, ev); for (let i = 0; i < (boosted ? 2 : 1); i++) drawCard(s, pi, ev); break;
     case 'eBreak': {
       let n = 0;
@@ -595,11 +610,9 @@ function runSpell(s: GameState, pi: PlayerIndex, d: CardDef, boosted: boolean, e
       if (boosted) drawCard(s, pi, ev);
       break;
     }
-    case 'xDecoy': {
-      // 囮の書 (予約専用): a card when it fires; destroyed by the opponent instead, it sets their clock ahead (see broken)
-      drawCard(s, pi, ev);
+    case 'xDecoy':
+      // 囮の書 (予約専用) works while it waits (see damageBase); coming due unused, it simply ends
       break;
-    }
     // ---- 第2弾
     case 'gSpanner': {
       const l = pickUnit(s, qi, 'atkLo');
@@ -708,33 +721,40 @@ function runUnitHook(s: GameState, pi: PlayerIndex, lane: number, ev: GameEvent[
   const u = s.players[pi].field[lane]!;
   switch (cardDef(u.card).hook) {
     case 'draw1': drawCard(s, pi, ev); break;
+    case 'draw2': drawCard(s, pi, ev); drawCard(s, pi, ev); break;
     case 'delayOpp1': shiftClock(s, qi, 1, ev); break;
-    case 'revealResv': revealAll(s, qi, ev); break;
+    case 'revealResv':
+      // 予見の巫女: every pin of the opponent shows its card and moves 3 ticks later (past 40 it never fires)
+      if (s.players[qi].resv.length) { revealAll(s, qi, ev); delayResv(s, qi, 3, false, ev); }
+      break;
+    case 'syncClock': {
+      // 双子時計のアトラ: the opponent's clock catches up with ours; +1/+1 for every tick it moved
+      const d = s.players[pi].time - s.players[qi].time;
+      if (d > 0) { shiftClock(s, qi, d, ev); u.atk += d; u.hp += d; u.maxHp += d; ev.push({ e: 'buff', pi, lane, atk: u.atk, hp: u.hp }); }
+      break;
+    }
     case 'echoBand': {
       const n = s.players[pi].field.filter((x) => x && x !== u && cardDef(x.card).echo?.length).length;
       if (n) { u.atk += n; u.hp += n; u.maxHp += n; ev.push({ e: 'buff', pi, lane, atk: u.atk, hp: u.hp }); }
       break;
     }
-    case 'breakResv': breakNearest(s, qi, ev); break;
+    case 'breakResv': case 'stealResv': {
+      // 刻壊し (any pin) / 時の簒奪者 (reservations, not echoes): show them all, then the player picks one
+      const steal = cardDef(u.card).hook === 'stealResv';
+      const q = s.players[qi];
+      const opts = q.resv.filter((r) => !steal || !r.echo).sort((a, b) => a.T - b.T || a.uid - b.uid);
+      if (!opts.length) { ev.push({ e: 'fizzle', pi, card: u.card }); break; }
+      if (q.resv.some((r) => !r.revealed)) revealAll(s, qi, ev);
+      if (opts.length === 1) takeResv(s, pi, steal ? 'steal' : 'break', opts[0].uid, ev);
+      else s.pending = { pi, kind: steal ? 'steal' : 'break', options: opts.map((r) => r.uid), owner: pi };
+      break;
+    }
     case 'seer': {
       // 星読みの占者: look at the top 3, one to hand (the player picks), the rest to the bottom
       const p = s.players[pi];
       const top = p.deck.splice(Math.max(0, p.deck.length - 3)).reverse(); // top card first
       if (top.length === 1) { const uid = toHand(s, pi, top[0], ev); if (uid >= 0) ev.push({ e: 'fetch', pi, uid, card: top[0] }); }
       else if (top.length > 1) s.pending = { pi, kind: 'seer', options: top, owner: pi };
-      break;
-    }
-    case 'stealResv': {
-      const q = s.players[qi];
-      const r = q.resv.slice().sort((a, b) => a.T - b.T)[0];
-      if (!r) { ev.push({ e: 'fizzle', pi, card: u.card }); break; }
-      q.resv = q.resv.filter((x) => x !== r);
-      r.revealed = true;
-      s.players[pi].resv.push(r);
-      ev.push({ e: 'stealResv', pi: qi, uid: r.uid, card: r.card, T: r.T });
-      // 奪った予約は1刻早く発動する
-      const T = Math.max(worldTime(s), r.T - 1);
-      if (T !== r.T) { r.T = T; ev.push({ e: 'moveResv', pi, uid: r.uid, T }); }
       break;
     }
     case 'recall': {
@@ -745,7 +765,7 @@ function runUnitHook(s: GameState, pi: PlayerIndex, lane: number, ev: GameEvent[
       break;
     }
     case 'dawnBurst':
-      for (let l = 0; l < RULES.LANES; l++) if (s.players[qi].field[l]) damageUnit(s, qi, l, 2, ev);
+      for (let l = 0; l < RULES.LANES; l++) if (s.players[qi].field[l]) damageUnit(s, qi, l, 3, ev);
       reap(s, ev);
       break;
     case 'storm1': storm(s, pi, qi, 1, u.card, ev); break;
@@ -760,14 +780,6 @@ function runUnitHook(s: GameState, pi: PlayerIndex, lane: number, ev: GameEvent[
     case 'stunTop3': { const l = topEnemy(s, qi); if (l >= 0) delayUnit(s, qi, l, 3, ev); break; }
     case 'ringAll': ringBells(s, pi, ev); break;
     case 'dolls': for (let l = 0; l < RULES.LANES; l++) if (!s.players[pi].field[l]) summonUnit(s, pi, 'g_doll', l, -1, 0, ev); break;
-    case 'hasten2': {
-      const w = worldTime(s);
-      for (const r of s.players[pi].resv) {
-        const T = Math.max(w, r.T - 2);
-        if (T !== r.T) { r.T = T; ev.push({ e: 'moveResv', pi, uid: r.uid, T }); }
-      }
-      break;
-    }
   }
 }
 
@@ -776,8 +788,47 @@ function castFree(s: GameState, pi: PlayerIndex, card: string, ev: GameEvent[]) 
   const d = cardDef(card);
   ev.push({ e: 'cast', pi, card, fromHand: -1 });
   noteUsed(s.players[pi], card);
-  runSpell(s, pi, d, false, ev);
+  spellTax(s, pi, ev);
+  runSpell(s, pi, d, hasAura(s, pi), ev);
   scheduleEchoes(s, pi, d, s.players[pi].time, ev);
+}
+/** 残響術士: while one is on `pi`'s side, spells `pi` uses right away get their reserved strength. */
+export const hasAura = (s: GameState, pi: PlayerIndex) => s.players[pi].field.some((u) => u && cardDef(u.card).hook === 'spellAura');
+/** 遅延術師: each one on the other side sets `pi`'s clock 1 tick ahead whenever `pi` uses a spell (cast or reserved). */
+function spellTax(s: GameState, pi: PlayerIndex, ev: GameEvent[]) {
+  const n = s.players[other(pi)].field.filter((u) => u && cardDef(u.card).hook === 'spellTax').length;
+  if (n) shiftClock(s, pi, n, ev);
+}
+/** A reservation fires for `pi` now: its spell at reserved strength, its echoes from `T`, then 共鳴. */
+function fireResv(s: GameState, pi: PlayerIndex, r: Reservation, T: number, ev: GameEvent[]): boolean {
+  if (r.decoy) { ev.push({ e: 'trigger', pi, uid: r.uid, card: r.card, T }); return false; }
+  if (r.echo) {
+    ev.push({ e: 'trigger', pi, uid: r.uid, card: r.card, T, echo: true });
+    runEcho(s, pi, r.card, r.echo, ev);
+  } else {
+    ev.push({ e: 'trigger', pi, uid: r.uid, card: r.card, T });
+    const d = cardDef(r.card);
+    noteUsed(s.players[pi], r.card);
+    runSpell(s, pi, d, true, ev);
+    scheduleEchoes(s, pi, d, T, ev);
+  }
+  if (checkKo(s, ev)) return true;
+  resonate(s, pi, ev);
+  s.players[other(pi)].field.forEach((u, l) => { if (u && cardDef(u.card).hook === 'oppResonateAtk' && u.atk < cardDef(u.card).atk! + 5) { u.atk++; ev.push({ e: 'buff', pi: other(pi), lane: l, atk: u.atk, hp: u.hp }); } });
+  return checkKo(s, ev);
+}
+/** 刻壊し destroys, 時の簒奪者 takes and fires at once, the other player's reservation `uid`. */
+function takeResv(s: GameState, pi: PlayerIndex, kind: 'break' | 'steal', uid: number, ev: GameEvent[]) {
+  const qi = other(pi);
+  const q = s.players[qi];
+  const r = q.resv.find((x) => x.uid === uid);
+  if (!r) return;
+  q.resv = q.resv.filter((x) => x !== r);
+  if (kind === 'break') { broken(s, qi, r, ev); return; }
+  r.revealed = true;
+  delete r.shield;
+  ev.push({ e: 'stealResv', pi: qi, uid: r.uid, card: r.card, T: r.T });
+  fireResv(s, pi, r, s.players[pi].time, ev);
 }
 function resolveChoice(s: GameState, i: number, ev: GameEvent[]) {
   const c = s.pending!;
@@ -793,7 +844,8 @@ function resolveChoice(s: GameState, i: number, ev: GameEvent[]) {
     const uid = c.options[i] as number;
     const k = p.hand.findIndex((h) => h.uid === uid);
     if (k >= 0) { const [h] = p.hand.splice(k, 1); ev.push({ e: 'discard', pi: c.pi, uid: h.uid, card: h.card }); }
-  } else castFree(s, c.pi, c.options[i] as string, ev);
+  } else if (c.kind === 'break' || c.kind === 'steal') takeResv(s, c.pi, c.kind, c.options[i] as number, ev);
+  else castFree(s, c.pi, c.options[i] as string, ev);
 }
 
 /** Puts a unit on the board. `x` is the 充填 paid; `fromHand` is -1 for units made by effects. */
@@ -803,7 +855,7 @@ function summonUnit(s: GameState, pi: PlayerIndex, card: string, lane: number, f
   const kw = d.keywords ?? [];
   const unit: Unit = {
     uid: s.nextUid++, card, atk: d.atk! + x, hp: d.hp! + x, maxHp: d.hp! + x, reload: d.reload!,
-    readyAt: p.time + (kw.includes('swift') ? 0 : 1), taunt: kw.includes('taunt') || (card === 'e_colossus' && x >= 3), pierce: kw.includes('pierce'), ...(kw.includes('shift') ? { shift: true } : {}),
+    readyAt: p.time + (kw.includes('swift') ? 0 : 1), taunt: kw.includes('taunt') || (card === 'e_colossus' && x >= 2), pierce: kw.includes('pierce'), ...(kw.includes('shift') ? { shift: true } : {}),
   };
   p.field[lane] = unit;
   ev.push({ e: 'summon', pi, lane, unit: { ...unit }, fromHand });
@@ -861,7 +913,8 @@ export function apply(s: GameState, a: Action): GameEvent[] {
       ev.push({ e: 'cast', pi, card, fromHand: idx });
       if (x > 0) chargeGrow(s, pi, -1, ev);
       noteUsed(p, card);
-      runSpell(s, pi, d, false, ev, x);
+      spellTax(s, pi, ev);
+      runSpell(s, pi, d, hasAura(s, pi), ev, x);
       scheduleEchoes(s, pi, d, p.time, ev);
       break;
     }
@@ -871,14 +924,18 @@ export function apply(s: GameState, a: Action): GameEvent[] {
       if (!h) throw new Error('card not in hand');
       const d = cardDef(h.card);
       if (d.kind !== 'spell') throw new Error('not a spell');
-      const cost = cardCost(s, pi, h.card);
+      if (a.x && !d.chargeOnReserve) throw new Error('charge is paid on use');
+      const x = d.chargeOnReserve ? chargeOf(d, a.x) : 0;
+      const cost = cardCost(s, pi, h.card) + x;
       const r = resvRange(s, pi, cost);
       if (!r || a.T < r[0] || a.T > r[1]) throw new Error('bad reservation time');
       const { idx, card } = takeHand(p, a.hand);
       advance(s, pi, cost, ev);
       const uid = s.nextUid++;
-      p.resv.push({ uid, card, T: a.T, revealed: false });
+      p.resv.push({ uid, card, T: a.T, revealed: false, ...(d.effect === 'xDecoy' ? { shield: 3 + x } : {}) });
       ev.push({ e: 'reserve', pi, uid, card, T: a.T, fromHand: idx });
+      if (x > 0) chargeGrow(s, pi, -1, ev);
+      spellTax(s, pi, ev);
       break;
     }
     case 'attack': {
@@ -898,6 +955,8 @@ export function apply(s: GameState, a: Action): GameEvent[] {
         if (hk === 'tauntBreaker' && v.taunt) atk += 3;
         const over = atk - v.hp;
         const back = v.atk;
+        // 永劫の巨像: every attack on it mends its owner's base by 1
+        if (cardDef(v.card).hook === 'guardHeal') heal(s, qi, 1, ev);
         damageUnit(s, qi, t.lane, atk, ev);
         damageUnit(s, pi, a.lane, back, ev);
         if (u.pierce && over > 0) damageBase(s, qi, over, ev, true);
@@ -962,22 +1021,7 @@ function settle(s: GameState, ev: GameEvent[]) {
     due.sort((a, b) => a.r.T - b.r.T || a.pi - b.pi);
     for (const [k, { pi, r }] of due.entries()) {
       if (s.pending) { for (const x of due.slice(k)) s.players[x.pi].resv.push(x.r); return; }
-      if (r.decoy) { ev.push({ e: 'trigger', pi, uid: r.uid, card: r.card, T: r.T }); continue; }
-      if (r.echo) {
-        ev.push({ e: 'trigger', pi, uid: r.uid, card: r.card, T: r.T, echo: true });
-        runEcho(s, pi, r.card, r.echo, ev);
-      } else {
-        ev.push({ e: 'trigger', pi, uid: r.uid, card: r.card, T: r.T });
-        const d = cardDef(r.card);
-        const p = s.players[pi];
-        noteUsed(p, r.card);
-        runSpell(s, pi, d, true, ev);
-        scheduleEchoes(s, pi, d, r.T, ev);
-      }
-      if (checkKo(s, ev)) return;
-      resonate(s, pi, ev);
-      s.players[other(pi)].field.forEach((u, l) => { if (u && cardDef(u.card).hook === 'oppResonateAtk' && u.atk < cardDef(u.card).atk! + 5) { u.atk++; ev.push({ e: 'buff', pi: other(pi), lane: l, atk: u.atk, hp: u.hp }); } });
-      if (checkKo(s, ev)) return;
+      if (fireResv(s, pi, r, r.T, ev)) return;
     }
     // clock shifts from triggered spells can release more reservations; loop again
   }

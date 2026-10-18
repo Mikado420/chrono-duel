@@ -12,7 +12,7 @@ export const SET_NAMES: Record<CardSet, string> = { base: '基本', echo: '第1�
 export const RARITY_NAMES: Record<Rarity, string> = { C: '通常', R: '希少', E: '秘宝', L: '伝説' };
 
 /** Effects that an echo (a delayed, weaker repeat) can carry. */
-export type EchoEffect = 'ping1' | 'ping2' | 'shot1' | 'heal2' | 'heal3' | 'draw1' | 'rally' | 'image' | 'storm1' | 'overdrive';
+export type EchoEffect = 'ping1' | 'ping2' | 'shot1' | 'shot2' | 'heal2' | 'heal3' | 'draw1' | 'rally' | 'image' | 'storm1' | 'overdrive';
 
 /** Ability hooks the engine knows how to run. Kept as ids so card data stays serializable. */
 export type UnitHook =
@@ -25,7 +25,9 @@ export type UnitHook =
   | 'shiftGrow' | 'shiftPing' | 'shiftHaste' | 'flank' | 'bellDraw' | 'shiftAura'
   // 第1弾 追加
   | 'baseGrow' | 'formation' | 'oppResonateAtk' | 'chargeGrow' | 'emberClock' | 'echoBand' | 'ordoReady'
-  | 'tauntBreaker' | 'seer' | 'stealResv' | 'recall';
+  | 'tauntBreaker' | 'seer' | 'stealResv' | 'recall'
+  // 0.23.0
+  | 'draw2' | 'spellTax' | 'spellAura' | 'syncClock' | 'guardHeal';
 
 export type SpellEffect =
   | 'arrow' | 'cage' | 'bolt' | 'collapse' | 'rewind' | 'haste' | 'insight' | 'stop'
@@ -68,27 +70,29 @@ export interface CardDef {
   charge?: number;
   /** 予約専用: the spell can only be reserved (never cast right away). */
   reserveOnly?: boolean;
+  /** 充填 is paid when the card is reserved (囮の書), not when it is used right away. */
+  chargeOnReserve?: boolean;
   /** Emblem shape used by the procedural art. */
   motif: 'gear' | 'hourglass' | 'pendulum' | 'bell' | 'hand' | 'spiral' | 'eye' | 'shield' | 'flame' | 'crown' | 'wave';
 }
 
 export const CARDS: Record<string, CardDef> = {
   // ---- units ----------------------------------------------------------
-  scout: { id: 'scout', name: '秒針の斥候', kind: 'unit', rarity: 'C', cost: 1, atk: 1, hp: 2, reload: 1, keywords: ['swift'], text: '速攻', flavor: '一秒を刻むたび、一歩前へ。', motif: 'hand' },
-  archer: { id: 'archer', name: '早鐘の射手', kind: 'unit', rarity: 'C', cost: 2, atk: 3, hp: 2, reload: 1, text: '', flavor: '鐘より早く、矢は届く。', motif: 'bell' },
-  pendulum: { id: 'pendulum', name: '振り子兵', kind: 'unit', rarity: 'C', cost: 2, atk: 2, hp: 3, reload: 2, text: '', flavor: '行って、戻る。それが務め。', motif: 'pendulum' },
-  ghost: { id: 'ghost', name: '残響の影', kind: 'unit', rarity: 'C', cost: 2, atk: 2, hp: 3, reload: 2, hook: 'echoOnDeath', text: '破壊時：自分の時計−1', flavor: '消える音ほど長く残る。', motif: 'spiral' },
+  scout: { id: 'scout', name: '秒針の斥候', kind: 'unit', rarity: 'C', cost: 2, atk: 2, hp: 2, reload: 1, keywords: ['swift'], text: '速攻', flavor: '一秒を刻むたび、一歩前へ。', motif: 'hand' },
+  archer: { id: 'archer', name: '早鐘の射手', kind: 'unit', rarity: 'C', cost: 1, atk: 2, hp: 1, reload: 1, text: '', flavor: '鐘より早く、矢は届く。', motif: 'bell' },
+  pendulum: { id: 'pendulum', name: '振り子兵', kind: 'unit', rarity: 'C', cost: 2, atk: 2, hp: 3, reload: 1, text: '', flavor: '行って、戻る。それが務め。', motif: 'pendulum' },
+  ghost: { id: 'ghost', name: '残響の影', kind: 'unit', rarity: 'C', cost: 2, atk: 2, hp: 2, reload: 1, hook: 'echoOnDeath', text: '破壊時：自分の時計−1', flavor: '消える音ほど長く残る。', motif: 'spiral' },
   warden: { id: 'warden', name: '砂時計の番人', kind: 'unit', rarity: 'C', cost: 2, atk: 1, hp: 4, reload: 3, keywords: ['taunt'], text: '挑発', flavor: '砂が落ちきるまで、ここは通さぬ。', motif: 'hourglass' },
-  gear: { id: 'gear', name: '歯車騎士', kind: 'unit', rarity: 'C', cost: 3, atk: 3, hp: 3, reload: 2, text: '', flavor: '噛み合えば、止まらない。', motif: 'gear' },
-  scribe: { id: 'scribe', name: '刻の記録係', kind: 'unit', rarity: 'R', cost: 3, atk: 2, hp: 3, reload: 2, hook: 'draw1', text: '登場時：1枚引く', flavor: '全ての瞬間は、書き留められる。', motif: 'eye' },
-  oracle: { id: 'oracle', name: '予見の巫女', kind: 'unit', rarity: 'R', cost: 3, atk: 3, hp: 3, reload: 2, hook: 'revealResv', text: '登場時：相手の予約を全て公開', flavor: 'あなたの明日は、もう見えている。', motif: 'eye' },
+  gear: { id: 'gear', name: '歯車騎士', kind: 'unit', rarity: 'C', cost: 3, atk: 3, hp: 4, reload: 2, text: '', flavor: '噛み合えば、止まらない。', motif: 'gear' },
+  scribe: { id: 'scribe', name: '刻の記録係', kind: 'unit', rarity: 'R', cost: 3, atk: 2, hp: 2, reload: 2, hook: 'draw2', text: '登場時：2枚引く', flavor: '全ての瞬間は、書き留められる。', motif: 'eye' },
+  oracle: { id: 'oracle', name: '予見の巫女', kind: 'unit', rarity: 'R', cost: 3, atk: 3, hp: 3, reload: 2, hook: 'revealResv', text: '登場時：相手の予約を全て公開し、相手の予約と残響を全て3刻遅らせる', flavor: 'あなたの明日は、もう見えている。', motif: 'eye' },
   lancer: { id: 'lancer', name: '突撃槍兵', kind: 'unit', rarity: 'R', cost: 4, atk: 4, hp: 4, reload: 2, keywords: ['pierce'], text: '貫通', flavor: '盾ごと、時間ごと貫く。', motif: 'flame' },
-  delayer: { id: 'delayer', name: '遅延術師', kind: 'unit', rarity: 'R', cost: 4, atk: 3, hp: 4, reload: 2, hook: 'delayOpp1', text: '登場時：相手の時計+1', flavor: '少しだけ、待っていてもらおう。', motif: 'spiral' },
+  delayer: { id: 'delayer', name: '遅延術師', kind: 'unit', rarity: 'R', cost: 4, atk: 3, hp: 4, reload: 2, hook: 'spellTax', text: '相手が術を使うたび（予約も含む）、相手の時計+1', flavor: '少しだけ、待っていてもらおう。', motif: 'spiral' },
   sentinel: { id: 'sentinel', name: '鐘楼の歩哨', kind: 'unit', rarity: 'R', cost: 4, atk: 2, hp: 5, reload: 2, bell: 'grow', text: '鐘鳴：+1/+1', flavor: '鐘の数だけ強くなる。', motif: 'bell' },
-  heavy: { id: 'heavy', name: '刻の重装兵', kind: 'unit', rarity: 'C', cost: 5, atk: 5, hp: 5, reload: 3, text: '', flavor: '重い一歩は、戻らない。', motif: 'shield' },
-  breaker: { id: 'breaker', name: '刻壊し', kind: 'unit', rarity: 'R', cost: 5, atk: 4, hp: 5, reload: 2, hook: 'breakResv', text: '登場時：相手の最も近い予約を破棄', flavor: '約束された未来など、ない。', motif: 'gear' },
-  dragon: { id: 'dragon', name: '夜明けの竜', kind: 'unit', rarity: 'L', cost: 7, atk: 5, hp: 5, reload: 3, hook: 'dawnBurst', text: '登場時：敵全体−2', flavor: '夜が明ける。それは終わりの合図。', motif: 'flame' },
-  titan: { id: 'titan', name: '永劫の巨像', kind: 'unit', rarity: 'L', cost: 9, atk: 6, hp: 8, reload: 4, keywords: ['taunt', 'pierce'], text: '挑発・貫通', flavor: '時が止まっても、それは立っている。', motif: 'crown' },
+  heavy: { id: 'heavy', name: '刻の重装兵', kind: 'unit', rarity: 'C', cost: 5, atk: 5, hp: 6, reload: 2, text: '', flavor: '重い一歩は、戻らない。', motif: 'shield' },
+  breaker: { id: 'breaker', name: '刻壊し', kind: 'unit', rarity: 'R', cost: 4, atk: 4, hp: 4, reload: 2, hook: 'breakResv', text: '登場時：相手の予約を全て公開し、予約か残響を1つ選んで破棄', flavor: '約束された未来など、ない。', motif: 'gear' },
+  dragon: { id: 'dragon', name: '夜明けの竜', kind: 'unit', rarity: 'L', cost: 7, atk: 5, hp: 5, reload: 3, hook: 'dawnBurst', text: '登場時：敵全体−3', flavor: '夜が明ける。それは終わりの合図。', motif: 'flame' },
+  titan: { id: 'titan', name: '永劫の巨像', kind: 'unit', rarity: 'L', cost: 8, atk: 7, hp: 9, reload: 3, keywords: ['taunt'], hook: 'guardHeal', text: '挑発。攻撃されるたび、自拠点+1', flavor: '時が止まっても、それは立っている。', motif: 'crown' },
   // ---- spells ---------------------------------------------------------
   arrow: { id: 'arrow', name: '時の矢', kind: 'spell', rarity: 'C', cost: 2, effect: 'arrow', text: '攻撃力が最も高い敵ユニット−3（いなければ敵拠点−2）', resvText: '−4（いなければ敵拠点−3）', flavor: '放たれた矢は、戻らない。', motif: 'hand' },
   cage: { id: 'cage', name: '停滞の檻', kind: 'spell', rarity: 'C', cost: 1, effect: 'cage', text: '攻撃力が最も高い敵ユニットの準備+6', resvText: '準備+8', flavor: 'その一瞬を、永遠に。', motif: 'hourglass' },
@@ -102,33 +106,33 @@ export const CARDS: Record<string, CardDef> = {
   e_sprite: { id: 'e_sprite', set: 'echo', name: 'こだまの妖精', kind: 'unit', rarity: 'C', cost: 1, atk: 1, hp: 1, reload: 1, echo: [{ delay: 3, effect: 'ping1' }], text: '残響3：敵拠点−1', flavor: '呼べば、少し遅れて返事がくる。', motif: 'wave' },
   e_page: { id: 'e_page', set: 'echo', name: '鐘つき見習い', kind: 'unit', rarity: 'C', cost: 2, atk: 2, hp: 2, reload: 1, rush: 1, text: '急襲1', flavor: '遅刻したぶん、走ればいい。', motif: 'bell' },
   e_tuner: { id: 'e_tuner', set: 'echo', name: '調律師', kind: 'unit', rarity: 'C', cost: 2, atk: 1, hp: 3, reload: 2, hook: 'resonateAtk', text: '共鳴：+1/-', flavor: 'ずれた音ほど、よく響く。', motif: 'pendulum' },
-  e_march: { id: 'e_march', set: 'echo', name: '残響の歩兵', kind: 'unit', rarity: 'C', cost: 3, atk: 2, hp: 3, reload: 2, echo: [{ delay: 3, effect: 'rally' }], text: '残響3：味方全員+1/-', flavor: '足音が、あとから隊列を連れてくる。', motif: 'wave' },
-  e_guard: { id: 'e_guard', set: 'echo', name: '時計塔の守衛', kind: 'unit', rarity: 'C', cost: 4, atk: 2, hp: 5, reload: 3, keywords: ['taunt'], rush: 1, text: '挑発・急襲1', flavor: '鐘が鳴る前に、持ち場へ。', motif: 'shield' },
-  e_shot: { id: 'e_shot', set: 'echo', name: 'こだま撃ち', kind: 'spell', rarity: 'C', cost: 2, effect: 'eShot', echo: [{ delay: 4, effect: 'shot1' }], text: '攻撃力が最も高い敵ユニット−2（いなければ敵拠点−1）。残響4：攻撃力が最も高い敵ユニット−1（いなければ敵拠点−1）', resvText: '−3（いなければ敵拠点−1）', flavor: '一発目は合図。二発目が本命。', motif: 'hand' },
+  e_march: { id: 'e_march', set: 'echo', name: '残響の歩兵', kind: 'unit', rarity: 'C', cost: 3, atk: 2, hp: 3, reload: 2, echo: [{ delay: 2, effect: 'rally' }], text: '残響2：味方全員+1/-', flavor: '足音が、あとから隊列を連れてくる。', motif: 'wave' },
+  e_guard: { id: 'e_guard', set: 'echo', name: '時計塔の守衛', kind: 'unit', rarity: 'C', cost: 4, atk: 2, hp: 6, reload: 3, keywords: ['taunt'], rush: 1, text: '挑発・急襲1', flavor: '鐘が鳴る前に、持ち場へ。', motif: 'shield' },
+  e_shot: { id: 'e_shot', set: 'echo', name: 'こだま撃ち', kind: 'spell', rarity: 'C', cost: 2, effect: 'eShot', echo: [{ delay: 3, effect: 'shot2' }], text: '攻撃力が最も高い敵ユニット−2（いなければ敵拠点−1）。残響3：もう一度', resvText: '−3（いなければ敵拠点−1）', flavor: '一発目は合図。二発目が本命。', motif: 'hand' },
   e_pray: { id: 'e_pray', set: 'echo', name: '残響の祈り', kind: 'spell', rarity: 'C', cost: 2, effect: 'ePray', echo: [{ delay: 3, effect: 'heal3' }], text: '自拠点+3。残響3：もう一度', resvText: '自拠点+4', flavor: '祈りは、遅れて届く。', motif: 'wave' },
-  e_slash: { id: 'e_slash', set: 'echo', name: '溜めの一閃', kind: 'spell', rarity: 'C', cost: 1, effect: 'eSlash', charge: 4, text: '充填4：攻撃力が最も高い敵ユニット−(1+X)（いなければ敵拠点−1）', resvText: '−3（いなければ敵拠点−2）', flavor: '抜くまでが、長い。', motif: 'flame' },
+  e_slash: { id: 'e_slash', set: 'echo', name: '溜めの一閃', kind: 'spell', rarity: 'C', cost: 1, effect: 'eSlash', charge: 3, text: '充填3：攻撃力が最も高い敵ユニット−(2+X)（いなければ敵拠点−1）', resvText: '−4（いなければ敵拠点−2）', flavor: '抜くまでが、長い。', motif: 'flame' },
   e_peek: { id: 'e_peek', set: 'echo', name: '覗き時計', kind: 'spell', rarity: 'C', cost: 1, effect: 'ePeek', text: '相手の予約を全て公開。1枚引く', resvText: '公開。2枚引く', flavor: '文字盤の裏側にも、針はある。', motif: 'eye' },
-  e_twin: { id: 'e_twin', set: 'echo', name: '影法師', kind: 'unit', rarity: 'R', cost: 3, atk: 2, hp: 2, reload: 2, echo: [{ delay: 3, effect: 'image' }], text: '残響3：空きレーンに残像（1/1・速攻）', flavor: '影は、本人より少し遅れて歩く。', motif: 'spiral' },
-  e_blade: { id: 'e_blade', set: 'echo', name: '溜め斬りの剣士', kind: 'unit', rarity: 'R', cost: 2, atk: 2, hp: 2, reload: 2, charge: 3, text: '充填3：+X/+X', flavor: '構えた時間だけ、刃は重くなる。', motif: 'hand' },
+  e_twin: { id: 'e_twin', set: 'echo', name: '影法師', kind: 'unit', rarity: 'R', cost: 3, atk: 2, hp: 2, reload: 2, echo: [{ delay: 2, effect: 'image' }], text: '残響2：空きレーンに残像（1/1・速攻）', flavor: '影は、本人より少し遅れて歩く。', motif: 'spiral' },
+  e_blade: { id: 'e_blade', set: 'echo', name: '溜め斬りの剣士', kind: 'unit', rarity: 'R', cost: 1, atk: 1, hp: 1, reload: 2, charge: 3, text: '充填3：+X/+X', flavor: '構えた時間だけ、刃は重くなる。', motif: 'hand' },
   e_raider: { id: 'e_raider', set: 'echo', name: '奇襲の騎兵', kind: 'unit', rarity: 'R', cost: 4, atk: 4, hp: 3, reload: 2, keywords: ['swift'], rush: 2, text: '速攻・急襲2', flavor: '遅れて来た者だけが、背後を取れる。', motif: 'flame' },
-  e_bellkeeper: { id: 'e_bellkeeper', set: 'echo', name: '共鳴の鐘守', kind: 'unit', rarity: 'R', cost: 4, atk: 3, hp: 3, reload: 2, hook: 'resonatePing', text: '共鳴：攻撃力が最も高い敵ユニット−1', flavor: '一つ鳴れば、塔じゅうが鳴る。', motif: 'bell' },
+  e_bellkeeper: { id: 'e_bellkeeper', set: 'echo', name: '共鳴の鐘守', kind: 'unit', rarity: 'R', cost: 4, atk: 4, hp: 4, reload: 2, hook: 'resonatePing', text: '共鳴：攻撃力が最も高い敵ユニット−2', flavor: '一つ鳴れば、塔じゅうが鳴る。', motif: 'bell' },
   e_break: { id: 'e_break', set: 'echo', name: '破約の刃', kind: 'spell', rarity: 'R', cost: 2, effect: 'eBreak', text: '相手の予約を全て公開。最も遅い予約か残響を1つ破棄', resvText: '公開。遅い順に2つ破棄', flavor: 'その約束、ここで断つ。', motif: 'gear' },
   e_draw: { id: 'e_draw', set: 'echo', name: '響く未来視', kind: 'spell', rarity: 'R', cost: 2, effect: 'eDraw', echo: [{ delay: 3, effect: 'draw1' }], text: '1枚引く。残響3：もう一度', resvText: '2枚引く', flavor: '見えた未来が、もう一度見える。', motif: 'eye' },
   e_reverse: { id: 'e_reverse', set: 'echo', name: '逆転の針', kind: 'spell', rarity: 'R', cost: 2, effect: 'eReverse', rush: 1, text: '急襲1。相手の時計+2', resvText: '相手の時計+3', flavor: '遅れているのは、どちらだろう。', motif: 'pendulum' },
-  e_mage: { id: 'e_mage', set: 'echo', name: '残響術士', kind: 'unit', rarity: 'E', cost: 4, atk: 3, hp: 5, reload: 2, hook: 'hasten2', text: '登場時：自分の予約と残響を全て2刻早める', flavor: '明日を、今日に引き寄せる。', motif: 'spiral' },
-  e_atra: { id: 'e_atra', set: 'echo', name: '双子時計のアトラ', kind: 'unit', rarity: 'E', cost: 6, atk: 3, hp: 4, reload: 2, hook: 'storm1', echo: [{ delay: 4, effect: 'storm1' }], text: '登場時と残響4：敵全体−1', flavor: '片方の時計が鳴れば、もう片方も鳴る。', motif: 'wave' },
-  e_colossus: { id: 'e_colossus', set: 'echo', name: '刻溜めの巨兵', kind: 'unit', rarity: 'E', cost: 5, atk: 4, hp: 5, reload: 3, charge: 3, text: '充填3：+X/+X。X=3なら挑発', flavor: '眠っていた分だけ、目覚めは大きい。', motif: 'shield' },
+  e_mage: { id: 'e_mage', set: 'echo', name: '残響術士', kind: 'unit', rarity: 'E', cost: 4, atk: 2, hp: 4, reload: 2, hook: 'spellAura', text: '場にいる間、自分がその場で使う術も、予約したときの強さになる', flavor: '明日の力を、今日に引き寄せる。', motif: 'spiral' },
+  e_atra: { id: 'e_atra', set: 'echo', name: '双子時計のアトラ', kind: 'unit', rarity: 'E', cost: 6, atk: 2, hp: 3, reload: 2, hook: 'syncClock', text: '登場時：相手の時計を自分の時計まで進め、進めた刻ごとに+1/+1', flavor: '片方の時計が鳴れば、もう片方も鳴る。', motif: 'wave' },
+  e_colossus: { id: 'e_colossus', set: 'echo', name: '刻溜めの巨兵', kind: 'unit', rarity: 'E', cost: 4, atk: 4, hp: 5, reload: 3, charge: 3, text: '充填3：+X/+X。X=2以上なら挑発', flavor: '眠っていた分だけ、目覚めは大きい。', motif: 'shield' },
   e_storm: { id: 'e_storm', set: 'echo', name: '残響の嵐', kind: 'spell', rarity: 'E', cost: 4, effect: 'eStorm', echo: [{ delay: 2, effect: 'storm1' }, { delay: 4, effect: 'storm1' }], text: '敵全体−1。残響2と残響4：もう一度', resvText: '敵全体−2', flavor: '嵐は一度では終わらない。', motif: 'wave' },
   e_verna: { id: 'e_verna', set: 'echo', name: '刻を繰る者ヴェルナ', kind: 'unit', rarity: 'L', cost: 6, atk: 4, hp: 5, reload: 3, hook: 'resonateRewind', text: '共鳴：自分の時計−1', flavor: '響きが消えるたび、彼女は少し若返る。', motif: 'crown' },
   e_eternal: { id: 'e_eternal', set: 'echo', name: '永劫回帰', kind: 'spell', rarity: 'L', cost: 4, effect: 'eEternal', echo: [{ delay: 3, effect: 'ping2' }, { delay: 6, effect: 'ping2' }], text: '敵拠点−2。残響3と残響6：もう一度', resvText: '敵拠点−3', flavor: '同じ瞬間は、何度でも訪れる。', motif: 'crown' },
   // ---- 第1弾 追加カード（8枚：通常3・希少3・秘宝1・伝説1）。1枚ごとに今のカードプールにない役割を1つ持つ
-  x_ram: { id: 'x_ram', set: 'echo', name: '城崩しの槌兵', kind: 'unit', rarity: 'C', cost: 3, atk: 2, hp: 3, reload: 2, hook: 'tauntBreaker', text: '挑発持ちへの攻撃時+3/-', flavor: '門は、叩くためにある。', motif: 'flame' },
+  x_ram: { id: 'x_ram', set: 'echo', name: '城崩しの槌兵', kind: 'unit', rarity: 'C', cost: 2, atk: 2, hp: 3, reload: 2, hook: 'tauntBreaker', text: '挑発持ちへの攻撃時+3/-', flavor: '門は、叩くためにある。', motif: 'flame' },
   x_sentry: { id: 'x_sentry', set: 'echo', name: '時計塔の衛士', kind: 'unit', rarity: 'C', cost: 3, atk: 1, hp: 4, reload: 2, keywords: ['taunt'], hook: 'oppResonateAtk', text: '挑発。相手の予約・残響の発動ごとに+1/-（最大+5）', flavor: '敵の鐘の音を、数えている。', motif: 'shield' },
   x_gust: { id: 'x_gust', set: 'echo', name: '送り返しの風', kind: 'spell', rarity: 'C', cost: 3, effect: 'xGust', text: '攻撃力が最も高い敵ユニットを手札に戻す（満杯なら消滅）', resvText: 'さらに1枚引く', flavor: '来た道を、もう一度。', motif: 'wave' },
   x_oblivion: { id: 'x_oblivion', set: 'echo', name: '忘却の砂', kind: 'spell', rarity: 'R', cost: 2, effect: 'xOblivion', text: '相手が選んで1枚捨てる。1枚引く', resvText: '2枚引く', flavor: '思い出せないなら、なかったのと同じ。', motif: 'hourglass' },
   x_seer: { id: 'x_seer', set: 'echo', name: '星読みの占者', kind: 'unit', rarity: 'R', cost: 2, atk: 1, hp: 3, reload: 2, hook: 'seer', text: '登場時：山札の上3枚から1枚を手札へ（残りは下へ）', flavor: '星は三つ。進む道は、ひとつ。', motif: 'eye' },
-  x_decoy: { id: 'x_decoy', set: 'echo', name: '囮の書', kind: 'spell', rarity: 'R', cost: 2, effect: 'xDecoy', reserveOnly: true, text: '予約専用。破棄されたら相手の時計+4。発動したら1枚引く', flavor: 'どれが本物か、当ててごらん。', motif: 'spiral' },
-  x_usurper: { id: 'x_usurper', set: 'echo', name: '時の簒奪者', kind: 'unit', rarity: 'E', cost: 5, atk: 3, hp: 4, reload: 3, hook: 'stealResv', text: '登場時：相手の最も早い予約か残響を奪う（予約は1刻早まる）', flavor: 'その時間は、私が使う。', motif: 'pendulum' },
+  x_decoy: { id: 'x_decoy', set: 'echo', name: '囮の書', kind: 'spell', rarity: 'R', cost: 1, effect: 'xDecoy', reserveOnly: true, charge: 2, chargeOnReserve: true, text: '予約専用・充填2（予約するときに払う）。予約している間、自拠点が次に受けるダメージを3+X減らし、この予約は消える', flavor: 'どれが本物か、当ててごらん。', motif: 'spiral' },
+  x_usurper: { id: 'x_usurper', set: 'echo', name: '時の簒奪者', kind: 'unit', rarity: 'E', cost: 5, atk: 4, hp: 5, reload: 2, hook: 'stealResv', text: '登場時：相手の予約を全て公開し、1つ選んで奪い、すぐ発動する（残響は奪えない）', flavor: 'その時間は、私が使う。', motif: 'pendulum' },
   x_mirea: { id: 'x_mirea', set: 'echo', name: '記憶の司書ミレア', kind: 'unit', rarity: 'L', cost: 5, atk: 3, hp: 5, reload: 3, hook: 'recall', text: '登場時：使用済みの術（伝説以外）を1つ、無料で使う', flavor: '書かれたことは、何度でも読める。', motif: 'crown' },
   e_image: { id: 'e_image', set: 'echo', token: true, name: '残像', kind: 'unit', rarity: 'C', cost: 0, atk: 1, hp: 1, reload: 1, keywords: ['swift'], text: '速攻', flavor: 'まだ、そこにいる気がする。', motif: 'spiral' },
 };
@@ -147,7 +151,7 @@ export const KEYWORD_HELP: Record<string, string> = {
   急襲: '自分の時計が相手より2刻以上遅れているとき、コストがN少なくなる（最低1）。',
   転移: '1刻払って、隣の空いたレーンへ移れる。準備の状態はそのまま。',
   鐘鳴: '自分の時計が鐘（8・16・24・32刻）を越えるたびに効果が起きる。',
-  充填: '今すぐ使うとき、最大N刻まで多く払って効果を強められる（X＝多く払った刻）。予約するときはX＝0。',
+  充填: '今すぐ使うとき、最大N刻まで多く払って効果を強められる（X＝多く払った刻）。予約するときはX＝0（囮の書だけは予約するときに払う）。',
   予約専用: '今すぐは使えず、予約でだけ使える。発動する時刻は自由に選べる。',
 };
 export function keywordsOf(c: CardDef): string[] {

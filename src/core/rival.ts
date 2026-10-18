@@ -145,7 +145,7 @@ function personaPref(p: Persona, s: GameState, pi: PlayerIndex, a: Action): numb
       return 0;
     case 'schemer':
       if (a.t === 'reserve') return 0.6 + ([op.time + 1, RULES.DOOM_AT, ...RULES.BELLS.map((b) => b - 1)].includes(a.T) ? 0.4 : 0);
-      if (card && ['stop', 'e_reverse', 'delayer'].includes(card)) return 0.4;
+      if (card && ['stop', 'e_reverse'].includes(card)) return 0.4;
       if (card === 'e_break') return s.players[other(pi)].resv.length < 2 ? -0.5 : 0;
       return 0;
     default: return 0;

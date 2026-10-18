@@ -29,7 +29,8 @@
     "test:env": "tsx src/sim/envtest.ts",
     "test:fair": "tsx src/sim/fairtest.ts",
     "daily": "tsx src/sim/daily.ts",
-    "test:set1x": "tsx src/sim/x1test.ts"
+    "test:set1x": "tsx src/sim/x1test.ts",
+    "test:v23": "tsx src/sim/v23test.ts"
   },
   "dependencies": {
     "pixi.js": "8.6.6"

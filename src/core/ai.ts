@@ -82,6 +82,8 @@ export function evaluate(s: GameState, pi: PlayerIndex, W: Weights = BASE_WEIGHT
     const hc = p.hand.length;
     v += sign * (Math.min(hc, 3) * W.hand + Math.max(0, hc - 3) * W.handExtra) * handWorth(p.time);
     v += sign * p.resv.reduce((n, r) => n + (r.decoy ? 0 : resvWorth(r.T, p.time)), 0) * W.resv;
+    // 囮の書: a waiting shield is base hp that has not been lost yet (most of it, since the hit may be small)
+    v += sign * p.resv.reduce((n, r) => n + (r.shield ? r.shield * 0.6 : 0), 0) * W.hp;
   };
   side(me, 1, pi);
   side(op, -1, other(pi));
@@ -102,19 +104,22 @@ export function fogged(s: GameState, pi: PlayerIndex): GameState {
 export function pruneReserves(s: GameState, pi: PlayerIndex, acts: Action[]): Action[] {
   // keep a few representative times per card to limit the search
   const keep: Action[] = [];
-  const byHand = new Map<number, number[]>();
+  const byHand = new Map<string, number[]>();
   for (const a of acts) {
     if (a.t !== 'reserve') { keep.push(a); continue; }
-    const arr = byHand.get(a.hand) ?? [];
+    const k = `${a.hand}:${a.x ?? ''}`;
+    const arr = byHand.get(k) ?? [];
     arr.push(a.T);
-    byHand.set(a.hand, arr);
+    byHand.set(k, arr);
   }
   const opTime = s.players[other(pi)].time;
-  for (const [hand, Ts] of byHand) {
+  for (const [k, Ts] of byHand) {
+    const [hs, xs] = k.split(':');
+    const hand = Number(hs), x = xs === '' ? undefined : Number(xs);
     const pick = new Set<number>();
     const lo = Ts[0], hi = Ts[Ts.length - 1];
     for (const t of [lo, lo + 2, lo + 4, Math.max(lo, opTime + 3), Math.max(lo, RULES.DOOM_AT), hi]) if (t >= lo && t <= hi) pick.add(t);
-    for (const T of pick) keep.push({ t: 'reserve', hand, T });
+    for (const T of pick) keep.push(x === undefined ? { t: 'reserve', hand, T } : { t: 'reserve', hand, T, x });
   }
   return keep;
 }
@@ -171,8 +176,9 @@ export function intentBonus(s: GameState, pi: PlayerIndex, a: Action, card?: str
     // 第1弾 追加カード
     case 'xGust': b = enemies ? 1.5 + Math.max(0, ...op.field.map((u) => u?.atk ?? 0)) * 0.3 : -2; break;
     case 'xOblivion': b = 2.5 + Math.min(op.hand.length, 3) * 0.3; break;
-    // 囮の書 is reserve-only: a card when it fires, and a 4-tick swing if the opponent breaks it
-    case 'xDecoy': b = 2.5; break;
+    // 囮の書 is reserve-only: a shield of 3+X on the base while it waits (evaluate counts it); it is worth more under
+    // pressure (enemy attackers or a low base)
+    case 'xDecoy': b = (enemies ? 0.5 + enemies * 0.4 : 0) + (s.players[pi].hp <= 8 ? 1 : 0) + (a.x ?? 0) * 0.2; break;
   }
   // set later than it could be (the earliest time is the clock after paying + the gap)
   const late = AI_FIX.soon ? Math.max(0, a.T - (s.players[pi].time + cardCost(s, pi, d.id) + RULES.RESV_MIN_GAP)) * SOON.late : 0;
@@ -252,12 +258,20 @@ export function chooseChoice(s: GameState, pi: PlayerIndex): Action {
     let v: number;
     if (c.kind === 'seer') v = cost(o);
     else if (c.kind === 'discard') v = -cost(o);
+    else if (c.kind === 'break' || c.kind === 'steal') { const x = clone(s); apply(x, { t: 'choose', i }); v = evaluate(x, pi, EXPERT_WEIGHTS) + (c.kind === 'break' ? breakWorth(s, o as number) : 0); }
     else { const x = clone(s); apply(x, { t: 'choose', i }); v = evaluate(x, pi, EXPERT_WEIGHTS) + intentBonus(s, pi, { t: 'reserve', hand: -1, T: s.players[pi].time } as Action, o as string); }
     if (v > bestV) { bestV = v; best = i; }
   });
   return { t: 'choose', i: best };
 }
 
+/** 刻壊し: a pin cut now also takes away what it would do later (the evaluation only sees a count of pins). */
+function breakWorth(s: GameState, uid: number): number {
+  const r = s.players[other(s.pending!.pi)].resv.find((x) => x.uid === uid);
+  if (!r) return 0;
+  const d = cardDef(r.card);
+  return r.echo ? 0.5 : d.rarity === 'L' ? 2 : d.effect === 'bolt' || d.effect === 'eEternal' ? 1.5 : d.effect === 'xDecoy' ? -0.5 : 1;
+}
 /**
  * One guess of the hidden information for `pi`: the opponent's hand and deck become random cards, our own deck
  * is our real remaining cards in a random order (we know our deck list but not its order).

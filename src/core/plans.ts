@@ -53,32 +53,32 @@ const notReadyAtk = (x: PlanCtx, min: number) => units(x.me).filter((u) => u.rea
 const openLanes = (x: PlanCtx) => x.me.field.filter((u, l) => u && attackTarget(x.s, x.pi, l) === null).length;
 /** Lanes a summon from `a` would go to that face no enemy (so its attacks reach the base). */
 const facesEmpty = (x: PlanCtx, lane: number) => !x.op.field[lane] && attackTarget(x.s, x.pi, lane) === null;
-const exactSlash = (x: PlanCtx) => { const t = topAtk(x); return !!t && 1 + x.x >= t.hp && 1 + (x.x - 1) < t.hp; };
+const exactSlash = (x: PlanCtx) => { const t = topAtk(x); return !!t && 2 + x.x >= t.hp && 2 + (x.x - 1) < t.hp; };
 const burnLimit = (x: PlanCtx, limit: number, reserveLimit: number) =>
   isCard(x, 'bolt') && x.op.hp > (x.reserve ? reserveLimit : limit) && worldTime(x.s) < RULES.DOOM_AT ? -1.5 : 0;
 
 type Rule = (x: PlanCtx) => number;
 /** Board-clearing cards and the damage they deal to every enemy unit. */
-const SWEEP: Record<string, number> = { collapse: 2, dragon: 2, e_storm: 1, e_atra: 1, g_quake: 2, g_gearstorm: 1, g_maze: 1 };
+const SWEEP: Record<string, number> = { collapse: 2, dragon: 3, e_storm: 1, g_quake: 2, g_gearstorm: 1, g_maze: 1 };
 const sweepRule = (bonus: number, bad: number): Rule => (x) => {
   if (!x.cardId || !(x.cardId in SWEEP)) return 0;
   const n = killable(x, SWEEP[x.cardId] + (x.reserve ? 1 : 0));
   return n >= 2 ? bonus : bad;
 };
-const breakerRule: Rule = (x) => (isCard(x, 'breaker', 'e_break') && oppResv(x) === 0 ? -4 : 0);
+const breakerRule: Rule = (x) => (isCard(x, 'breaker', 'e_break', 'x_usurper') && oppResv(x) === 0 ? -4 : 0);
 const rushRule = (b: number): Rule => (x) => (x.card?.rush && x.a.t !== 'reserve' && rushActive(x.s, x.pi) ? b : 0);
 const hasteRule = (big: number, bad: number, minUnits: (x: PlanCtx) => boolean): Rule => (x) => (isCard(x, 'haste') && !x.reserve ? (minUnits(x) ? big : bad) : 0);
 
 export const PLANS: Record<string, Rule[]> = {
   oracle: [
     (x) => (x.reserve && x.card?.kind === 'spell' ? 1.0 : 0),
-    (x) => (isCard(x, 'oracle') ? (oppHidden(x) ? 2 : -1) : 0),
-    (x) => (isCard(x, 'stop', 'delayer') && bellPush(x) ? 1.0 : 0),
+    (x) => (isCard(x, 'oracle') ? (oppHidden(x) ? 2 : oppResv(x) ? 1 : -1) : 0),
+    (x) => (isCard(x, 'stop') && bellPush(x) ? 1.0 : 0),
     breakerRule,
   ],
   p_titan: [
     (x) => (x.a.t === 'play' && x.card?.keywords?.includes('taunt') && !hasTaunt(x.me) ? 2 : 0),
-    (x) => (isCard(x, 'e_colossus') && x.a.t === 'play' && !hasTaunt(x.me) ? (x.x === 3 ? 1.5 : -0.5) : 0),
+    (x) => (isCard(x, 'e_colossus') && x.a.t === 'play' && !hasTaunt(x.me) ? (x.x >= 2 ? 1.5 : -0.5) : 0),
     (x) => (isCard(x, 'e_pray') ? (x.me.hp <= 10 ? 1.5 : x.me.hp >= 13 ? -2 : 0) : 0),
     (x) => (isCard(x, 'titan') && x.op.time - x.me.time < 3 ? -2 : 0),
   ],
@@ -119,7 +119,7 @@ export const PLANS: Record<string, Rule[]> = {
   ],
   charge: [
     (x) => { if (!x.card?.charge || x.reserve) return 0; const room = x.op.time + 2 - (x.me.time + x.cost - x.x); const best = Math.max(0, Math.min(x.card.charge, room)); return x.x === best ? 1.5 : x.x > best ? -1.5 : 0; },
-    (x) => (isCard(x, 'e_colossus') && x.a.t === 'play' && !hasTaunt(x.me) && x.x === 3 ? 1.5 : 0),
+    (x) => (isCard(x, 'e_colossus') && x.a.t === 'play' && !hasTaunt(x.me) && x.x >= 2 ? 1.5 : 0),
     (x) => (isCard(x, 'e_slash') && x.a.t === 'cast' && exactSlash(x) ? 1.5 : 0),
     (x) => (heal(x) && x.me.hp <= 10 ? 1.5 : 0),
   ],
@@ -145,7 +145,7 @@ export const PLANS: Record<string, Rule[]> = {
     rushRule(1.5),
     hasteRule(3, -1, (x) => openLanes(x) >= 2),
     (x) => burnLimit(x, 4, 5),
-    (x) => (isCard(x, 'e_blade') && x.a.t === 'play' && x.x === 0 ? 0.8 : 0) + (x.a.t === 'draw' && x.op.time - x.me.time === 2 ? -1 : 0),
+    (x) => (isCard(x, 'e_blade') && x.a.t === 'play' && x.x >= 2 ? 0.8 : 0) + (x.a.t === 'draw' && x.op.time - x.me.time === 2 ? -1 : 0),
   ],
   g_bells: [
     (x) => { if (x.a.t !== 'play' || !x.card?.bell) return 0; const b = nextGreat(x.me.time); if (b === null) return 0; const d = b - x.me.time; return d >= 3 && d <= 6 && bellUnits(x.me) + 1 >= 2 ? 2 : 0; },
