@@ -1,14 +1,14 @@
 {
- "date": "2026-10-20",
+ "date": "2026-10-21",
  "v": "0.23.0",
  "games": {
   "free-lv10": [
-   9,
+   12,
    8
   ],
   "rated": [
-   79,
-   61.5
+   82,
+   62.5
   ],
   "online": [
    2,
@@ -17,225 +17,243 @@
   "free-lv3": [
    2,
    2
+  ],
+  "free-lv4": [
+   1,
+   1
   ]
  },
  "impacts": [
   {
    "id": "e_atra",
-   "used": 73,
-   "winUsed": 86.98630136986301,
-   "lift": 8.460975280812285,
-   "inDeck": 87
+   "used": 75,
+   "winUsed": 86,
+   "lift": 10.83197831978319,
+   "inDeck": 93
+  },
+  {
+   "id": "e_reverse",
+   "used": 72,
+   "winUsed": 74.30555555555556,
+   "lift": -0.8525293586269238,
+   "inDeck": 95
   },
   {
    "id": "haste",
    "used": 69,
    "winUsed": 89.1304347826087,
-   "lift": 10.245826453861667,
-   "inDeck": 79
+   "lift": 14.536938847649347,
+   "inDeck": 81
   },
   {
-   "id": "e_reverse",
-   "used": 69,
-   "winUsed": 77.53623188405797,
-   "lift": -1.431949285554127,
-   "inDeck": 90
+   "id": "stop",
+   "used": 53,
+   "winUsed": 83.9622641509434,
+   "lift": 8.42153704555913,
+   "inDeck": 98
   },
   {
    "id": "x_seer",
    "used": 53,
    "winUsed": 82.0754716981132,
-   "lift": 3.71122256720537,
-   "inDeck": 78
-  },
-  {
-   "id": "stop",
-   "used": 51,
-   "winUsed": 87.25490196078431,
-   "lift": 8.001709825983836,
-   "inDeck": 92
-  },
-  {
-   "id": "insight",
-   "used": 47,
-   "winUsed": 77.65957446808511,
-   "lift": -1.005476254600962,
-   "inDeck": 79
-  },
-  {
-   "id": "arrow",
-   "used": 44,
-   "winUsed": 82.95454545454545,
-   "lift": 3.226889144610661,
+   "lift": 7.251879122564811,
    "inDeck": 80
   },
   {
+   "id": "insight",
+   "used": 49,
+   "winUsed": 74.48979591836735,
+   "lift": 0.3650240584038509,
+   "inDeck": 81
+  },
+  {
+   "id": "arrow",
+   "used": 47,
+   "winUsed": 79.7872340425532,
+   "lift": 4.233696592285076,
+   "inDeck": 83
+  },
+  {
    "id": "x_oblivion",
-   "used": 44,
-   "winUsed": 82.95454545454545,
-   "lift": 5.106444188722667,
-   "inDeck": 72
+   "used": 46,
+   "winUsed": 79.34782608695652,
+   "lift": 3.543655001767399,
+   "inDeck": 75
   },
   {
    "id": "e_break",
-   "used": 43,
-   "winUsed": 79.06976744186046,
-   "lift": 0.964903673175689,
-   "inDeck": 72
+   "used": 44,
+   "winUsed": 77.27272727272727,
+   "lift": 1.487435328898731,
+   "inDeck": 74
   },
   {
    "id": "rewind",
-   "used": 41,
-   "winUsed": 74.39024390243902,
-   "lift": -3.586497890295366,
-   "inDeck": 79
+   "used": 43,
+   "winUsed": 70.93023255813954,
+   "lift": -3.5687275477405866,
+   "inDeck": 82
   },
   {
    "id": "e_pray",
-   "used": 28,
-   "winUsed": 62.5,
-   "lift": -15.348101265822793,
-   "inDeck": 84
-  },
-  {
-   "id": "bolt",
-   "used": 13,
-   "winUsed": 61.53846153846154,
-   "lift": -18.857513794222655,
-   "inDeck": 18
+   "used": 32,
+   "winUsed": 54.6875,
+   "lift": -20.934959349593495,
+   "inDeck": 90
   },
   {
    "id": "ghost",
-   "used": 13,
-   "winUsed": 53.84615384615385,
-   "lift": -27.404522341231214,
-   "inDeck": 15
+   "used": 16,
+   "winUsed": 50,
+   "lift": -26.511686991869922,
+   "inDeck": 19
+  },
+  {
+   "id": "bolt",
+   "used": 14,
+   "winUsed": 57.142857142857146,
+   "lift": -17.02961672473868,
+   "inDeck": 22
   },
   {
    "id": "warden",
-   "used": 8,
-   "winUsed": 75,
-   "lift": -11.14627285513361,
-   "inDeck": 17
+   "used": 11,
+   "winUsed": 63.63636363636363,
+   "lift": -16.46341463414634,
+   "inDeck": 22
   },
   {
    "id": "x_usurper",
-   "used": 7,
-   "winUsed": 57.142857142857146,
-   "lift": -20.70524412296565,
-   "inDeck": 12
+   "used": 10,
+   "winUsed": 50,
+   "lift": -26.21951219512195,
+   "inDeck": 15
   },
   {
    "id": "collapse",
-   "used": 7,
-   "winUsed": 42.857142857142854,
-   "lift": -34.99095840867994,
-   "inDeck": 11
+   "used": 10,
+   "winUsed": 40,
+   "lift": -36.21951219512195,
+   "inDeck": 15
   },
   {
    "id": "e_storm",
-   "used": 7,
-   "winUsed": 57.142857142857146,
-   "lift": -20.70524412296565,
-   "inDeck": 11
+   "used": 9,
+   "winUsed": 44.44444444444444,
+   "lift": -31.775067750677504,
+   "inDeck": 15
   },
   {
    "id": "breaker",
    "used": 7,
    "winUsed": 42.857142857142854,
-   "lift": -34.99095840867994,
-   "inDeck": 11
-  },
-  {
-   "id": "e_eternal",
-   "used": 5,
-   "winUsed": 80,
-   "lift": -2.27848101265824,
-   "inDeck": 13
-  },
-  {
-   "id": "e_guard",
-   "used": 4,
-   "winUsed": 50,
-   "lift": -33.38607594936709,
+   "lift": -33.3623693379791,
    "inDeck": 14
   },
   {
+   "id": "e_eternal",
+   "used": 7,
+   "winUsed": 85.71428571428571,
+   "lift": 2.7003484320557547,
+   "inDeck": 17
+  },
+  {
    "id": "e_verna",
+   "used": 6,
+   "winUsed": 16.666666666666668,
+   "lift": -59.552845528455286,
+   "inDeck": 14
+  },
+  {
+   "id": "e_guard",
+   "used": 5,
+   "winUsed": 40,
+   "lift": -39.0650406504065,
+   "inDeck": 19
+  },
+  {
+   "id": "x_mirea",
    "used": 4,
-   "winUsed": 25,
-   "lift": -52.84810126582279,
-   "inDeck": 11
+   "winUsed": 0,
+   "lift": -76.21951219512195,
+   "inDeck": 14
+  },
+  {
+   "id": "e_bellkeeper",
+   "used": 4,
+   "winUsed": 75,
+   "lift": -16.666666666666664,
+   "inDeck": 4
   },
   {
    "id": "e_page",
    "used": 3,
    "winUsed": 33.333333333333336,
-   "lift": -42.59259259259259,
+   "lift": -27.777777777777775,
    "inDeck": 3
   },
   {
-   "id": "x_mirea",
+   "id": "lancer",
    "used": 3,
-   "winUsed": 0,
-   "lift": -77.84810126582279,
-   "inDeck": 11
+   "winUsed": 100,
+   "lift": 0,
+   "inDeck": 3
   },
   {
    "id": "archer",
    "used": 2,
    "winUsed": 50,
-   "lift": -19.444444444444443,
+   "lift": -8.333333333333325,
    "inDeck": 3
+  },
+  {
+   "id": "x_sentry",
+   "used": 2,
+   "winUsed": 50,
+   "lift": -16.666666666666664,
+   "inDeck": 5
   },
   {
    "id": "sentinel",
    "used": 2,
    "winUsed": 50,
    "lift": -25,
-   "inDeck": 3
+   "inDeck": 4
   },
   {
    "id": "scout",
    "used": 2,
    "winUsed": 100,
    "lift": 0,
-   "inDeck": 3
-  },
-  {
-   "id": "lancer",
-   "used": 2,
-   "winUsed": 100,
-   "lift": 0,
-   "inDeck": 2
-  },
-  {
-   "id": "e_bellkeeper",
-   "used": 2,
-   "winUsed": 100,
-   "lift": 0,
-   "inDeck": 2
-  },
-  {
-   "id": "x_sentry",
-   "used": 1,
-   "winUsed": 100,
-   "lift": 11.111111111111116,
    "inDeck": 4
+  },
+  {
+   "id": "e_peek",
+   "used": 2,
+   "winUsed": 100,
+   "lift": 0,
+   "inDeck": 3
   },
   {
    "id": "titan",
    "used": 1,
    "winUsed": 100,
    "lift": 0,
-   "inDeck": 3
+   "inDeck": 4
   },
   {
-   "id": "e_peek",
+   "id": "x_decoy",
    "used": 1,
-   "winUsed": 100,
-   "lift": 0,
-   "inDeck": 2
+   "winUsed": 0,
+   "lift": -66.66666666666666,
+   "inDeck": 1
+  },
+  {
+   "id": "e_mage",
+   "used": 1,
+   "winUsed": 0,
+   "lift": -66.66666666666666,
+   "inDeck": 1
   },
   {
    "id": "e_raider",
