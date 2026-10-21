@@ -1,6 +1,6 @@
 {
- "version": 17,
- "at": 1792535345426,
+ "version": 18,
+ "at": 1792622036470,
  "decks": {
   "titan_control_cage~lo": {
    "v": 1,
@@ -493,7 +493,34 @@
     "bolt",
     "bolt",
     "arrow"
-   ]
+   ],
+   "trial": {
+    "v": 46,
+    "cards": [
+     "e_tuner",
+     "scout",
+     "e_page",
+     "e_page",
+     "archer",
+     "archer",
+     "e_blade",
+     "e_blade",
+     "gear",
+     "gear",
+     "e_raider",
+     "e_raider",
+     "e_reverse",
+     "e_reverse",
+     "stop",
+     "haste",
+     "haste",
+     "bolt",
+     "bolt",
+     "arrow"
+    ],
+    "share": 0.5,
+    "since": 1792622954576
+   }
   },
   "raid_aggro_ram~lo": {
    "v": 1,
@@ -1427,6 +1454,162 @@
     ],
     "share": 0.5,
     "since": 1792535882000
+   }
+  },
+  "lancer_beat_sentinel~lo": {
+   "v": 1,
+   "cards": [
+    "archer",
+    "archer",
+    "x_seer",
+    "x_seer",
+    "gear",
+    "gear",
+    "sentinel",
+    "sentinel",
+    "lancer",
+    "lancer",
+    "heavy",
+    "heavy",
+    "arrow",
+    "arrow",
+    "bolt",
+    "bolt",
+    "insight",
+    "insight",
+    "e_draw",
+    "dragon"
+   ],
+   "trial": {
+    "v": 43,
+    "cards": [
+     "archer",
+     "archer",
+     "x_seer",
+     "x_seer",
+     "gear",
+     "gear",
+     "sentinel",
+     "sentinel",
+     "lancer",
+     "lancer",
+     "heavy",
+     "heavy",
+     "e_bellkeeper",
+     "arrow",
+     "bolt",
+     "bolt",
+     "insight",
+     "insight",
+     "e_draw",
+     "dragon"
+    ],
+    "share": 0.5,
+    "since": 1792622297506
+   }
+  },
+  "prison_control_sentry~lo": {
+   "v": 1,
+   "cards": [
+    "warden",
+    "warden",
+    "x_sentry",
+    "x_sentry",
+    "e_guard",
+    "e_guard",
+    "delayer",
+    "delayer",
+    "cage",
+    "cage",
+    "e_reverse",
+    "e_reverse",
+    "stop",
+    "bolt",
+    "bolt",
+    "rewind",
+    "rewind",
+    "insight",
+    "insight",
+    "e_eternal"
+   ],
+   "trial": {
+    "v": 44,
+    "cards": [
+     "warden",
+     "warden",
+     "x_sentry",
+     "x_sentry",
+     "e_guard",
+     "e_guard",
+     "delayer",
+     "delayer",
+     "cage",
+     "cage",
+     "e_reverse",
+     "e_reverse",
+     "stop",
+     "bolt",
+     "bolt",
+     "x_oblivion",
+     "rewind",
+     "insight",
+     "insight",
+     "e_eternal"
+    ],
+    "share": 0.5,
+    "since": 1792622576140
+   }
+  },
+  "raid_aggro_arrow": {
+   "v": 1,
+   "cards": [
+    "scout",
+    "scout",
+    "e_page",
+    "e_page",
+    "archer",
+    "archer",
+    "e_blade",
+    "e_blade",
+    "gear",
+    "gear",
+    "e_raider",
+    "e_raider",
+    "e_reverse",
+    "e_reverse",
+    "stop",
+    "haste",
+    "haste",
+    "bolt",
+    "bolt",
+    "arrow"
+   ],
+   "trial": {
+    "v": 45,
+    "cards": [
+     "scout",
+     "scout",
+     "e_page",
+     "e_page",
+     "archer",
+     "archer",
+     "e_blade",
+     "e_blade",
+     "e_colossus",
+     "gear",
+     "e_raider",
+     "e_raider",
+     "e_reverse",
+     "e_reverse",
+     "stop",
+     "haste",
+     "haste",
+     "bolt",
+     "bolt",
+     "arrow"
+    ],
+    "share": 0.5,
+    "since": 1792622734740
    }
   }
  }
