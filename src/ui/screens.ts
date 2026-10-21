@@ -28,6 +28,8 @@ import { seasonById } from '../meta/ranks';
 import { fetchRanking, issueTransfer, rankingAvailable, redeemTransfer, syncRated } from '../net/api';
 import { ICON, artImg, artStyle, backImg, svgImg, cardImg, cardName, countBadge, countUp, h, newTag, packImg, pressable, purse, resetZoom, ribbon, svg, tierBadge, tierEmblem, topBar } from './kit';
 import { deckKey, deckLook, favCard, myPlace, myTitles, newTitles, shownTitle } from './profile';
+import { ROSTER_DECKS, type RosterDeck } from '../sim/rosterDecks';
+import { classify } from '../meta/blueprints';
 
 export { h } from './kit';
 
@@ -116,6 +118,26 @@ export interface ScreenHost {
   startEvent(deck: DeckDef | null, drafted?: string[]): void;
   shareReplay(): Promise<string | null>;
 }
+
+/** Your finished decks of your own (the free-play opponent may use them too). */
+const ownDecks = () => store.customDecks.filter((d) => validateDeck(d.cards).ok);
+/** A deck the free-play AI can bring: `plan` is the roster build its brain plays (own decks: the nearest build). */
+interface AiPick { key: string; name: string; sub: string; cards: string[]; plan: string; art: string }
+const envKey = (r: RosterDeck) => { const m = /（(.+?)型）/.exec(r.name); const nm = m?.[1].split('・')[0]; return CARD_LIST.find((c) => c.name === nm)?.id ?? deckKey({ id: r.id, cards: r.cards }); };
+function aiPick(key: string): AiPick | null {
+  const k = key.slice(0, 2), id = key.slice(2);
+  if (k === 'r:') { const r = ROSTER_DECKS.find((d) => d.id === id); return r ? { key, name: r.name, sub: r.type, cards: r.cards, plan: r.id, art: envKey(r) } : null; }
+  if (k === 'p:') { const d = PRESET_DECKS.find((x) => x.id === id); return d ? { key, name: d.name, sub: '基本デッキ', cards: d.cards, plan: d.id, art: deckKey(d) } : null; }
+  if (k === 'c:') { const d = ownDecks().find((x) => x.id === id); return d ? { key, name: d.name, sub: 'あなたのデッキ', cards: d.cards, plan: classify(d.cards) ?? d.id, art: deckKey(d) } : null; }
+  return null;
+}
+/** The deck the AI brings for a saved choice ('any' and 'any:basic' draw one at random). */
+function aiChoose(key: string | undefined): AiPick {
+  if (key === 'any:basic') return aiPick(`p:${PRESET_DECKS[Math.floor(Math.random() * PRESET_DECKS.length)].id}`)!;
+  return (key && !key.startsWith('any') && aiPick(key)) || aiPick(`r:${ROSTER_DECKS[Math.floor(Math.random() * ROSTER_DECKS.length)].id}`)!;
+}
+/** What the saved choice is called on buttons. */
+const aiChoiceName = (key: string | undefined) => (key === 'any:basic' ? '基本からおまかせ' : !key || key.startsWith('any') ? '環境からおまかせ' : aiPick(key)?.name.replace(/^.+?（/, '').replace(/）$/, '') ?? '環境からおまかせ');
 
 export class Screens {
   constructor(private host: ScreenHost) {}
@@ -306,9 +328,9 @@ export class Screens {
         h('button', { class: 'cta-main', onclick: () => this.rated() },
           h('b', {}, 'レート戦'),
           h('small', {}, `${tr.name} ${fmt(rt.rating)}`)),
-        h('button', { class: 'cta-main free', onclick: () => { audio.play('summon'); this.clear(); this.host.startBattle(quick, PRESET_DECKS[Math.floor(Math.random() * PRESET_DECKS.length)], aiLv()); } },
+        h('button', { class: 'cta-main free', onclick: () => { const p = aiChoose(store.settings.aiDeck); audio.play('summon'); this.clear(); this.host.startBattle(quick, { id: p.plan, name: p.name, cards: p.cards }, aiLv()); } },
           h('b', {}, 'フリー対戦'),
-          h('small', {}, `AI Lv${aiLv()} ・ ${quick.name}`))),
+          h('small', {}, `AI Lv${aiLv()} ・ ${aiChoiceName(store.settings.aiDeck)}`))),
     );
     this.hub('home', body);
     const timer = window.setInterval(() => { if (!carousel.isConnected) { clearInterval(timer); return; } setSlide(slide + 1); }, 5000);
@@ -494,7 +516,7 @@ export class Screens {
       h('div', { class: 'mode-head' }, h('i', {}), h('div', {}, h('b', {}, 'バトル'), h('small', {}, 'BATTLE')), h('i', {})),
       h('div', { class: 'modes rows' },
         tile('レート戦', 'RATED', E.rated, `${tr.tier.name} ・ ${fmt(rt.rating)}`, () => this.rated()),
-        tile('フリー対戦', 'FREE', E.free, `AIの強さを選んで練習 ・ ${r.win}勝${r.lose}敗`, () => this.setup()),
+        tile('フリー対戦', 'FREE', E.free, `AIのデッキと強さを選んで練習 ・ ${r.win}勝${r.lose}敗`, () => this.setup()),
         tile('フレンド対戦', 'FRIEND', E.friend, flow.available ? `あいことば・招待・観戦 ・ ${o.win}勝${o.lose}敗` : '準備中', flow.available ? () => this.onlineMenu() : null),
         tile('イベント', 'EVENT', E.event, `今週：${eventOf(today).event.name} ・ ${eventProgress(store.meta.event, today).wins}勝`, () => this.eventScreen()),
         tile('遊び方', 'GUIDE', E.guide, 'ルールと操作をおさらい', () => this.rules(() => this.battleTab()))),
@@ -966,32 +988,59 @@ export class Screens {
   // ---------------------------------------------------------------- match setup
   setup(lv0?: number) {
     const decks = store.allDecks();
-    let mine = decks.find((d) => d.id === store.settings.lastDeck && d.valid) ?? decks[0];
-    let ai: DeckDef | 'random' = 'random';
+    let mine = decks.find((d) => d.id === store.settings.lastDeck && d.valid) ?? decks.find((d) => d.valid) ?? decks[0];
     let level = lv0 ?? aiLv();
+    let ai = store.settings.aiDeck && (store.settings.aiDeck.startsWith('any') || aiPick(store.settings.aiDeck)) ? store.settings.aiDeck : 'any';
+    let tab: 'any' | 'env' | 'basic' | 'own' = ai.startsWith('r:') ? 'env' : ai.startsWith('p:') ? 'basic' : ai.startsWith('c:') ? 'own' : 'any';
+    const pickOf = aiPick, own = ownDecks;
+    type Pick = AiPick;
+    const scroller = (keepId: string) => { const el = document.getElementById(keepId); return el ? el.scrollTop : 0; };
     const render = () => {
-      const deckOpts = decks.map((d) => h('button', {
-        class: 'opt', 'aria-pressed': String(d.id === mine.id), disabled: !d.valid,
-        onclick: () => { mine = d; audio.play('select'); render(); },
-      }, h('div', {}, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, d.blurb ?? `${d.cards.length}枚・自作デッキ`)), !d.valid ? h('span', { class: 'badge' }, d.missing.length ? '未所持あり' : '未完成') : null));
-      const aiOpts = [h('button', { class: 'opt', 'aria-pressed': String(ai === 'random'), onclick: () => { ai = 'random'; render(); } }, h('div', {}, h('div', { class: 'nm' }, 'おまかせ'), h('div', { class: 'ds' }, '4種のデッキから選ばれます'))),
-        ...PRESET_DECKS.map((d) => h('button', { class: 'opt', 'aria-pressed': String(ai !== 'random' && ai.id === d.id), onclick: () => { ai = d; render(); } }, h('div', {}, h('div', { class: 'nm' }, d.name), h('div', { class: 'ds' }, d.blurb ?? ''))))];
+      const keep = scroller('fp-list'), page = (document.querySelector('.cd-scroll') as HTMLElement | null)?.scrollTop ?? 0;
+      const sel = ai.startsWith('any') ? null : pickOf(ai);
+      const tile = (p: Pick) => h('button', { class: `fp-tile${ai === p.key ? ' on' : ''}`, style: artStyle(p.art), onclick: () => { ai = p.key; audio.play('select'); render(); } },
+        h('span', { class: 't' }, h('b', {}, p.name.replace(/^.+?（/, '').replace(/）$/, '') || p.name), h('small', {}, p.sub)));
+      let list: Node[];
+      if (tab === 'env') {
+        const types = [...new Set(ROSTER_DECKS.map((r) => r.type))];
+        list = types.map((t) => h('div', { class: 'fp-group' }, h('div', { class: 'fp-type' }, t, h('small', {}, ROSTER_DECKS.find((r) => r.type === t)!.arch)),
+          h('div', { class: 'fp-tiles' }, ...ROSTER_DECKS.filter((r) => r.type === t).map((r) => tile(pickOf(`r:${r.id}`)!)))));
+      } else if (tab === 'basic') list = [h('div', { class: 'fp-tiles' }, ...PRESET_DECKS.map((d) => tile(pickOf(`p:${d.id}`)!)))];
+      else if (tab === 'own') { const o = own(); list = o.length ? [h('div', { class: 'fp-tiles' }, ...o.map((d) => tile(pickOf(`c:${d.id}`)!)))] : [h('p', { class: 'shop-note' }, '完成した自作デッキがまだありません。デッキタブの「新規作成」で作れます。')]; }
+      else list = [h('div', { class: 'fp-any' },
+        ...([['any', '環境のデッキからおまかせ', `37の型からランダムに選びます`], ['any:basic', '基本デッキからおまかせ', '4つの基本デッキから選びます']] as const).map(([k, t, d]) => h('button', { class: 'opt', 'aria-pressed': String(ai === k), onclick: () => { ai = k; audio.play('select'); render(); } }, h('div', {}, h('div', { class: 'nm' }, t), h('div', { class: 'ds' }, d)))))];
+      const tabBtn = (k: typeof tab, label: string) => h('button', { 'aria-pressed': String(tab === k), onclick: () => { tab = k; audio.play('select'); render(); const el = document.getElementById('fp-list'); if (el) el.scrollTop = 0; } }, label);
       const lv = (v: number) => h('button', { 'aria-pressed': String(level === v), 'aria-label': `レベル${v}`, onclick: () => { level = v; audio.play('select'); render(); } }, String(v));
+      const myTiles = decks.map((d) => h('button', { class: `fp-tile mine${d.id === mine.id ? ' on' : ''}`, style: artStyle(deckKey(d)), disabled: !d.valid, onclick: () => { mine = d; audio.play('select'); render(); } },
+        h('span', { class: 't' }, h('b', {}, d.name), h('small', { class: d.valid ? '' : 'bad' }, d.valid ? (d.preset ? '基本デッキ' : '自作デッキ') : d.missing.length ? '未所持あり' : '未完成'))));
       this.page('フリー対戦', () => this.battleTab(), [
-        h('div', { class: 'sec-title' }, 'あなたのデッキ'), h('div', { class: 'opt-list' }, ...deckOpts),
-        h('div', { class: 'sec-title' }, '相手（AI）のデッキ'), h('div', { class: 'opt-list' }, ...aiOpts),
+        h('div', { class: 'sec-title' }, 'あなたのデッキ'), h('div', { class: 'fp-row' }, ...myTiles),
+        h('div', { class: 'sec-title' }, '相手（AI）のデッキ'),
+        h('div', { class: 'seg2 fp-tabs' }, tabBtn('any', 'おまかせ'), tabBtn('env', '環境'), tabBtn('basic', '基本'), tabBtn('own', '自作')),
+        h('div', { class: 'fp-list', id: 'fp-list' }, ...list),
         h('div', { class: 'sec-title' }, `AIの強さ　Lv${level}`), h('div', { class: 'seg2 lvpick' }, ...Array.from({ length: AI_LV_MAX }, (_, i) => lv(i + 1))),
         h('p', { class: 'shop-note', style: 'text-align:left;margin:-4px 0 0' }, 'レート戦の対戦相手と同じ頭脳です。Lv1〜2ははじめての人向け、Lv5〜6で手強く、Lv8以上は上級者向け。'),
-        h('button', {
-          class: 'hexbtn gold big', onclick: () => {
-            store.settings.lastDeck = mine.id; store.settings.aiLv = level; store.saveSettings();
-            const aiDeck = ai === 'random' ? PRESET_DECKS[Math.floor(Math.random() * PRESET_DECKS.length)] : ai;
-            audio.play('summon');
-            this.clear();
-            this.host.startBattle(mine, aiDeck, level);
-          },
-        }, '対戦開始'),
+        h('div', { class: 'fp-bar' },
+          h('div', { class: 'vs' },
+            h('span', { class: 'me' }, mine.name),
+            h('i', {}, 'VS'),
+            h('span', { class: 'foe' }, sel ? sel.name : ai === 'any:basic' ? '基本からおまかせ' : '環境からおまかせ', h('small', {}, `Lv${level}`))),
+          h('div', { class: 'btn-row', style: 'width:100%' },
+            sel ? h('button', { class: 'hexbtn silver', style: 'flex:.7', onclick: () => this.deckCheck(sel.cards, sel.name) }, '中身を見る') : null,
+            h('button', {
+              class: 'hexbtn gold', onclick: () => {
+                store.settings.lastDeck = mine.id; store.settings.aiLv = level; store.settings.aiDeck = ai; store.saveSettings();
+                const p = aiChoose(ai);
+                audio.play('summon');
+                this.clear();
+                this.host.startBattle(mine, { id: p.plan, name: p.name, cards: p.cards }, level);
+              },
+            }, '対戦開始'))),
       ]);
+      const el = document.getElementById('fp-list'); if (el) el.scrollTop = keep;
+      const pg = document.querySelector('.cd-scroll') as HTMLElement | null; if (pg) pg.scrollTop = page;
+      const on = document.querySelector('.fp-tile.mine.on') as HTMLElement | null, row = on?.parentElement;
+      if (on && row) row.scrollLeft = on.offsetLeft - (row.clientWidth - on.clientWidth) / 2;
     };
     render();
   }
