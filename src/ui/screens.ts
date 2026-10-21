@@ -1019,7 +1019,7 @@ export class Screens {
         h('div', { class: 'seg2 fp-tabs' }, tabBtn('any', 'おまかせ'), tabBtn('env', '環境'), tabBtn('basic', '基本'), tabBtn('own', '自作')),
         h('div', { class: 'fp-list', id: 'fp-list' }, ...list),
         h('div', { class: 'sec-title' }, `AIの強さ　Lv${level}`), h('div', { class: 'seg2 lvpick' }, ...Array.from({ length: AI_LV_MAX }, (_, i) => lv(i + 1))),
-        h('p', { class: 'shop-note', style: 'text-align:left;margin:-4px 0 0' }, 'レート戦の対戦相手と同じ頭脳です。Lv1〜2ははじめての人向け、Lv5〜6で手強く、Lv8以上は上級者向け。'),
+        h('p', { class: 'shop-note', style: 'text-align:left;margin:-4px 0 0' }, 'レート戦の対戦相手と同じ頭脳です。Lv1〜2ははじめての人向け、Lv5〜6で手強く、Lv8以上は上級者向け。Lv11・12は刻神Ⅲ〜Ⅴの相手と同じで、1手に最大20秒かけて読みます。'),
         h('div', { class: 'fp-bar' },
           h('div', { class: 'vs' },
             h('span', { class: 'me' }, mine.name),

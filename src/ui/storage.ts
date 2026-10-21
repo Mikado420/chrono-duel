@@ -17,7 +17,7 @@ function write(key: string, v: unknown) {
 }
 
 export interface Settings {
-  volume: number; bgm: number; muted: boolean; speed: number; reduced: boolean; /** AI strength for free play (Lv1–10). */ aiLv: number; /** The free-play opponent's deck: 'any' (all), 'any:basic', or 'p:' / 'r:' / 'c:' + a basic, environment or own deck id. */ aiDeck?: string; lastDeck: string; guided: boolean; name: string;
+  volume: number; bgm: number; muted: boolean; speed: number; reduced: boolean; /** AI strength for free play (Lv1–12). */ aiLv: number; /** The free-play opponent's deck: 'any' (all), 'any:basic', or 'p:' / 'r:' / 'c:' + a basic, environment or own deck id. */ aiDeck?: string; lastDeck: string; guided: boolean; name: string;
   /** Vibrate on the big moments (a legend, the finishing blow, a heavy hit on your base). */
   vibeBig: boolean;
   /** Short taps of vibration for your own actions (placing a card, attacking). */

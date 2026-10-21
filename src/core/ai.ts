@@ -10,8 +10,8 @@ import {
  * rollouts. The AI itself — its strength given only as Lv1–12 — is src/core/rival.ts (free play, events and rated
  * play all use it; the simulation tools too, see src/sim/lvplay.ts).
  */
-/** The highest Lv a player can pick for free play (Lv11–12 appear only in rated play). */
-export const AI_LV_MAX = 10;
+/** The highest Lv a player can pick for free play (all of them, up to the Lv12 of 刻神Ⅴ). */
+export const AI_LV_MAX = 12;
 
 /**
  * The fixes from the 0.22.0 rated-play review (all on in the game; balance tools may switch them off per move to
