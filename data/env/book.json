@@ -1,6 +1,6 @@
 {
- "version": 18,
- "at": 1792622036470,
+ "version": 19,
+ "at": 1792708440196,
  "decks": {
   "titan_control_cage~lo": {
    "v": 1,
@@ -1610,6 +1610,58 @@
     ],
     "share": 0.5,
     "since": 1792622734740
+   }
+  },
+  "raid_aggro_break~lo": {
+   "v": 1,
+   "cards": [
+    "scout",
+    "scout",
+    "e_page",
+    "e_page",
+    "archer",
+    "archer",
+    "e_blade",
+    "e_blade",
+    "e_raider",
+    "e_raider",
+    "e_reverse",
+    "e_reverse",
+    "e_break",
+    "e_break",
+    "e_peek",
+    "e_peek",
+    "haste",
+    "haste",
+    "bolt",
+    "bolt"
+   ],
+   "trial": {
+    "v": 47,
+    "cards": [
+     "e_sprite",
+     "scout",
+     "e_page",
+     "e_page",
+     "archer",
+     "archer",
+     "e_blade",
+     "e_blade",
+     "e_raider",
+     "e_raider",
+     "e_reverse",
+     "e_reverse",
+     "e_break",
+     "e_break",
+     "e_peek",
+     "e_peek",
+     "haste",
+     "haste",
+     "bolt",
+     "bolt"
+    ],
+    "share": 0.5,
+    "since": 1792708679338
    }
   }
  }
