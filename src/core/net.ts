@@ -23,9 +23,9 @@ export const NET = {
   NAME_MAX: 12,
   /**
    * Bumped whenever the two sides must run the same rules (new cards, changed effects). A client with another
-   * number cannot join a room (0.18.0: 第1弾 追加カード = 2; 0.23.0: カード調整 = 3; older clients send none = 1).
+   * number cannot join a room (0.18.0: 第1弾 追加カード = 2; 0.23.0: カード調整 = 3; 0.23.1: アトラ = 4; older clients send none = 1).
    */
-  PROTOCOL: 3,
+  PROTOCOL: 4,
 } as const;
 
 export const HIDDEN = '?';

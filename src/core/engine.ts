@@ -728,9 +728,13 @@ function runUnitHook(s: GameState, pi: PlayerIndex, lane: number, ev: GameEvent[
       if (s.players[qi].resv.length) { revealAll(s, qi, ev); delayResv(s, qi, 3, false, ev); }
       break;
     case 'syncClock': {
-      // 双子時計のアトラ: the opponent's clock catches up with ours; +1/+1 for every tick it moved
+      // 双子時計のアトラ: +1/+1 for every tick our clock is ahead, then the opponent's clock catches up half of that gap
+      // (0.23.1: catching up all of it made her free to play — 87% of the games she was played in were won)
       const d = s.players[pi].time - s.players[qi].time;
-      if (d > 0) { shiftClock(s, qi, d, ev); u.atk += d; u.hp += d; u.maxHp += d; ev.push({ e: 'buff', pi, lane, atk: u.atk, hp: u.hp }); }
+      if (d > 0) {
+        u.atk += d; u.hp += d; u.maxHp += d; ev.push({ e: 'buff', pi, lane, atk: u.atk, hp: u.hp });
+        if (d >= 2) shiftClock(s, qi, Math.floor(d / 2), ev);
+      }
       break;
     }
     case 'echoBand': {

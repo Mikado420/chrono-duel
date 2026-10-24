@@ -36,15 +36,15 @@ const put = (s: GameState, pi: PlayerIndex, lane: number, card: string): Unit =>
   apply(s, { t: 'choose', i: 1 });
   assert.deepEqual(s.players[1].resv.map((r) => r.uid), [900]);
 }
-// 双子時計のアトラ: the opponent's clock catches up with ours, +1/+1 per tick
+// 双子時計のアトラ: +1/+1 per tick ahead, then the opponent's clock catches up half the gap (rounded down)
 {
-  const s = fresh(); at(s, 0, 3, 5);
+  const s = fresh(); at(s, 0, 3, 4);
   apply(s, { t: 'play', hand: give(s, 0, 'e_atra'), lane: 1 });
   assert.equal(s.players[0].time, 9);
-  assert.equal(s.players[1].time, 9, 'synced');
   const u = s.players[0].field[1]!;
-  assert.deepEqual([u.atk, u.hp], [2 + 4, 3 + 4]);
-  assert.equal(actor(s), 1, 'tied: the opponent moves next');
+  assert.deepEqual([u.atk, u.hp], [2 + 5, 3 + 5], 'grows by the whole gap');
+  assert.equal(s.players[1].time, 4 + 2, 'half of 5, rounded down');
+  assert.equal(actor(s), 1);
 }
 {
   const s = fresh(); at(s, 0, 0, 8);
