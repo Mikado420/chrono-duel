@@ -1,0 +1,494 @@
+{
+ "v": 1,
+ "date": "2026-10-26",
+ "days": [
+  "20261020",
+  "20261026"
+ ],
+ "prevDate": "2026-10-25",
+ "rows": [
+  {
+   "type": "ヴェルナ ループ",
+   "tier": "S",
+   "all": [
+    119,
+    92,
+    86.02
+   ],
+   "human": [
+    97,
+    81,
+    81.01
+   ],
+   "ai": [
+    22,
+    11,
+    5.01
+   ],
+   "players": 5,
+   "perf": 14,
+   "builds": {
+    "verna_loop_titan": [
+     108,
+     87,
+     83.67
+    ],
+    "verna_loop_tuner": [
+     2,
+     1,
+     0.58
+    ],
+    "verna_loop_guard": [
+     9,
+     4,
+     1.77
+    ]
+   },
+   "use": 100,
+   "was": "S"
+  },
+  {
+   "type": "牢獄 コントロール",
+   "tier": "B",
+   "all": [
+    21,
+    5,
+    4.66
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    21,
+    5,
+    4.66
+   ],
+   "players": 0,
+   "perf": 0.7,
+   "builds": {
+    "prison_control_mirea": [
+     15,
+     4,
+     3.79
+    ],
+    "prison_control_delayer": [
+     6,
+     1,
+     0.87
+    ]
+   },
+   "use": 0,
+   "was": "A"
+  },
+  {
+   "type": "急襲 テンポ",
+   "tier": "C",
+   "all": [
+    64,
+    12.5,
+    14.04
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    64,
+    12.5,
+    14.04
+   ],
+   "players": 0,
+   "perf": -1.6,
+   "builds": {
+    "raid_tempo_raider_guard": [
+     24,
+     6,
+     5.42
+    ],
+    "raid_tempo_guard": [
+     19,
+     2.5,
+     4.29
+    ],
+    "raid_tempo_haste": [
+     17,
+     4,
+     3.71
+    ],
+    "raid_tempo_decoy": [
+     4,
+     0,
+     0.63
+    ]
+   },
+   "use": 0,
+   "was": "S"
+  },
+  {
+   "type": "籠城 バーン",
+   "tier": "C",
+   "all": [
+    21,
+    2,
+    4.25
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    21,
+    2,
+    4.25
+   ],
+   "players": 0,
+   "perf": -4.4,
+   "builds": {
+    "siege_burn_pray": [
+     10,
+     0,
+     2.16
+    ],
+    "siege_burn_mirea": [
+     10,
+     2,
+     1.93
+    ],
+    "siege_burn_sentry": [
+     1,
+     0,
+     0.15
+    ]
+   },
+   "use": 0,
+   "was": "C"
+  },
+  {
+   "type": "秒針 アグロ",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "影法師 アグロ",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "破約 コントロール",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "一掃 コントロール",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "巨像 コントロール",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "槍兵 ビート",
+   "tier": null,
+   "all": [
+    1,
+    0,
+    0.06
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    1,
+    0,
+    0.06
+   ],
+   "players": 0,
+   "perf": -0.2,
+   "builds": {
+    "lancer_beat_ram": [
+     1,
+     0,
+     0.06
+    ]
+   },
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "共鳴 コンボ",
+   "tier": null,
+   "all": [
+    2,
+    0,
+    0.13
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    2,
+    0,
+    0.13
+   ],
+   "players": 0,
+   "perf": -0.4,
+   "builds": {
+    "reso_combo_storm": [
+     2,
+     0,
+     0.13
+    ]
+   },
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "充填 ビート",
+   "tier": null,
+   "all": [
+    1,
+    0,
+    0.2
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    1,
+    0,
+    0.2
+   ],
+   "players": 0,
+   "perf": -0.6,
+   "builds": {
+    "charge_beat_seer": [
+     1,
+     0,
+     0.2
+    ]
+   },
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "予約狩り ビート",
+   "tier": null,
+   "all": [
+    2,
+    0,
+    0.31
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    2,
+    0,
+    0.31
+   ],
+   "players": 0,
+   "perf": -1,
+   "builds": {
+    "hunt_beat_oracle": [
+     2,
+     0,
+     0.31
+    ]
+   },
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "予約 バーン",
+   "tier": null,
+   "all": [
+    5,
+    0,
+    0.91
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    5,
+    0,
+    0.91
+   ],
+   "players": 0,
+   "perf": -2.6,
+   "builds": {
+    "resv_burn_mage": [
+     5,
+     0,
+     0.91
+    ]
+   },
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "急襲 アグロ",
+   "tier": null,
+   "all": [
+    5,
+    0,
+    0.94
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    5,
+    0,
+    0.94
+   ],
+   "players": 0,
+   "perf": -2.7,
+   "builds": {
+    "raid_aggro_ram": [
+     1,
+     0,
+     0.24
+    ],
+    "raid_aggro_arrow": [
+     4,
+     0,
+     0.69
+    ]
+   },
+   "use": 0,
+   "was": null
+  }
+ ],
+ "bands": {
+  "shin2": {
+   "ヴェルナ ループ": 9
+  },
+  "shin": {
+   "ヴェルナ ループ": 19
+  },
+  "sho": {
+   "ヴェルナ ループ": 16
+  },
+  "go": {
+   "ヴェルナ ループ": 21
+  },
+  "sei": {
+   "ヴェルナ ループ": 32
+  }
+ },
+ "cards": {}
+}
