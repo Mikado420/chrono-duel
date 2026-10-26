@@ -1,6 +1,6 @@
 {
- "version": 20,
- "at": 1792965488004,
+ "version": 21,
+ "at": 1793056444205,
  "decks": {
   "titan_control_cage~lo": {
    "v": 1,
@@ -882,7 +882,34 @@
     "bolt",
     "arrow",
     "arrow"
-   ]
+   ],
+   "trial": {
+    "v": 51,
+    "cards": [
+     "scout",
+     "scout",
+     "archer",
+     "archer",
+     "e_page",
+     "e_page",
+     "pendulum",
+     "pendulum",
+     "ghost",
+     "ghost",
+     "gear",
+     "gear",
+     "lancer",
+     "lancer",
+     "haste",
+     "haste",
+     "bolt",
+     "bolt",
+     "e_shot",
+     "arrow"
+    ],
+    "share": 0.5,
+    "since": 1793056641789
+   }
   },
   "second_aggro_sprite~lo": {
    "v": 1,
@@ -1766,6 +1793,162 @@
     ],
     "share": 0.5,
     "since": 1792966715118
+   }
+  },
+  "resv_burn_decoy~lo": {
+   "v": 1,
+   "cards": [
+    "e_sprite",
+    "e_sprite",
+    "warden",
+    "warden",
+    "e_guard",
+    "e_guard",
+    "bolt",
+    "bolt",
+    "e_eternal",
+    "x_decoy",
+    "x_decoy",
+    "e_reverse",
+    "e_reverse",
+    "stop",
+    "arrow",
+    "arrow",
+    "insight",
+    "insight",
+    "e_pray",
+    "e_pray"
+   ],
+   "trial": {
+    "v": 50,
+    "cards": [
+     "e_sprite",
+     "e_sprite",
+     "warden",
+     "warden",
+     "e_guard",
+     "e_guard",
+     "bolt",
+     "bolt",
+     "e_eternal",
+     "x_decoy",
+     "x_decoy",
+     "e_reverse",
+     "e_reverse",
+     "stop",
+     "e_slash",
+     "arrow",
+     "insight",
+     "insight",
+     "e_pray",
+     "e_pray"
+    ],
+    "share": 0.5,
+    "since": 1793056554843
+   }
+  },
+  "shadow_aggro_mage~lo": {
+   "v": 1,
+   "cards": [
+    "e_sprite",
+    "e_sprite",
+    "scout",
+    "scout",
+    "e_page",
+    "e_page",
+    "ghost",
+    "ghost",
+    "e_twin",
+    "e_twin",
+    "e_march",
+    "e_march",
+    "e_mage",
+    "e_mage",
+    "haste",
+    "haste",
+    "e_reverse",
+    "e_reverse",
+    "e_eternal",
+    "bolt"
+   ],
+   "trial": {
+    "v": 52,
+    "cards": [
+     "e_sprite",
+     "e_sprite",
+     "archer",
+     "scout",
+     "e_page",
+     "e_page",
+     "ghost",
+     "ghost",
+     "e_twin",
+     "e_twin",
+     "e_march",
+     "e_march",
+     "e_mage",
+     "e_mage",
+     "haste",
+     "haste",
+     "e_reverse",
+     "e_reverse",
+     "e_eternal",
+     "bolt"
+    ],
+    "share": 0.5,
+    "since": 1793056741011
+   }
+  },
+  "siege_burn_mirea": {
+   "v": 1,
+   "cards": [
+    "e_sprite",
+    "e_sprite",
+    "warden",
+    "warden",
+    "e_guard",
+    "e_guard",
+    "bolt",
+    "bolt",
+    "e_eternal",
+    "e_shot",
+    "e_shot",
+    "arrow",
+    "arrow",
+    "e_pray",
+    "rewind",
+    "rewind",
+    "insight",
+    "insight",
+    "e_reverse",
+    "x_mirea"
+   ],
+   "trial": {
+    "v": 53,
+    "cards": [
+     "e_sprite",
+     "e_sprite",
+     "warden",
+     "warden",
+     "e_guard",
+     "e_guard",
+     "bolt",
+     "bolt",
+     "e_eternal",
+     "e_shot",
+     "e_shot",
+     "e_slash",
+     "arrow",
+     "e_pray",
+     "rewind",
+     "rewind",
+     "insight",
+     "insight",
+     "e_reverse",
+     "x_mirea"
+    ],
+    "share": 0.5,
+    "since": 1793056975137
    }
   }
  }
