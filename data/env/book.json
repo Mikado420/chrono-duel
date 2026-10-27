@@ -1,6 +1,6 @@
 {
- "version": 21,
- "at": 1793056444205,
+ "version": 22,
+ "at": 1793142131605,
  "decks": {
   "titan_control_cage~lo": {
    "v": 1,
@@ -27,13 +27,13 @@
     "insight"
    ],
    "trial": {
-    "v": 14,
+    "v": 57,
     "cards": [
      "warden",
      "warden",
      "pendulum",
      "pendulum",
-     "sentinel",
+     "scribe",
      "scribe",
      "e_guard",
      "e_guard",
@@ -43,7 +43,7 @@
      "titan",
      "cage",
      "cage",
-     "arrow",
+     "e_slash",
      "arrow",
      "rewind",
      "rewind",
@@ -51,11 +51,11 @@
      "insight"
     ],
     "share": 0.5,
-    "since": 1791875087562
+    "since": 1793143311573
    }
   },
   "prison_control_delayer": {
-   "v": 1,
+   "v": 15,
    "cards": [
     "warden",
     "warden",
@@ -64,7 +64,7 @@
     "delayer",
     "delayer",
     "sentinel",
-    "cage",
+    "x_gust",
     "cage",
     "e_reverse",
     "e_reverse",
@@ -77,37 +77,10 @@
     "e_peek",
     "e_peek",
     "collapse"
-   ],
-   "trial": {
-    "v": 15,
-    "cards": [
-     "warden",
-     "warden",
-     "e_guard",
-     "e_guard",
-     "delayer",
-     "delayer",
-     "sentinel",
-     "x_gust",
-     "cage",
-     "e_reverse",
-     "e_reverse",
-     "stop",
-     "bolt",
-     "bolt",
-     "arrow",
-     "rewind",
-     "rewind",
-     "e_peek",
-     "e_peek",
-     "collapse"
-    ],
-    "share": 0.5,
-    "since": 1791875283930
-   }
+   ]
   },
   "prison_control_delayer~lo": {
-   "v": 1,
+   "v": 16,
    "cards": [
     "warden",
     "warden",
@@ -116,50 +89,23 @@
     "delayer",
     "delayer",
     "sentinel",
-    "cage",
+    "x_gust",
     "cage",
     "e_reverse",
     "e_reverse",
     "stop",
     "bolt",
     "bolt",
-    "arrow",
+    "e_slash",
     "rewind",
     "rewind",
     "e_peek",
     "e_peek",
     "collapse"
-   ],
-   "trial": {
-    "v": 16,
-    "cards": [
-     "warden",
-     "warden",
-     "e_guard",
-     "e_guard",
-     "delayer",
-     "delayer",
-     "sentinel",
-     "x_gust",
-     "cage",
-     "e_reverse",
-     "e_reverse",
-     "stop",
-     "bolt",
-     "bolt",
-     "e_slash",
-     "rewind",
-     "rewind",
-     "e_peek",
-     "e_peek",
-     "collapse"
-    ],
-    "share": 0.5,
-    "since": 1791875500776
-   }
+   ]
   },
   "prison_control_mirea": {
-   "v": 1,
+   "v": 17,
    "cards": [
     "warden",
     "warden",
@@ -169,7 +115,7 @@
     "e_guard",
     "delayer",
     "delayer",
-    "cage",
+    "e_shot",
     "cage",
     "e_reverse",
     "e_reverse",
@@ -181,34 +127,7 @@
     "rewind",
     "rewind",
     "x_mirea"
-   ],
-   "trial": {
-    "v": 17,
-    "cards": [
-     "warden",
-     "warden",
-     "x_seer",
-     "x_seer",
-     "e_guard",
-     "e_guard",
-     "delayer",
-     "delayer",
-     "e_shot",
-     "cage",
-     "e_reverse",
-     "e_reverse",
-     "stop",
-     "bolt",
-     "bolt",
-     "insight",
-     "insight",
-     "rewind",
-     "rewind",
-     "x_mirea"
-    ],
-    "share": 0.5,
-    "since": 1791875745228
-   }
+   ]
   },
   "sweep_control_gust~lo": {
    "v": 1,
@@ -235,7 +154,7 @@
     "insight"
    ],
    "trial": {
-    "v": 18,
+    "v": 56,
     "cards": [
      "warden",
      "warden",
@@ -243,7 +162,7 @@
      "x_sentry",
      "e_guard",
      "e_guard",
-     "x_usurper",
+     "heavy",
      "heavy",
      "e_atra",
      "x_gust",
@@ -255,19 +174,19 @@
      "e_shot",
      "rewind",
      "rewind",
-     "x_oblivion",
+     "e_draw",
      "insight"
     ],
     "share": 0.5,
-    "since": 1791877850511
+    "since": 1793143074665
    }
   },
   "titan_control_dragon~lo": {
-   "v": 1,
+   "v": 19,
    "cards": [
     "warden",
     "warden",
-    "x_seer",
+    "e_sprite",
     "x_seer",
     "e_guard",
     "e_guard",
@@ -285,37 +204,10 @@
     "insight",
     "insight",
     "stop"
-   ],
-   "trial": {
-    "v": 19,
-    "cards": [
-     "warden",
-     "warden",
-     "e_sprite",
-     "x_seer",
-     "e_guard",
-     "e_guard",
-     "heavy",
-     "heavy",
-     "breaker",
-     "dragon",
-     "titan",
-     "arrow",
-     "arrow",
-     "rewind",
-     "rewind",
-     "e_pray",
-     "e_pray",
-     "insight",
-     "insight",
-     "stop"
-    ],
-    "share": 0.5,
-    "since": 1791877993378
-   }
+   ]
   },
   "charge_beat_seer~lo": {
-   "v": 1,
+   "v": 20,
    "cards": [
     "warden",
     "warden",
@@ -334,40 +226,13 @@
     "stop",
     "rewind",
     "rewind",
-    "insight",
+    "x_mirea",
     "insight",
     "titan"
-   ],
-   "trial": {
-    "v": 20,
-    "cards": [
-     "warden",
-     "warden",
-     "e_blade",
-     "e_blade",
-     "x_seer",
-     "x_seer",
-     "e_guard",
-     "e_guard",
-     "e_colossus",
-     "e_colossus",
-     "e_slash",
-     "e_slash",
-     "e_reverse",
-     "e_reverse",
-     "stop",
-     "rewind",
-     "rewind",
-     "x_mirea",
-     "insight",
-     "titan"
-    ],
-    "share": 0.5,
-    "since": 1791879508974
-   }
+   ]
   },
   "hunt_beat_oracle~lo": {
-   "v": 1,
+   "v": 21,
    "cards": [
     "x_seer",
     "x_seer",
@@ -381,7 +246,7 @@
     "lancer",
     "lancer",
     "breaker",
-    "heavy",
+    "dragon",
     "heavy",
     "arrow",
     "arrow",
@@ -389,37 +254,10 @@
     "bolt",
     "e_peek",
     "e_peek"
-   ],
-   "trial": {
-    "v": 21,
-    "cards": [
-     "x_seer",
-     "x_seer",
-     "x_sentry",
-     "x_sentry",
-     "archer",
-     "archer",
-     "oracle",
-     "gear",
-     "gear",
-     "lancer",
-     "lancer",
-     "breaker",
-     "dragon",
-     "heavy",
-     "arrow",
-     "arrow",
-     "bolt",
-     "bolt",
-     "e_peek",
-     "e_peek"
-    ],
-    "share": 0.5,
-    "since": 1791879647128
-   }
+   ]
   },
   "lancer_beat_ram~lo": {
-   "v": 1,
+   "v": 22,
    "cards": [
     "archer",
     "archer",
@@ -427,7 +265,7 @@
     "x_seer",
     "x_ram",
     "x_ram",
-    "gear",
+    "oracle",
     "gear",
     "lancer",
     "lancer",
@@ -441,34 +279,7 @@
     "bolt",
     "insight",
     "insight"
-   ],
-   "trial": {
-    "v": 22,
-    "cards": [
-     "archer",
-     "archer",
-     "x_seer",
-     "x_seer",
-     "x_ram",
-     "x_ram",
-     "oracle",
-     "gear",
-     "lancer",
-     "lancer",
-     "e_raider",
-     "e_raider",
-     "heavy",
-     "heavy",
-     "arrow",
-     "arrow",
-     "bolt",
-     "bolt",
-     "insight",
-     "insight"
-    ],
-    "share": 0.5,
-    "since": 1791879761862
-   }
+   ]
   },
   "raid_aggro_arrow~lo": {
    "v": 1,
@@ -1949,6 +1760,110 @@
     ],
     "share": 0.5,
     "since": 1793056975137
+   }
+  },
+  "siege_burn_pray": {
+   "v": 1,
+   "cards": [
+    "e_sprite",
+    "e_sprite",
+    "warden",
+    "warden",
+    "e_guard",
+    "e_guard",
+    "bolt",
+    "bolt",
+    "e_eternal",
+    "e_shot",
+    "e_shot",
+    "arrow",
+    "arrow",
+    "e_pray",
+    "e_pray",
+    "rewind",
+    "rewind",
+    "stop",
+    "insight",
+    "insight"
+   ],
+   "trial": {
+    "v": 54,
+    "cards": [
+     "e_sprite",
+     "e_sprite",
+     "warden",
+     "warden",
+     "e_guard",
+     "e_guard",
+     "bolt",
+     "bolt",
+     "e_eternal",
+     "e_bellkeeper",
+     "e_shot",
+     "arrow",
+     "arrow",
+     "e_pray",
+     "e_pray",
+     "rewind",
+     "rewind",
+     "stop",
+     "insight",
+     "insight"
+    ],
+    "share": 0.5,
+    "since": 1793142527472
+   }
+  },
+  "siege_burn_sentry~lo": {
+   "v": 1,
+   "cards": [
+    "e_sprite",
+    "e_sprite",
+    "warden",
+    "warden",
+    "x_sentry",
+    "x_sentry",
+    "bolt",
+    "bolt",
+    "e_eternal",
+    "e_shot",
+    "e_shot",
+    "arrow",
+    "arrow",
+    "e_pray",
+    "e_pray",
+    "rewind",
+    "rewind",
+    "insight",
+    "insight",
+    "stop"
+   ],
+   "trial": {
+    "v": 55,
+    "cards": [
+     "e_sprite",
+     "e_sprite",
+     "warden",
+     "warden",
+     "x_sentry",
+     "x_sentry",
+     "bolt",
+     "bolt",
+     "e_eternal",
+     "x_gust",
+     "e_shot",
+     "arrow",
+     "arrow",
+     "e_pray",
+     "e_pray",
+     "rewind",
+     "rewind",
+     "insight",
+     "insight",
+     "stop"
+    ],
+    "share": 0.5,
+    "since": 1793142767875
    }
   }
  }
