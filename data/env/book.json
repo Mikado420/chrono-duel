@@ -1,6 +1,6 @@
 {
- "version": 23,
- "at": 1793229768462,
+ "version": 24,
+ "at": 1793316465582,
  "decks": {
   "titan_control_cage~lo": {
    "v": 1,
@@ -77,7 +77,34 @@
     "e_peek",
     "e_peek",
     "collapse"
-   ]
+   ],
+   "trial": {
+    "v": 62,
+    "cards": [
+     "warden",
+     "warden",
+     "e_guard",
+     "e_guard",
+     "delayer",
+     "delayer",
+     "sentinel",
+     "x_gust",
+     "e_bellkeeper",
+     "e_reverse",
+     "e_reverse",
+     "stop",
+     "bolt",
+     "bolt",
+     "arrow",
+     "rewind",
+     "rewind",
+     "e_peek",
+     "e_peek",
+     "collapse"
+    ],
+    "share": 0.5,
+    "since": 1793317217242
+   }
   },
   "prison_control_delayer~lo": {
    "v": 16,
@@ -360,7 +387,34 @@
     "bolt",
     "insight",
     "insight"
-   ]
+   ],
+   "trial": {
+    "v": 61,
+    "cards": [
+     "archer",
+     "archer",
+     "x_seer",
+     "x_seer",
+     "x_ram",
+     "x_ram",
+     "oracle",
+     "gear",
+     "lancer",
+     "lancer",
+     "e_raider",
+     "e_raider",
+     "heavy",
+     "heavy",
+     "e_bellkeeper",
+     "arrow",
+     "bolt",
+     "bolt",
+     "insight",
+     "insight"
+    ],
+    "share": 0.5,
+    "since": 1793317033736
+   }
   },
   "raid_aggro_arrow~lo": {
    "v": 1,
@@ -515,11 +569,11 @@
    ]
   },
   "reso_combo_storm~lo": {
-   "v": 1,
+   "v": 28,
    "cards": [
     "e_sprite",
     "e_sprite",
-    "e_tuner",
+    "sentinel",
     "e_tuner",
     "e_twin",
     "e_twin",
@@ -537,34 +591,7 @@
     "e_storm",
     "e_eternal",
     "e_verna"
-   ],
-   "trial": {
-    "v": 28,
-    "cards": [
-     "e_sprite",
-     "e_sprite",
-     "sentinel",
-     "e_tuner",
-     "e_twin",
-     "e_twin",
-     "e_bellkeeper",
-     "e_bellkeeper",
-     "e_mage",
-     "e_peek",
-     "e_peek",
-     "e_draw",
-     "e_draw",
-     "e_pray",
-     "e_pray",
-     "e_shot",
-     "e_shot",
-     "e_storm",
-     "e_eternal",
-     "e_verna"
-    ],
-    "share": 0.5,
-    "since": 1792104179249
-   }
+   ]
   },
   "resv_burn_mage~lo": {
    "v": 1,
