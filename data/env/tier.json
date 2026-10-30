@@ -1,77 +1,12 @@
 {
  "v": 1,
- "date": "2026-10-30",
+ "date": "2026-10-31",
  "days": [
-  "20261024",
-  "20261030"
+  "20261025",
+  "20261031"
  ],
- "prevDate": "2026-10-29",
+ "prevDate": "2026-10-30",
  "rows": [
-  {
-   "type": "急襲 テンポ",
-   "tier": null,
-   "all": [
-    3,
-    0,
-    -0.08
-   ],
-   "human": [
-    0,
-    0,
-    0
-   ],
-   "ai": [
-    3,
-    0,
-    -0.08
-   ],
-   "players": 0,
-   "perf": 0.2,
-   "builds": {
-    "raid_tempo_raider_guard": [
-     2,
-     0,
-     -0.06
-    ],
-    "raid_tempo_guard": [
-     1,
-     0,
-     -0.02
-    ]
-   },
-   "use": 0,
-   "was": null
-  },
-  {
-   "type": "ヴェルナ ループ",
-   "tier": null,
-   "all": [
-    5,
-    5,
-    5
-   ],
-   "human": [
-    5,
-    5,
-    5
-   ],
-   "ai": [
-    0,
-    0,
-    0
-   ],
-   "players": 1,
-   "perf": 0,
-   "builds": {
-    "verna_loop_titan": [
-     5,
-     5,
-     5
-    ]
-   },
-   "use": 0,
-   "was": null
-  },
   {
    "type": "秒針 アグロ",
    "tier": null,
@@ -122,6 +57,78 @@
   },
   {
    "type": "影法師 アグロ",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "急襲 テンポ",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "牢獄 コントロール",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "籠城 バーン",
    "tier": null,
    "all": [
     0,
@@ -313,7 +320,7 @@
    "was": null
   },
   {
-   "type": "共鳴 コンボ",
+   "type": "ヴェルナ ループ",
    "tier": null,
    "all": [
     0,
@@ -337,12 +344,12 @@
    "was": null
   },
   {
-   "type": "籠城 バーン",
+   "type": "共鳴 コンボ",
    "tier": null,
    "all": [
-    1,
     0,
-    0.02
+    0,
+    0
    ],
    "human": [
     0,
@@ -350,57 +357,17 @@
     0
    ],
    "ai": [
-    1,
-    0,
-    0.02
-   ],
-   "players": 0,
-   "perf": -0.1,
-   "builds": {
-    "siege_burn_pray": [
-     1,
-     0,
-     0.02
-    ]
-   },
-   "use": 0,
-   "was": null
-  },
-  {
-   "type": "牢獄 コントロール",
-   "tier": null,
-   "all": [
-    1,
-    0,
-    0.06
-   ],
-   "human": [
     0,
     0,
     0
    ],
-   "ai": [
-    1,
-    0,
-    0.06
-   ],
    "players": 0,
-   "perf": -0.2,
-   "builds": {
-    "prison_control_mirea": [
-     1,
-     0,
-     0.06
-    ]
-   },
+   "perf": 0,
+   "builds": {},
    "use": 0,
    "was": null
   }
  ],
- "bands": {
-  "shin2": {
-   "ヴェルナ ループ": 5
-  }
- },
+ "bands": {},
  "cards": {}
 }
