@@ -1,6 +1,6 @@
 {
- "version": 25,
- "at": 1793401473647,
+ "version": 26,
+ "at": 1793486390261,
  "decks": {
   "titan_control_cage~lo": {
    "v": 1,
@@ -595,7 +595,34 @@
     "e_slash",
     "arrow",
     "rewind"
-   ]
+   ],
+   "trial": {
+    "v": 65,
+    "cards": [
+     "x_seer",
+     "x_seer",
+     "e_page",
+     "e_page",
+     "warden",
+     "warden",
+     "e_raider",
+     "e_raider",
+     "e_reverse",
+     "e_reverse",
+     "stop",
+     "x_decoy",
+     "x_decoy",
+     "insight",
+     "insight",
+     "bolt",
+     "bolt",
+     "e_slash",
+     "e_shot",
+     "rewind"
+    ],
+    "share": 0.5,
+    "since": 1793487365856
+   }
   },
   "raid_tempo_raider_guard": {
    "v": 27,
@@ -775,7 +802,7 @@
    ]
   },
   "shadow_aggro_gear~lo": {
-   "v": 1,
+   "v": 33,
    "cards": [
     "e_sprite",
     "e_sprite",
@@ -787,7 +814,7 @@
     "ghost",
     "e_twin",
     "e_twin",
-    "e_march",
+    "scribe",
     "e_march",
     "gear",
     "gear",
@@ -797,37 +824,10 @@
     "e_draw",
     "bolt",
     "e_eternal"
-   ],
-   "trial": {
-    "v": 33,
-    "cards": [
-     "e_sprite",
-     "e_sprite",
-     "scout",
-     "scout",
-     "e_page",
-     "e_page",
-     "ghost",
-     "ghost",
-     "e_twin",
-     "e_twin",
-     "scribe",
-     "e_march",
-     "gear",
-     "gear",
-     "haste",
-     "haste",
-     "e_draw",
-     "e_draw",
-     "bolt",
-     "e_eternal"
-    ],
-    "share": 0.5,
-    "since": 1792209088731
-   }
+   ]
   },
   "siege_burn_pray~lo": {
-   "v": 1,
+   "v": 34,
    "cards": [
     "e_sprite",
     "e_sprite",
@@ -847,36 +847,9 @@
     "rewind",
     "rewind",
     "stop",
-    "insight",
+    "e_draw",
     "insight"
-   ],
-   "trial": {
-    "v": 34,
-    "cards": [
-     "e_sprite",
-     "e_sprite",
-     "warden",
-     "warden",
-     "e_guard",
-     "e_guard",
-     "bolt",
-     "bolt",
-     "e_eternal",
-     "e_shot",
-     "e_shot",
-     "arrow",
-     "arrow",
-     "e_pray",
-     "e_pray",
-     "rewind",
-     "rewind",
-     "stop",
-     "e_draw",
-     "insight"
-    ],
-    "share": 0.5,
-    "since": 1792273506268
-   }
+   ]
   },
   "sweep_control_dragon~lo": {
    "v": 1,
