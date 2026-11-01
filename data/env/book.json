@@ -1,6 +1,6 @@
 {
- "version": 26,
- "at": 1793486390261,
+ "version": 27,
+ "at": 1793573788881,
  "decks": {
   "titan_control_cage~lo": {
    "v": 1,
@@ -129,7 +129,34 @@
     "e_peek",
     "e_peek",
     "collapse"
-   ]
+   ],
+   "trial": {
+    "v": 66,
+    "cards": [
+     "warden",
+     "warden",
+     "e_guard",
+     "e_guard",
+     "delayer",
+     "delayer",
+     "sentinel",
+     "x_gust",
+     "cage",
+     "e_reverse",
+     "e_reverse",
+     "stop",
+     "bolt",
+     "bolt",
+     "arrow",
+     "rewind",
+     "rewind",
+     "e_peek",
+     "e_peek",
+     "collapse"
+    ],
+    "share": 0.5,
+    "since": 1793574066544
+   }
   },
   "prison_control_mirea": {
    "v": 17,
@@ -852,11 +879,11 @@
    ]
   },
   "sweep_control_dragon~lo": {
-   "v": 1,
+   "v": 35,
    "cards": [
     "warden",
     "warden",
-    "pendulum",
+    "archer",
     "pendulum",
     "scribe",
     "scribe",
@@ -874,37 +901,10 @@
     "rewind",
     "insight",
     "insight"
-   ],
-   "trial": {
-    "v": 35,
-    "cards": [
-     "warden",
-     "warden",
-     "archer",
-     "pendulum",
-     "scribe",
-     "scribe",
-     "heavy",
-     "heavy",
-     "e_atra",
-     "dragon",
-     "collapse",
-     "e_storm",
-     "arrow",
-     "arrow",
-     "e_shot",
-     "e_shot",
-     "rewind",
-     "rewind",
-     "insight",
-     "insight"
-    ],
-    "share": 0.5,
-    "since": 1792360045693
-   }
+   ]
   },
   "verna_loop_guard": {
-   "v": 1,
+   "v": 36,
    "cards": [
     "warden",
     "warden",
@@ -920,40 +920,13 @@
     "e_reverse",
     "rewind",
     "rewind",
-    "insight",
+    "scribe",
     "stop",
     "bolt",
     "bolt",
     "e_eternal",
     "e_verna"
-   ],
-   "trial": {
-    "v": 36,
-    "cards": [
-     "warden",
-     "warden",
-     "e_guard",
-     "e_guard",
-     "e_sprite",
-     "e_sprite",
-     "e_draw",
-     "e_draw",
-     "e_pray",
-     "e_pray",
-     "e_reverse",
-     "e_reverse",
-     "rewind",
-     "rewind",
-     "scribe",
-     "stop",
-     "bolt",
-     "bolt",
-     "e_eternal",
-     "e_verna"
-    ],
-    "share": 0.5,
-    "since": 1792360338941
-   }
+   ]
   },
   "verna_loop_titan": {
    "v": 1,
