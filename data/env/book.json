@@ -1,6 +1,6 @@
 {
- "version": 30,
- "at": 1793838444687,
+ "version": 31,
+ "at": 1793924865717,
  "decks": {
   "titan_control_cage~lo": {
    "v": 1,
@@ -751,7 +751,34 @@
     "insight",
     "e_draw",
     "e_draw"
-   ]
+   ],
+   "trial": {
+    "v": 70,
+    "cards": [
+     "e_sprite",
+     "e_sprite",
+     "warden",
+     "warden",
+     "e_mage",
+     "e_mage",
+     "e_guard",
+     "bolt",
+     "bolt",
+     "e_eternal",
+     "e_shot",
+     "e_shot",
+     "arrow",
+     "arrow",
+     "e_reverse",
+     "e_reverse",
+     "insight",
+     "insight",
+     "e_draw",
+     "e_draw"
+    ],
+    "share": 0.5,
+    "since": 1793925700447
+   }
   },
   "second_aggro_lancer~lo": {
    "v": 30,
@@ -776,7 +803,34 @@
     "arrow",
     "arrow",
     "scribe"
-   ]
+   ],
+   "trial": {
+    "v": 71,
+    "cards": [
+     "scout",
+     "scout",
+     "archer",
+     "archer",
+     "e_page",
+     "e_page",
+     "gear",
+     "gear",
+     "lancer",
+     "lancer",
+     "e_raider",
+     "e_raider",
+     "breaker",
+     "haste",
+     "haste",
+     "bolt",
+     "bolt",
+     "arrow",
+     "arrow",
+     "scribe"
+    ],
+    "share": 0.5,
+    "since": 1793925862101
+   }
   },
   "second_aggro_pendulum~lo": {
    "v": 1,
@@ -1181,9 +1235,9 @@
    ]
   },
   "raid_aggro_break~lo": {
-   "v": 1,
+   "v": 47,
    "cards": [
-    "scout",
+    "e_sprite",
     "scout",
     "e_page",
     "e_page",
@@ -1203,34 +1257,7 @@
     "haste",
     "bolt",
     "bolt"
-   ],
-   "trial": {
-    "v": 47,
-    "cards": [
-     "e_sprite",
-     "scout",
-     "e_page",
-     "e_page",
-     "archer",
-     "archer",
-     "e_blade",
-     "e_blade",
-     "e_raider",
-     "e_raider",
-     "e_reverse",
-     "e_reverse",
-     "e_break",
-     "e_break",
-     "e_peek",
-     "e_peek",
-     "haste",
-     "haste",
-     "bolt",
-     "bolt"
-    ],
-    "share": 0.5,
-    "since": 1792708679338
-   }
+   ]
   },
   "raid_tempo_haste": {
    "v": 1,
