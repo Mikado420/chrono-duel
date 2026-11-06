@@ -1,6 +1,6 @@
 {
- "version": 31,
- "at": 1793924865717,
+ "version": 32,
+ "at": 1794008774710,
  "decks": {
   "titan_control_cage~lo": {
    "v": 1,
@@ -907,7 +907,34 @@
     "arrow",
     "e_shot",
     "e_eternal"
-   ]
+   ],
+   "trial": {
+    "v": 72,
+    "cards": [
+     "scout",
+     "scout",
+     "e_sprite",
+     "e_sprite",
+     "archer",
+     "archer",
+     "pendulum",
+     "e_blade",
+     "gear",
+     "gear",
+     "e_raider",
+     "e_raider",
+     "haste",
+     "haste",
+     "bolt",
+     "bolt",
+     "arrow",
+     "arrow",
+     "e_shot",
+     "e_eternal"
+    ],
+    "share": 0.5,
+    "since": 1794008870681
+   }
   },
   "shadow_aggro_gear~lo": {
    "v": 33,
@@ -932,7 +959,34 @@
     "e_draw",
     "bolt",
     "e_eternal"
-   ]
+   ],
+   "trial": {
+    "v": 73,
+    "cards": [
+     "e_sprite",
+     "e_sprite",
+     "scout",
+     "scout",
+     "e_tuner",
+     "e_page",
+     "ghost",
+     "ghost",
+     "e_twin",
+     "e_twin",
+     "scribe",
+     "e_march",
+     "gear",
+     "gear",
+     "haste",
+     "haste",
+     "e_draw",
+     "e_draw",
+     "bolt",
+     "e_eternal"
+    ],
+    "share": 0.5,
+    "since": 1794009052498
+   }
   },
   "siege_burn_pray~lo": {
    "v": 34,
