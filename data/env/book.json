@@ -1,6 +1,6 @@
 {
- "version": 32,
- "at": 1794008774710,
+ "version": 33,
+ "at": 1794091959013,
  "decks": {
   "titan_control_cage~lo": {
    "v": 1,
@@ -1011,7 +1011,34 @@
     "stop",
     "e_draw",
     "insight"
-   ]
+   ],
+   "trial": {
+    "v": 74,
+    "cards": [
+     "e_sprite",
+     "e_sprite",
+     "warden",
+     "warden",
+     "e_guard",
+     "e_guard",
+     "bolt",
+     "bolt",
+     "e_eternal",
+     "e_shot",
+     "e_shot",
+     "arrow",
+     "arrow",
+     "e_pray",
+     "e_pray",
+     "x_seer",
+     "rewind",
+     "stop",
+     "e_draw",
+     "insight"
+    ],
+    "share": 0.5,
+    "since": 1794092056333
+   }
   },
   "sweep_control_dragon~lo": {
    "v": 35,
@@ -1036,7 +1063,34 @@
     "rewind",
     "insight",
     "insight"
-   ]
+   ],
+   "trial": {
+    "v": 75,
+    "cards": [
+     "warden",
+     "warden",
+     "archer",
+     "pendulum",
+     "scribe",
+     "scribe",
+     "heavy",
+     "heavy",
+     "e_atra",
+     "dragon",
+     "collapse",
+     "e_storm",
+     "arrow",
+     "arrow",
+     "e_shot",
+     "e_shot",
+     "x_oblivion",
+     "rewind",
+     "insight",
+     "insight"
+    ],
+    "share": 0.5,
+    "since": 1794092190393
+   }
   },
   "verna_loop_guard": {
    "v": 36,
