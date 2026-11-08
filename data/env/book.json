@@ -1,6 +1,6 @@
 {
- "version": 33,
- "at": 1794091959013,
+ "version": 34,
+ "at": 1794178762920,
  "decks": {
   "titan_control_cage~lo": {
    "v": 1,
@@ -1165,7 +1165,34 @@
     "bolt",
     "e_eternal",
     "e_verna"
-   ]
+   ],
+   "trial": {
+    "v": 76,
+    "cards": [
+     "e_sprite",
+     "e_sprite",
+     "e_tuner",
+     "e_tuner",
+     "e_mage",
+     "e_mage",
+     "e_peek",
+     "e_peek",
+     "e_draw",
+     "e_draw",
+     "e_pray",
+     "e_pray",
+     "stop",
+     "e_reverse",
+     "x_oblivion",
+     "rewind",
+     "bolt",
+     "bolt",
+     "e_eternal",
+     "e_verna"
+    ],
+    "share": 0.5,
+    "since": 1794180083352
+   }
   },
   "break_control_oblivion~lo": {
    "v": 39,
@@ -1368,7 +1395,7 @@
    ]
   },
   "raid_tempo_haste": {
-   "v": 1,
+   "v": 48,
    "cards": [
     "x_seer",
     "x_seer",
@@ -1388,43 +1415,16 @@
     "rewind",
     "bolt",
     "bolt",
-    "arrow",
+    "e_bellkeeper",
     "arrow"
-   ],
-   "trial": {
-    "v": 48,
-    "cards": [
-     "x_seer",
-     "x_seer",
-     "e_page",
-     "e_page",
-     "x_sentry",
-     "e_raider",
-     "e_raider",
-     "e_reverse",
-     "e_reverse",
-     "stop",
-     "haste",
-     "haste",
-     "insight",
-     "insight",
-     "rewind",
-     "rewind",
-     "bolt",
-     "bolt",
-     "e_bellkeeper",
-     "arrow"
-    ],
-    "share": 0.5,
-    "since": 1792966241834
-   }
+   ]
   },
   "reso_combo_reverse~lo": {
-   "v": 1,
+   "v": 49,
    "cards": [
     "e_sprite",
     "e_sprite",
-    "e_tuner",
+    "x_ram",
     "e_tuner",
     "e_bellkeeper",
     "e_bellkeeper",
@@ -1442,34 +1442,7 @@
     "bolt",
     "bolt",
     "e_eternal"
-   ],
-   "trial": {
-    "v": 49,
-    "cards": [
-     "e_sprite",
-     "e_sprite",
-     "x_ram",
-     "e_tuner",
-     "e_bellkeeper",
-     "e_bellkeeper",
-     "e_mage",
-     "warden",
-     "warden",
-     "e_reverse",
-     "e_reverse",
-     "e_draw",
-     "e_draw",
-     "e_pray",
-     "e_pray",
-     "e_shot",
-     "e_shot",
-     "bolt",
-     "bolt",
-     "e_eternal"
-    ],
-    "share": 0.5,
-    "since": 1792966715118
-   }
+   ]
   },
   "resv_burn_decoy~lo": {
    "v": 1,
