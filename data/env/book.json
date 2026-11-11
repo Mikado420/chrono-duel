@@ -1,9 +1,9 @@
 {
- "version": 35,
- "at": 1794277190831,
+ "version": 36,
+ "at": 1794355729084,
  "decks": {
   "titan_control_cage~lo": {
-   "v": 1,
+   "v": 57,
    "cards": [
     "warden",
     "warden",
@@ -19,40 +19,13 @@
     "titan",
     "cage",
     "cage",
-    "arrow",
+    "e_slash",
     "arrow",
     "rewind",
     "rewind",
     "collapse",
     "insight"
-   ],
-   "trial": {
-    "v": 57,
-    "cards": [
-     "warden",
-     "warden",
-     "pendulum",
-     "pendulum",
-     "scribe",
-     "scribe",
-     "e_guard",
-     "e_guard",
-     "heavy",
-     "heavy",
-     "sentinel",
-     "titan",
-     "cage",
-     "cage",
-     "e_slash",
-     "arrow",
-     "rewind",
-     "rewind",
-     "collapse",
-     "insight"
-    ],
-    "share": 0.5,
-    "since": 1793143311573
-   }
+   ]
   },
   "prison_control_delayer": {
    "v": 15,
@@ -211,7 +184,7 @@
    }
   },
   "sweep_control_gust~lo": {
-   "v": 1,
+   "v": 56,
    "cards": [
     "warden",
     "warden",
@@ -231,36 +204,9 @@
     "e_shot",
     "rewind",
     "rewind",
-    "insight",
+    "e_draw",
     "insight"
-   ],
-   "trial": {
-    "v": 56,
-    "cards": [
-     "warden",
-     "warden",
-     "x_sentry",
-     "x_sentry",
-     "e_guard",
-     "e_guard",
-     "heavy",
-     "heavy",
-     "e_atra",
-     "x_gust",
-     "x_gust",
-     "collapse",
-     "e_storm",
-     "arrow",
-     "arrow",
-     "e_shot",
-     "rewind",
-     "rewind",
-     "e_draw",
-     "insight"
-    ],
-    "share": 0.5,
-    "since": 1793143074665
-   }
+   ]
   },
   "titan_control_dragon~lo": {
    "v": 19,
@@ -1493,7 +1439,7 @@
    ]
   },
   "siege_burn_pray": {
-   "v": 1,
+   "v": 54,
    "cards": [
     "e_sprite",
     "e_sprite",
@@ -1504,7 +1450,7 @@
     "bolt",
     "bolt",
     "e_eternal",
-    "e_shot",
+    "e_bellkeeper",
     "e_shot",
     "arrow",
     "arrow",
@@ -1515,37 +1461,10 @@
     "stop",
     "insight",
     "insight"
-   ],
-   "trial": {
-    "v": 54,
-    "cards": [
-     "e_sprite",
-     "e_sprite",
-     "warden",
-     "warden",
-     "e_guard",
-     "e_guard",
-     "bolt",
-     "bolt",
-     "e_eternal",
-     "e_bellkeeper",
-     "e_shot",
-     "arrow",
-     "arrow",
-     "e_pray",
-     "e_pray",
-     "rewind",
-     "rewind",
-     "stop",
-     "insight",
-     "insight"
-    ],
-    "share": 0.5,
-    "since": 1793142527472
-   }
+   ]
   },
   "siege_burn_sentry~lo": {
-   "v": 1,
+   "v": 55,
    "cards": [
     "e_sprite",
     "e_sprite",
@@ -1556,7 +1475,7 @@
     "bolt",
     "bolt",
     "e_eternal",
-    "e_shot",
+    "x_gust",
     "e_shot",
     "arrow",
     "arrow",
@@ -1567,34 +1486,7 @@
     "insight",
     "insight",
     "stop"
-   ],
-   "trial": {
-    "v": 55,
-    "cards": [
-     "e_sprite",
-     "e_sprite",
-     "warden",
-     "warden",
-     "x_sentry",
-     "x_sentry",
-     "bolt",
-     "bolt",
-     "e_eternal",
-     "x_gust",
-     "e_shot",
-     "arrow",
-     "arrow",
-     "e_pray",
-     "e_pray",
-     "rewind",
-     "rewind",
-     "insight",
-     "insight",
-     "stop"
-    ],
-    "share": 0.5,
-    "since": 1793142767875
-   }
+   ]
   },
   "raid_tempo_guard": {
    "v": 1,
