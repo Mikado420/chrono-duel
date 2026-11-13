@@ -1,6 +1,6 @@
 {
- "version": 37,
- "at": 1794447395940,
+ "version": 38,
+ "at": 1794530226201,
  "decks": {
   "titan_control_cage~lo": {
    "v": 57,
@@ -28,7 +28,7 @@
    ]
   },
   "prison_control_delayer": {
-   "v": 15,
+   "v": 62,
    "cards": [
     "warden",
     "warden",
@@ -38,7 +38,7 @@
     "delayer",
     "sentinel",
     "x_gust",
-    "cage",
+    "e_bellkeeper",
     "e_reverse",
     "e_reverse",
     "stop",
@@ -50,34 +50,7 @@
     "e_peek",
     "e_peek",
     "collapse"
-   ],
-   "trial": {
-    "v": 62,
-    "cards": [
-     "warden",
-     "warden",
-     "e_guard",
-     "e_guard",
-     "delayer",
-     "delayer",
-     "sentinel",
-     "x_gust",
-     "e_bellkeeper",
-     "e_reverse",
-     "e_reverse",
-     "stop",
-     "bolt",
-     "bolt",
-     "arrow",
-     "rewind",
-     "rewind",
-     "e_peek",
-     "e_peek",
-     "collapse"
-    ],
-    "share": 0.5,
-    "since": 1793317217242
-   }
+   ]
   },
   "prison_control_delayer~lo": {
    "v": 16,
@@ -308,7 +281,34 @@
     "bolt",
     "e_peek",
     "e_peek"
-   ]
+   ],
+   "trial": {
+    "v": 80,
+    "cards": [
+     "x_seer",
+     "x_seer",
+     "x_sentry",
+     "x_sentry",
+     "scout",
+     "archer",
+     "oracle",
+     "gear",
+     "gear",
+     "lancer",
+     "lancer",
+     "breaker",
+     "collapse",
+     "heavy",
+     "arrow",
+     "arrow",
+     "bolt",
+     "bolt",
+     "e_peek",
+     "e_peek"
+    ],
+    "share": 0.5,
+    "since": 1794530399258
+   }
   },
   "lancer_beat_ram~lo": {
    "v": 22,
@@ -335,7 +335,7 @@
     "insight"
    ],
    "trial": {
-    "v": 61,
+    "v": 81,
     "cards": [
      "archer",
      "archer",
@@ -351,7 +351,7 @@
      "e_raider",
      "heavy",
      "heavy",
-     "e_bellkeeper",
+     "e_shot",
      "arrow",
      "bolt",
      "bolt",
@@ -359,7 +359,7 @@
      "insight"
     ],
     "share": 0.5,
-    "since": 1793317033736
+    "since": 1794530573459
    }
   },
   "raid_aggro_arrow~lo": {
@@ -1184,7 +1184,34 @@
     "bolt",
     "collapse",
     "insight"
-   ]
+   ],
+   "trial": {
+    "v": 82,
+    "cards": [
+     "scout",
+     "scout",
+     "archer",
+     "archer",
+     "x_ram",
+     "gear",
+     "gear",
+     "scribe",
+     "scribe",
+     "lancer",
+     "lancer",
+     "delayer",
+     "heavy",
+     "heavy",
+     "dragon",
+     "x_gust",
+     "arrow",
+     "bolt",
+     "collapse",
+     "insight"
+    ],
+    "share": 0.5,
+    "since": 1794530811982
+   }
   },
   "lancer_beat_sentinel~lo": {
    "v": 43,
