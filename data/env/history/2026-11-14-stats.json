@@ -1,0 +1,219 @@
+{
+ "date": "2026-11-14",
+ "v": "0.23.1",
+ "games": {
+  "free-lv10": [
+   1,
+   0
+  ],
+  "rated": [
+   14,
+   9
+  ]
+ },
+ "impacts": [
+  {
+   "id": "ghost",
+   "used": 10,
+   "winUsed": 60,
+   "lift": -4.285714285714288,
+   "inDeck": 14
+  },
+  {
+   "id": "e_storm",
+   "used": 9,
+   "winUsed": 55.55555555555556,
+   "lift": -1.5873015873015914,
+   "inDeck": 14
+  },
+  {
+   "id": "e_pray",
+   "used": 8,
+   "winUsed": 62.5,
+   "lift": 6.25,
+   "inDeck": 14
+  },
+  {
+   "id": "warden",
+   "used": 7,
+   "winUsed": 57.142857142857146,
+   "lift": 2.040816326530605,
+   "inDeck": 14
+  },
+  {
+   "id": "e_verna",
+   "used": 7,
+   "winUsed": 71.42857142857143,
+   "lift": 7.142857142857143,
+   "inDeck": 13
+  },
+  {
+   "id": "bolt",
+   "used": 6,
+   "winUsed": 83.33333333333333,
+   "lift": 19.04761904761904,
+   "inDeck": 15
+  },
+  {
+   "id": "e_reverse",
+   "used": 6,
+   "winUsed": 83.33333333333333,
+   "lift": 19.04761904761904,
+   "inDeck": 13
+  },
+  {
+   "id": "stop",
+   "used": 6,
+   "winUsed": 83.33333333333333,
+   "lift": 19.04761904761904,
+   "inDeck": 14
+  },
+  {
+   "id": "collapse",
+   "used": 5,
+   "winUsed": 80,
+   "lift": 15.714285714285712,
+   "inDeck": 15
+  },
+  {
+   "id": "breaker",
+   "used": 5,
+   "winUsed": 60,
+   "lift": -4.285714285714288,
+   "inDeck": 14
+  },
+  {
+   "id": "e_atra",
+   "used": 5,
+   "winUsed": 60,
+   "lift": -4.285714285714288,
+   "inDeck": 13
+  },
+  {
+   "id": "x_mirea",
+   "used": 4,
+   "winUsed": 50,
+   "lift": -14.28571428571429,
+   "inDeck": 13
+  },
+  {
+   "id": "x_usurper",
+   "used": 4,
+   "winUsed": 100,
+   "lift": 35.71428571428571,
+   "inDeck": 13
+  },
+  {
+   "id": "e_eternal",
+   "used": 4,
+   "winUsed": 50,
+   "lift": -14.28571428571429,
+   "inDeck": 13
+  },
+  {
+   "id": "e_guard",
+   "used": 3,
+   "winUsed": 66.66666666666667,
+   "lift": 23.809523809523807,
+   "inDeck": 14
+  },
+  {
+   "id": "x_decoy",
+   "used": 1,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "rewind",
+   "used": 1,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "x_oblivion",
+   "used": 1,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "e_bellkeeper",
+   "used": 1,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "e_shot",
+   "used": 1,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "scout",
+   "used": 1,
+   "winUsed": 0,
+   "lift": -64.28571428571429,
+   "inDeck": 1
+  },
+  {
+   "id": "gear",
+   "used": 1,
+   "winUsed": 0,
+   "lift": -64.28571428571429,
+   "inDeck": 1
+  },
+  {
+   "id": "e_break",
+   "used": 0,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "pendulum",
+   "used": 0,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "oracle",
+   "used": 0,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "delayer",
+   "used": 0,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "heavy",
+   "used": 0,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "arrow",
+   "used": 0,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "cage",
+   "used": 0,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  }
+ ]
+}

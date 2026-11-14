@@ -1,6 +1,6 @@
 {
- "version": 38,
- "at": 1794530226201,
+ "version": 39,
+ "at": 1794615846630,
  "decks": {
   "titan_control_cage~lo": {
    "v": 57,
@@ -105,7 +105,7 @@
    }
   },
   "prison_control_mirea": {
-   "v": 17,
+   "v": 63,
    "cards": [
     "warden",
     "warden",
@@ -116,7 +116,7 @@
     "delayer",
     "delayer",
     "e_shot",
-    "cage",
+    "x_gust",
     "e_reverse",
     "e_reverse",
     "stop",
@@ -127,34 +127,7 @@
     "rewind",
     "rewind",
     "x_mirea"
-   ],
-   "trial": {
-    "v": 63,
-    "cards": [
-     "warden",
-     "warden",
-     "x_seer",
-     "x_seer",
-     "e_guard",
-     "e_guard",
-     "delayer",
-     "delayer",
-     "e_shot",
-     "x_gust",
-     "e_reverse",
-     "e_reverse",
-     "stop",
-     "bolt",
-     "bolt",
-     "insight",
-     "insight",
-     "rewind",
-     "rewind",
-     "x_mirea"
-    ],
-    "share": 0.5,
-    "since": 1793402129693
-   }
+   ]
   },
   "sweep_control_gust~lo": {
    "v": 56,
@@ -388,13 +361,13 @@
    ]
   },
   "raid_aggro_ram~lo": {
-   "v": 24,
+   "v": 64,
    "cards": [
     "scout",
     "scout",
     "e_page",
     "e_page",
-    "archer",
+    "ghost",
     "archer",
     "x_ram",
     "x_ram",
@@ -410,34 +383,7 @@
     "bolt",
     "e_shot",
     "arrow"
-   ],
-   "trial": {
-    "v": 64,
-    "cards": [
-     "scout",
-     "scout",
-     "e_page",
-     "e_page",
-     "ghost",
-     "archer",
-     "x_ram",
-     "x_ram",
-     "gear",
-     "gear",
-     "e_raider",
-     "e_raider",
-     "e_reverse",
-     "e_reverse",
-     "haste",
-     "haste",
-     "bolt",
-     "bolt",
-     "e_shot",
-     "arrow"
-    ],
-    "share": 0.5,
-    "since": 1793402232470
-   }
+   ]
   },
   "raid_tempo_decoy": {
    "v": 1,
