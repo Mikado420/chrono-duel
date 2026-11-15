@@ -1,6 +1,6 @@
 {
- "version": 40,
- "at": 1794698017327,
+ "version": 41,
+ "at": 1794785207328,
  "decks": {
   "titan_control_cage~lo": {
    "v": 57,
@@ -53,7 +53,7 @@
    ]
   },
   "prison_control_delayer~lo": {
-   "v": 16,
+   "v": 66,
    "cards": [
     "warden",
     "warden",
@@ -69,40 +69,13 @@
     "stop",
     "bolt",
     "bolt",
-    "e_slash",
+    "arrow",
     "rewind",
     "rewind",
     "e_peek",
     "e_peek",
     "collapse"
-   ],
-   "trial": {
-    "v": 66,
-    "cards": [
-     "warden",
-     "warden",
-     "e_guard",
-     "e_guard",
-     "delayer",
-     "delayer",
-     "sentinel",
-     "x_gust",
-     "cage",
-     "e_reverse",
-     "e_reverse",
-     "stop",
-     "bolt",
-     "bolt",
-     "arrow",
-     "rewind",
-     "rewind",
-     "e_peek",
-     "e_peek",
-     "collapse"
-    ],
-    "share": 0.5,
-    "since": 1793574066544
-   }
+   ]
   },
   "prison_control_mirea": {
    "v": 63,
@@ -514,7 +487,34 @@
     "e_slash",
     "e_shot",
     "rewind"
-   ]
+   ],
+   "trial": {
+    "v": 87,
+    "cards": [
+     "x_seer",
+     "x_seer",
+     "e_tuner",
+     "e_page",
+     "warden",
+     "warden",
+     "e_raider",
+     "e_raider",
+     "e_reverse",
+     "e_reverse",
+     "stop",
+     "x_decoy",
+     "x_decoy",
+     "insight",
+     "insight",
+     "bolt",
+     "bolt",
+     "e_slash",
+     "e_shot",
+     "rewind"
+    ],
+    "share": 0.5,
+    "since": 1794785507523
+   }
   },
   "raid_tempo_raider_guard": {
    "v": 27,
