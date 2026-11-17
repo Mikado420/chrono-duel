@@ -1,6 +1,6 @@
 {
- "version": 41,
- "at": 1794785207328,
+ "version": 42,
+ "at": 1794882804960,
  "decks": {
   "titan_control_cage~lo": {
    "v": 57,
@@ -413,7 +413,7 @@
    }
   },
   "raid_tempo_decoy": {
-   "v": 1,
+   "v": 67,
    "cards": [
     "x_seer",
     "x_seer",
@@ -432,37 +432,10 @@
     "insight",
     "bolt",
     "bolt",
-    "arrow",
+    "e_bellkeeper",
     "arrow",
     "rewind"
-   ],
-   "trial": {
-    "v": 67,
-    "cards": [
-     "x_seer",
-     "x_seer",
-     "e_page",
-     "e_page",
-     "warden",
-     "warden",
-     "e_raider",
-     "e_raider",
-     "e_reverse",
-     "e_reverse",
-     "stop",
-     "x_decoy",
-     "x_decoy",
-     "insight",
-     "insight",
-     "bolt",
-     "bolt",
-     "e_bellkeeper",
-     "arrow",
-     "rewind"
-    ],
-    "share": 0.5,
-    "since": 1793670374465
-   }
+   ]
   },
   "raid_tempo_decoy~lo": {
    "v": 65,
@@ -1413,7 +1386,34 @@
     "insight",
     "e_pray",
     "e_pray"
-   ]
+   ],
+   "trial": {
+    "v": 88,
+    "cards": [
+     "e_sprite",
+     "e_sprite",
+     "warden",
+     "warden",
+     "e_guard",
+     "e_guard",
+     "bolt",
+     "bolt",
+     "e_eternal",
+     "x_decoy",
+     "x_decoy",
+     "e_reverse",
+     "e_reverse",
+     "stop",
+     "e_slash",
+     "arrow",
+     "e_draw",
+     "insight",
+     "e_pray",
+     "e_pray"
+    ],
+    "share": 0.5,
+    "since": 1794883504004
+   }
   },
   "shadow_aggro_mage~lo": {
    "v": 52,

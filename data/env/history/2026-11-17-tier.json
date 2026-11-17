@@ -1,0 +1,533 @@
+{
+ "v": 1,
+ "date": "2026-11-17",
+ "days": [
+  "20261111",
+  "20261117"
+ ],
+ "prevDate": "2026-11-16",
+ "rows": [
+  {
+   "type": "予約 バーン",
+   "tier": null,
+   "all": [
+    1,
+    1,
+    0.12
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    1,
+    1,
+    0.12
+   ],
+   "players": 0,
+   "perf": 2.8,
+   "builds": {
+    "resv_burn_decoy": [
+     1,
+     1,
+     0.12
+    ]
+   },
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "急襲 アグロ",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "影法師 アグロ",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "牢獄 コントロール",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "籠城 バーン",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "破約 コントロール",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "一掃 コントロール",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "槍兵 ビート",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "予約狩り ビート",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "巨像 コントロール",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "充填 ビート",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "ヴェルナ ループ",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "共鳴 コンボ",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "急襲 テンポ",
+   "tier": null,
+   "all": [
+    1,
+    0,
+    0.28
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    1,
+    0,
+    0.28
+   ],
+   "players": 0,
+   "perf": -0.9,
+   "builds": {
+    "raid_tempo_haste": [
+     1,
+     0,
+     0.28
+    ]
+   },
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "秒針 アグロ",
+   "tier": null,
+   "all": [
+    5,
+    2,
+    2.6
+   ],
+   "human": [
+    3,
+    2,
+    2
+   ],
+   "ai": [
+    2,
+    0,
+    0.6
+   ],
+   "players": 1,
+   "perf": -1.7,
+   "builds": {
+    "second_aggro_pendulum": [
+     3,
+     2,
+     2
+    ],
+    "second_aggro_sprite": [
+     2,
+     0,
+     0.6
+    ]
+   },
+   "use": 0,
+   "was": null
+  }
+ ],
+ "bands": {
+  "novice": {
+   "秒針 アグロ": 3
+  }
+ },
+ "cards": {
+  "x_decoy": [
+   0,
+   16
+  ],
+  "bolt": [
+   100,
+   16
+  ],
+  "e_pray": [
+   81.3,
+   16
+  ],
+  "rewind": [
+   0,
+   16
+  ],
+  "warden": [
+   81.3,
+   16
+  ],
+  "collapse": [
+   87.5,
+   16
+  ],
+  "x_oblivion": [
+   0,
+   16
+  ],
+  "e_guard": [
+   81.3,
+   16
+  ],
+  "e_break": [
+   0,
+   16
+  ],
+  "e_storm": [
+   81.3,
+   16
+  ],
+  "e_bellkeeper": [
+   0,
+   16
+  ],
+  "e_shot": [
+   0,
+   16
+  ],
+  "e_reverse": [
+   81.3,
+   16
+  ],
+  "stop": [
+   87.5,
+   16
+  ],
+  "ghost": [
+   100,
+   16
+  ],
+  "x_mirea": [
+   81.3,
+   16
+  ],
+  "e_verna": [
+   81.3,
+   16
+  ],
+  "x_usurper": [
+   81.3,
+   16
+  ],
+  "breaker": [
+   87.5,
+   16
+  ],
+  "e_eternal": [
+   81.3,
+   16
+  ],
+  "e_atra": [
+   81.3,
+   16
+  ],
+  "scout": [
+   18.8,
+   16
+  ],
+  "pendulum": [
+   18.8,
+   16
+  ],
+  "oracle": [
+   6.3,
+   16
+  ],
+  "delayer": [
+   18.8,
+   16
+  ],
+  "gear": [
+   18.8,
+   16
+  ],
+  "heavy": [
+   6.3,
+   16
+  ],
+  "arrow": [
+   18.8,
+   16
+  ],
+  "cage": [
+   6.3,
+   16
+  ],
+  "archer": [
+   12.5,
+   16
+  ],
+  "lancer": [
+   12.5,
+   16
+  ],
+  "sentinel": [
+   12.5,
+   16
+  ],
+  "haste": [
+   12.5,
+   16
+  ]
+ }
+}
