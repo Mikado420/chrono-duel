@@ -1,0 +1,571 @@
+{
+ "v": 1,
+ "date": "2026-11-18",
+ "days": [
+  "20261112",
+  "20261118"
+ ],
+ "prevDate": "2026-11-17",
+ "rows": [
+  {
+   "type": "牢獄 コントロール",
+   "tier": null,
+   "all": [
+    1,
+    1,
+    0.18
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    1,
+    1,
+    0.18
+   ],
+   "players": 0,
+   "perf": 2.7,
+   "builds": {
+    "prison_control_mirea": [
+     1,
+     1,
+     0.18
+    ]
+   },
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "破約 コントロール",
+   "tier": null,
+   "all": [
+    1,
+    1,
+    0.15
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    1,
+    1,
+    0.15
+   ],
+   "players": 0,
+   "perf": 2.7,
+   "builds": {
+    "break_control_oblivion": [
+     1,
+     1,
+     0.15
+    ]
+   },
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "予約 バーン",
+   "tier": null,
+   "all": [
+    2,
+    1,
+    0.53
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    2,
+    1,
+    0.53
+   ],
+   "players": 0,
+   "perf": 1.5,
+   "builds": {
+    "resv_burn_decoy": [
+     2,
+     1,
+     0.53
+    ]
+   },
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "急襲 アグロ",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "影法師 アグロ",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "籠城 バーン",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "予約狩り ビート",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "充填 ビート",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "ヴェルナ ループ",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "共鳴 コンボ",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "急襲 テンポ",
+   "tier": null,
+   "all": [
+    1,
+    0,
+    0.13
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    1,
+    0,
+    0.13
+   ],
+   "players": 0,
+   "perf": -0.4,
+   "builds": {
+    "raid_tempo_raider_guard": [
+     1,
+     0,
+     0.13
+    ]
+   },
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "巨像 コントロール",
+   "tier": null,
+   "all": [
+    1,
+    0,
+    0.32
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    1,
+    0,
+    0.32
+   ],
+   "players": 0,
+   "perf": -1,
+   "builds": {
+    "titan_control_cage": [
+     1,
+     0,
+     0.32
+    ]
+   },
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "一掃 コントロール",
+   "tier": null,
+   "all": [
+    1,
+    0,
+    0.42
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    1,
+    0,
+    0.42
+   ],
+   "players": 0,
+   "perf": -1.4,
+   "builds": {
+    "sweep_control_gust": [
+     1,
+     0,
+     0.42
+    ]
+   },
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "槍兵 ビート",
+   "tier": null,
+   "all": [
+    1,
+    0,
+    0.43
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    1,
+    0,
+    0.43
+   ],
+   "players": 0,
+   "perf": -1.4,
+   "builds": {
+    "lancer_beat_sentinel": [
+     1,
+     0,
+     0.43
+    ]
+   },
+   "use": 0,
+   "was": null
+  },
+  {
+   "type": "秒針 アグロ",
+   "tier": null,
+   "all": [
+    5,
+    2,
+    2.84
+   ],
+   "human": [
+    3,
+    2,
+    2
+   ],
+   "ai": [
+    2,
+    0,
+    0.84
+   ],
+   "players": 1,
+   "perf": -2.4,
+   "builds": {
+    "second_aggro_pendulum": [
+     3,
+     2,
+     2
+    ],
+    "second_aggro_sprite": [
+     2,
+     0,
+     0.84
+    ]
+   },
+   "use": 0,
+   "was": null
+  }
+ ],
+ "bands": {
+  "novice": {
+   "秒針 アグロ": 3
+  }
+ },
+ "cards": {
+  "x_decoy": [
+   0,
+   25
+  ],
+  "bolt": [
+   100,
+   25
+  ],
+  "e_pray": [
+   84,
+   25
+  ],
+  "rewind": [
+   0,
+   25
+  ],
+  "warden": [
+   64,
+   25
+  ],
+  "collapse": [
+   92,
+   25
+  ],
+  "x_oblivion": [
+   0,
+   25
+  ],
+  "e_guard": [
+   68,
+   25
+  ],
+  "e_break": [
+   0,
+   25
+  ],
+  "e_storm": [
+   64,
+   25
+  ],
+  "e_bellkeeper": [
+   0,
+   25
+  ],
+  "e_shot": [
+   0,
+   25
+  ],
+  "e_reverse": [
+   64,
+   25
+  ],
+  "stop": [
+   92,
+   25
+  ],
+  "ghost": [
+   100,
+   25
+  ],
+  "x_mirea": [
+   68,
+   25
+  ],
+  "e_verna": [
+   64,
+   25
+  ],
+  "x_usurper": [
+   88,
+   25
+  ],
+  "breaker": [
+   92,
+   25
+  ],
+  "e_eternal": [
+   64,
+   25
+  ],
+  "e_atra": [
+   64,
+   25
+  ],
+  "scout": [
+   12,
+   25
+  ],
+  "pendulum": [
+   12,
+   25
+  ],
+  "oracle": [
+   4,
+   25
+  ],
+  "delayer": [
+   12,
+   25
+  ],
+  "gear": [
+   12,
+   25
+  ],
+  "heavy": [
+   4,
+   25
+  ],
+  "arrow": [
+   36,
+   25
+  ],
+  "cage": [
+   4,
+   25
+  ],
+  "archer": [
+   8,
+   25
+  ],
+  "lancer": [
+   32,
+   25
+  ],
+  "sentinel": [
+   8,
+   25
+  ],
+  "haste": [
+   32,
+   25
+  ],
+  "e_draw": [
+   24,
+   25
+  ],
+  "e_tuner": [
+   24,
+   25
+  ]
+ }
+}

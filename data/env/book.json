@@ -1,6 +1,6 @@
 {
- "version": 42,
- "at": 1794882804960,
+ "version": 43,
+ "at": 1794966259345,
  "decks": {
   "titan_control_cage~lo": {
    "v": 57,
@@ -515,11 +515,11 @@
    ]
   },
   "reso_combo_storm~lo": {
-   "v": 28,
+   "v": 68,
    "cards": [
     "e_sprite",
     "e_sprite",
-    "sentinel",
+    "e_march",
     "e_tuner",
     "e_twin",
     "e_twin",
@@ -537,34 +537,7 @@
     "e_storm",
     "e_eternal",
     "e_verna"
-   ],
-   "trial": {
-    "v": 68,
-    "cards": [
-     "e_sprite",
-     "e_sprite",
-     "e_march",
-     "e_tuner",
-     "e_twin",
-     "e_twin",
-     "e_bellkeeper",
-     "e_bellkeeper",
-     "e_mage",
-     "e_peek",
-     "e_peek",
-     "e_draw",
-     "e_draw",
-     "e_pray",
-     "e_pray",
-     "e_shot",
-     "e_shot",
-     "e_storm",
-     "e_eternal",
-     "e_verna"
-    ],
-    "share": 0.5,
-    "since": 1793751133677
-   }
+   ]
   },
   "resv_burn_mage~lo": {
    "v": 29,
@@ -693,7 +666,34 @@
     "bolt",
     "e_shot",
     "arrow"
-   ]
+   ],
+   "trial": {
+    "v": 89,
+    "cards": [
+     "scout",
+     "scout",
+     "archer",
+     "archer",
+     "e_page",
+     "e_page",
+     "pendulum",
+     "pendulum",
+     "ghost",
+     "ghost",
+     "gear",
+     "gear",
+     "lancer",
+     "lancer",
+     "haste",
+     "haste",
+     "bolt",
+     "bolt",
+     "e_shot",
+     "x_gust"
+    ],
+    "share": 0.5,
+    "since": 1794966353920
+   }
   },
   "second_aggro_sprite~lo": {
    "v": 32,
@@ -1438,7 +1438,34 @@
     "e_reverse",
     "e_eternal",
     "bolt"
-   ]
+   ],
+   "trial": {
+    "v": 90,
+    "cards": [
+     "e_sprite",
+     "e_sprite",
+     "archer",
+     "scout",
+     "e_page",
+     "e_page",
+     "stop",
+     "ghost",
+     "e_twin",
+     "e_twin",
+     "e_march",
+     "e_march",
+     "e_mage",
+     "e_mage",
+     "haste",
+     "haste",
+     "e_reverse",
+     "e_reverse",
+     "e_eternal",
+     "bolt"
+    ],
+    "share": 0.5,
+    "since": 1794966441061
+   }
   },
   "siege_burn_mirea": {
    "v": 53,
