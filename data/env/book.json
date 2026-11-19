@@ -1,6 +1,6 @@
 {
- "version": 43,
- "at": 1794966259345,
+ "version": 44,
+ "at": 1795051158647,
  "decks": {
   "titan_control_cage~lo": {
    "v": 57,
@@ -125,7 +125,34 @@
     "rewind",
     "e_draw",
     "insight"
-   ]
+   ],
+   "trial": {
+    "v": 92,
+    "cards": [
+     "warden",
+     "warden",
+     "x_sentry",
+     "x_sentry",
+     "e_guard",
+     "e_guard",
+     "heavy",
+     "heavy",
+     "e_atra",
+     "x_gust",
+     "x_gust",
+     "collapse",
+     "e_storm",
+     "arrow",
+     "arrow",
+     "e_shot",
+     "scribe",
+     "rewind",
+     "e_draw",
+     "insight"
+    ],
+    "share": 0.5,
+    "since": 1795051897716
+   }
   },
   "titan_control_dragon~lo": {
    "v": 58,
@@ -1515,7 +1542,34 @@
     "stop",
     "insight",
     "insight"
-   ]
+   ],
+   "trial": {
+    "v": 91,
+    "cards": [
+     "e_sprite",
+     "e_sprite",
+     "warden",
+     "warden",
+     "e_guard",
+     "e_guard",
+     "bolt",
+     "bolt",
+     "e_eternal",
+     "e_bellkeeper",
+     "e_shot",
+     "e_slash",
+     "arrow",
+     "e_pray",
+     "e_pray",
+     "rewind",
+     "rewind",
+     "stop",
+     "insight",
+     "insight"
+    ],
+    "share": 0.5,
+    "since": 1795051541760
+   }
   },
   "siege_burn_sentry~lo": {
    "v": 55,
@@ -1543,7 +1597,7 @@
    ]
   },
   "raid_tempo_guard": {
-   "v": 1,
+   "v": 69,
    "cards": [
     "warden",
     "warden",
@@ -1560,39 +1614,12 @@
     "arrow",
     "insight",
     "rewind",
-    "e_draw",
+    "scribe",
     "e_draw",
     "collapse",
     "e_eternal",
     "x_mirea"
-   ],
-   "trial": {
-    "v": 69,
-    "cards": [
-     "warden",
-     "warden",
-     "e_sprite",
-     "e_sprite",
-     "e_guard",
-     "e_guard",
-     "e_reverse",
-     "e_reverse",
-     "stop",
-     "bolt",
-     "bolt",
-     "arrow",
-     "arrow",
-     "insight",
-     "rewind",
-     "scribe",
-     "e_draw",
-     "collapse",
-     "e_eternal",
-     "x_mirea"
-    ],
-    "share": 0.5,
-    "since": 1793838723912
-   }
+   ]
   },
   "break_control_usurper~lo": {
    "v": 1,
