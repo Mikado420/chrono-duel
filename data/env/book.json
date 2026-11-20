@@ -1,6 +1,6 @@
 {
- "version": 44,
- "at": 1795051158647,
+ "version": 45,
+ "at": 1795137747152,
  "decks": {
   "titan_control_cage~lo": {
    "v": 57,
@@ -25,7 +25,34 @@
     "rewind",
     "collapse",
     "insight"
-   ]
+   ],
+   "trial": {
+    "v": 94,
+    "cards": [
+     "warden",
+     "warden",
+     "archer",
+     "pendulum",
+     "scribe",
+     "scribe",
+     "e_guard",
+     "e_guard",
+     "heavy",
+     "heavy",
+     "sentinel",
+     "titan",
+     "cage",
+     "cage",
+     "e_slash",
+     "arrow",
+     "rewind",
+     "rewind",
+     "collapse",
+     "insight"
+    ],
+    "share": 0.5,
+    "since": 1795138109379
+   }
   },
   "prison_control_delayer": {
    "v": 62,
@@ -567,7 +594,7 @@
    ]
   },
   "resv_burn_mage~lo": {
-   "v": 29,
+   "v": 70,
    "cards": [
     "e_sprite",
     "e_sprite",
@@ -585,41 +612,14 @@
     "arrow",
     "e_reverse",
     "e_reverse",
-    "x_oblivion",
+    "insight",
     "insight",
     "e_draw",
     "e_draw"
-   ],
-   "trial": {
-    "v": 70,
-    "cards": [
-     "e_sprite",
-     "e_sprite",
-     "warden",
-     "warden",
-     "e_mage",
-     "e_mage",
-     "e_guard",
-     "bolt",
-     "bolt",
-     "e_eternal",
-     "e_shot",
-     "e_shot",
-     "arrow",
-     "arrow",
-     "e_reverse",
-     "e_reverse",
-     "insight",
-     "insight",
-     "e_draw",
-     "e_draw"
-    ],
-    "share": 0.5,
-    "since": 1793925700447
-   }
+   ]
   },
   "second_aggro_lancer~lo": {
-   "v": 30,
+   "v": 71,
    "cards": [
     "scout",
     "scout",
@@ -633,7 +633,7 @@
     "lancer",
     "e_raider",
     "e_raider",
-    "sentinel",
+    "breaker",
     "haste",
     "haste",
     "bolt",
@@ -641,34 +641,7 @@
     "arrow",
     "arrow",
     "scribe"
-   ],
-   "trial": {
-    "v": 71,
-    "cards": [
-     "scout",
-     "scout",
-     "archer",
-     "archer",
-     "e_page",
-     "e_page",
-     "gear",
-     "gear",
-     "lancer",
-     "lancer",
-     "e_raider",
-     "e_raider",
-     "breaker",
-     "haste",
-     "haste",
-     "bolt",
-     "bolt",
-     "arrow",
-     "arrow",
-     "scribe"
-    ],
-    "share": 0.5,
-    "since": 1793925862101
-   }
+   ]
   },
   "second_aggro_pendulum~lo": {
    "v": 51,
@@ -1594,7 +1567,34 @@
     "insight",
     "insight",
     "stop"
-   ]
+   ],
+   "trial": {
+    "v": 93,
+    "cards": [
+     "e_sprite",
+     "e_sprite",
+     "warden",
+     "warden",
+     "x_sentry",
+     "x_sentry",
+     "bolt",
+     "bolt",
+     "e_eternal",
+     "x_gust",
+     "x_gust",
+     "arrow",
+     "arrow",
+     "e_pray",
+     "e_pray",
+     "rewind",
+     "rewind",
+     "insight",
+     "insight",
+     "stop"
+    ],
+    "share": 0.5,
+    "since": 1795137900094
+   }
   },
   "raid_tempo_guard": {
    "v": 69,
