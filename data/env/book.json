@@ -1,6 +1,6 @@
 {
- "version": 45,
- "at": 1795137747152,
+ "version": 46,
+ "at": 1795222417343,
  "decks": {
   "titan_control_cage~lo": {
    "v": 57,
@@ -204,7 +204,34 @@
     "insight",
     "insight",
     "stop"
-   ]
+   ],
+   "trial": {
+    "v": 95,
+    "cards": [
+     "warden",
+     "warden",
+     "e_blade",
+     "x_seer",
+     "e_guard",
+     "e_guard",
+     "heavy",
+     "heavy",
+     "x_sentry",
+     "dragon",
+     "titan",
+     "arrow",
+     "arrow",
+     "rewind",
+     "rewind",
+     "e_pray",
+     "e_pray",
+     "insight",
+     "insight",
+     "stop"
+    ],
+    "share": 0.5,
+    "since": 1795222634843
+   }
   },
   "charge_beat_seer~lo": {
    "v": 20,
@@ -696,7 +723,7 @@
    }
   },
   "second_aggro_sprite~lo": {
-   "v": 32,
+   "v": 72,
    "cards": [
     "scout",
     "scout",
@@ -705,7 +732,7 @@
     "archer",
     "archer",
     "pendulum",
-    "e_page",
+    "e_blade",
     "gear",
     "gear",
     "e_raider",
@@ -718,43 +745,16 @@
     "arrow",
     "e_shot",
     "e_eternal"
-   ],
-   "trial": {
-    "v": 72,
-    "cards": [
-     "scout",
-     "scout",
-     "e_sprite",
-     "e_sprite",
-     "archer",
-     "archer",
-     "pendulum",
-     "e_blade",
-     "gear",
-     "gear",
-     "e_raider",
-     "e_raider",
-     "haste",
-     "haste",
-     "bolt",
-     "bolt",
-     "arrow",
-     "arrow",
-     "e_shot",
-     "e_eternal"
-    ],
-    "share": 0.5,
-    "since": 1794008870681
-   }
+   ]
   },
   "shadow_aggro_gear~lo": {
-   "v": 33,
+   "v": 73,
    "cards": [
     "e_sprite",
     "e_sprite",
     "scout",
     "scout",
-    "e_page",
+    "e_tuner",
     "e_page",
     "ghost",
     "ghost",
@@ -770,34 +770,7 @@
     "e_draw",
     "bolt",
     "e_eternal"
-   ],
-   "trial": {
-    "v": 73,
-    "cards": [
-     "e_sprite",
-     "e_sprite",
-     "scout",
-     "scout",
-     "e_tuner",
-     "e_page",
-     "ghost",
-     "ghost",
-     "e_twin",
-     "e_twin",
-     "scribe",
-     "e_march",
-     "gear",
-     "gear",
-     "haste",
-     "haste",
-     "e_draw",
-     "e_draw",
-     "bolt",
-     "e_eternal"
-    ],
-    "share": 0.5,
-    "since": 1794009052498
-   }
+   ]
   },
   "siege_burn_pray~lo": {
    "v": 34,
