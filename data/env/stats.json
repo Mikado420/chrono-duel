@@ -1,5 +1,5 @@
 {
- "date": "2026-11-21",
+ "date": "2026-11-22",
  "v": "0.23.1",
  "games": {
   "free-lv10": [
@@ -7,8 +7,8 @@
    0
   ],
   "rated": [
-   29,
-   22
+   32,
+   25
   ],
   "free-lv5": [
    2,
@@ -21,157 +21,157 @@
  },
  "impacts": [
   {
+   "id": "bolt",
+   "used": 23,
+   "winUsed": 86.95652173913044,
+   "lift": 12.5,
+   "inDeck": 37
+  },
+  {
    "id": "ghost",
    "used": 22,
    "winUsed": 63.63636363636363,
-   "lift": -8.699059561128527,
-   "inDeck": 33
-  },
-  {
-   "id": "bolt",
-   "used": 21,
-   "winUsed": 85.71428571428571,
-   "lift": 13.54679802955665,
-   "inDeck": 34
+   "lift": -10.653409090909092,
+   "inDeck": 36
   },
   {
    "id": "stop",
-   "used": 15,
-   "winUsed": 73.33333333333333,
-   "lift": 0.9195402298850652,
-   "inDeck": 31
+   "used": 17,
+   "winUsed": 76.47058823529412,
+   "lift": 1.6544117647058822,
+   "inDeck": 34
   },
   {
    "id": "x_usurper",
-   "used": 14,
-   "winUsed": 92.85714285714286,
-   "lift": 22.536945812807883,
-   "inDeck": 30
+   "used": 16,
+   "winUsed": 93.75,
+   "lift": 20.8984375,
+   "inDeck": 33
   },
   {
    "id": "lancer",
-   "used": 14,
-   "winUsed": 78.57142857142857,
-   "lift": 8.251231527093594,
-   "inDeck": 16
+   "used": 16,
+   "winUsed": 81.25,
+   "lift": 8.3984375,
+   "inDeck": 19
   },
   {
    "id": "e_reverse",
+   "used": 14,
+   "winUsed": 85.71428571428571,
+   "lift": 9.598214285714286,
+   "inDeck": 23
+  },
+  {
+   "id": "haste",
    "used": 13,
    "winUsed": 84.61538461538461,
-   "lift": 10.742705570291788,
-   "inDeck": 20
+   "lift": 12.98076923076923,
+   "inDeck": 19
   },
   {
    "id": "e_storm",
    "used": 12,
    "winUsed": 58.333333333333336,
-   "lift": -9.051724137931034,
+   "lift": -10.9375,
    "inDeck": 17
   },
   {
    "id": "breaker",
    "used": 11,
    "winUsed": 54.54545454545455,
-   "lift": -14.263322884012537,
-   "inDeck": 31
+   "lift": -15.909090909090908,
+   "inDeck": 34
   },
   {
-   "id": "haste",
+   "id": "arrow",
    "used": 11,
-   "winUsed": 81.81818181818181,
-   "lift": 13.009404388714735,
-   "inDeck": 16
+   "winUsed": 100,
+   "lift": 21.875,
+   "inDeck": 20
+  },
+  {
+   "id": "e_draw",
+   "used": 11,
+   "winUsed": 72.72727272727273,
+   "lift": 2.272727272727273,
+   "inDeck": 17
+  },
+  {
+   "id": "e_tuner",
+   "used": 11,
+   "winUsed": 72.72727272727273,
+   "lift": 2.272727272727273,
+   "inDeck": 17
   },
   {
    "id": "warden",
    "used": 10,
    "winUsed": 60,
-   "lift": -5.68965517241379,
+   "lift": -7.5,
    "inDeck": 17
   },
   {
    "id": "collapse",
    "used": 10,
    "winUsed": 60,
-   "lift": -8.103448275862064,
+   "lift": -9.6875,
    "inDeck": 28
   },
   {
-   "id": "arrow",
-   "used": 10,
-   "winUsed": 100,
-   "lift": 24.137931034482758,
-   "inDeck": 17
-  },
-  {
-   "id": "e_draw",
-   "used": 10,
-   "winUsed": 70,
-   "lift": 1.896551724137936,
-   "inDeck": 14
-  },
-  {
-   "id": "e_tuner",
-   "used": 10,
-   "winUsed": 70,
-   "lift": 1.896551724137936,
-   "inDeck": 14
+   "id": "e_guard",
+   "used": 9,
+   "winUsed": 66.66666666666667,
+   "lift": 3.4722222222222223,
+   "inDeck": 29
   },
   {
    "id": "e_pray",
    "used": 8,
    "winUsed": 62.5,
-   "lift": -3.87931034482758,
+   "lift": -5.859375,
    "inDeck": 22
-  },
-  {
-   "id": "e_guard",
-   "used": 8,
-   "winUsed": 62.5,
-   "lift": 2.5862068965517238,
-   "inDeck": 26
   },
   {
    "id": "x_mirea",
    "used": 8,
    "winUsed": 62.5,
-   "lift": -10.12931034482758,
-   "inDeck": 25
+   "lift": -12.109375,
+   "inDeck": 28
   },
   {
    "id": "e_verna",
    "used": 8,
    "winUsed": 75,
-   "lift": 2.37068965517242,
+   "lift": 0.390625,
    "inDeck": 16
   },
   {
    "id": "e_atra",
    "used": 7,
    "winUsed": 57.142857142857146,
-   "lift": -15.024630541871911,
+   "lift": -16.964285714285715,
    "inDeck": 16
   },
   {
    "id": "e_eternal",
-   "used": 5,
-   "winUsed": 60,
-   "lift": -15.862068965517242,
-   "inDeck": 22
+   "used": 6,
+   "winUsed": 66.66666666666667,
+   "lift": -11.458333333333334,
+   "inDeck": 25
   },
   {
    "id": "gear",
    "used": 3,
    "winUsed": 66.66666666666667,
-   "lift": -9.195402298850563,
+   "lift": -11.458333333333334,
    "inDeck": 3
   },
   {
    "id": "scout",
    "used": 2,
    "winUsed": 50,
-   "lift": -25.86206896551724,
+   "lift": -28.125,
    "inDeck": 3
   },
   {
@@ -213,7 +213,7 @@
    "id": "archer",
    "used": 1,
    "winUsed": 100,
-   "lift": 24.13793103448276,
+   "lift": 21.875,
    "inDeck": 2
   },
   {
