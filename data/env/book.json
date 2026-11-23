@@ -1,6 +1,6 @@
 {
- "version": 47,
- "at": 1795305141761,
+ "version": 48,
+ "at": 1795393410817,
  "decks": {
   "titan_control_cage~lo": {
    "v": 57,
@@ -102,7 +102,34 @@
     "e_peek",
     "e_peek",
     "collapse"
-   ]
+   ],
+   "trial": {
+    "v": 97,
+    "cards": [
+     "warden",
+     "warden",
+     "e_guard",
+     "e_guard",
+     "delayer",
+     "delayer",
+     "sentinel",
+     "x_gust",
+     "cage",
+     "e_reverse",
+     "e_reverse",
+     "stop",
+     "bolt",
+     "bolt",
+     "arrow",
+     "rewind",
+     "rewind",
+     "oracle",
+     "e_peek",
+     "collapse"
+    ],
+    "share": 0.5,
+    "since": 1795393722253
+   }
   },
   "prison_control_mirea": {
    "v": 63,
@@ -873,7 +900,7 @@
    ]
   },
   "verna_loop_tuner~lo": {
-   "v": 38,
+   "v": 76,
    "cards": [
     "e_sprite",
     "e_sprite",
@@ -887,7 +914,7 @@
     "e_draw",
     "e_pray",
     "e_pray",
-    "e_reverse",
+    "stop",
     "e_reverse",
     "x_oblivion",
     "rewind",
@@ -895,34 +922,7 @@
     "bolt",
     "e_eternal",
     "e_verna"
-   ],
-   "trial": {
-    "v": 76,
-    "cards": [
-     "e_sprite",
-     "e_sprite",
-     "e_tuner",
-     "e_tuner",
-     "e_mage",
-     "e_mage",
-     "e_peek",
-     "e_peek",
-     "e_draw",
-     "e_draw",
-     "e_pray",
-     "e_pray",
-     "stop",
-     "e_reverse",
-     "x_oblivion",
-     "rewind",
-     "bolt",
-     "bolt",
-     "e_eternal",
-     "e_verna"
-    ],
-    "share": 0.5,
-    "since": 1794180083352
-   }
+   ]
   },
   "break_control_oblivion~lo": {
    "v": 39,
@@ -1153,7 +1153,34 @@
     "insight",
     "insight",
     "e_eternal"
-   ]
+   ],
+   "trial": {
+    "v": 98,
+    "cards": [
+     "warden",
+     "warden",
+     "x_sentry",
+     "x_sentry",
+     "e_guard",
+     "e_guard",
+     "delayer",
+     "delayer",
+     "cage",
+     "cage",
+     "e_reverse",
+     "e_reverse",
+     "stop",
+     "bolt",
+     "bolt",
+     "x_oblivion",
+     "rewind",
+     "scribe",
+     "insight",
+     "e_eternal"
+    ],
+    "share": 0.5,
+    "since": 1795394005713
+   }
   },
   "raid_aggro_arrow": {
    "v": 45,
