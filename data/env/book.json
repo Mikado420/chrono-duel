@@ -1,6 +1,6 @@
 {
- "version": 48,
- "at": 1795494087266,
+ "version": 49,
+ "at": 1795575983901,
  "decks": {
   "titan_control_cage~lo": {
    "v": 57,
@@ -1309,7 +1309,34 @@
     "bolt",
     "e_bellkeeper",
     "arrow"
-   ]
+   ],
+   "trial": {
+    "v": 99,
+    "cards": [
+     "x_seer",
+     "x_seer",
+     "e_page",
+     "e_page",
+     "x_sentry",
+     "e_raider",
+     "e_raider",
+     "e_reverse",
+     "e_reverse",
+     "stop",
+     "haste",
+     "haste",
+     "scribe",
+     "insight",
+     "rewind",
+     "rewind",
+     "bolt",
+     "bolt",
+     "e_bellkeeper",
+     "arrow"
+    ],
+    "share": 0.5,
+    "since": 1795576706396
+   }
   },
   "reso_combo_reverse~lo": {
    "v": 49,
