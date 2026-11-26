@@ -1,17 +1,17 @@
 {
  "v": 1,
- "date": "2026-11-25",
+ "date": "2026-11-26",
  "days": [
-  "20261119",
-  "20261125"
+  "20261120",
+  "20261126"
  ],
- "prevDate": "2026-11-24",
+ "prevDate": "2026-11-25",
  "rows": [
   {
    "type": "充填 ビート",
    "tier": null,
    "all": [
-    2,
+    1,
     1,
     0.02
    ],
@@ -21,15 +21,15 @@
     0
    ],
    "ai": [
-    2,
+    1,
     1,
     0.02
    ],
    "players": 0,
-   "perf": 3.1,
+   "perf": 3.2,
    "builds": {
     "charge_beat_heavy": [
-     2,
+     1,
      1,
      0.02
     ]
@@ -43,7 +43,7 @@
    "all": [
     2,
     0.5,
-    0.38
+    0.41
    ],
    "human": [
     0,
@@ -53,20 +53,20 @@
    "ai": [
     2,
     0.5,
-    0.38
+    0.41
    ],
    "players": 0,
-   "perf": 0.4,
+   "perf": 0.3,
    "builds": {
     "verna_loop_titan": [
      1,
      0,
-     0.22
+     0.24
     ],
     "verna_loop_guard": [
      1,
      0.5,
-     0.16
+     0.18
     ]
    },
    "use": 0,
@@ -169,6 +169,30 @@
    "was": null
   },
   {
+   "type": "巨像 コントロール",
+   "tier": null,
+   "all": [
+    0,
+    0,
+    0
+   ],
+   "human": [
+    0,
+    0,
+    0
+   ],
+   "ai": [
+    0,
+    0,
+    0
+   ],
+   "players": 0,
+   "perf": 0,
+   "builds": {},
+   "use": 0,
+   "was": null
+  },
+  {
    "type": "共鳴 コンボ",
    "tier": null,
    "all": [
@@ -193,12 +217,12 @@
    "was": null
   },
   {
-   "type": "破約 コントロール",
+   "type": "秒針 アグロ",
    "tier": null,
    "all": [
     1,
     0,
-    0.08
+    0.1
    ],
    "human": [
     0,
@@ -208,27 +232,27 @@
    "ai": [
     1,
     0,
-    0.08
+    0.1
    ],
    "players": 0,
-   "perf": -0.2,
+   "perf": -0.3,
    "builds": {
-    "break_control_oblivion": [
+    "second_aggro_pendulum": [
      1,
      0,
-     0.08
+     0.1
     ]
    },
    "use": 0,
    "was": null
   },
   {
-   "type": "急襲 テンポ",
+   "type": "破約 コントロール",
    "tier": null,
    "all": [
-    5,
-    0.5,
-    0.6
+    1,
+    0,
+    0.09
    ],
    "human": [
     0,
@@ -236,32 +260,17 @@
     0
    ],
    "ai": [
-    5,
-    0.5,
-    0.6
+    1,
+    0,
+    0.09
    ],
    "players": 0,
    "perf": -0.3,
    "builds": {
-    "raid_tempo_decoy": [
+    "break_control_oblivion": [
      1,
      0,
-     0.06
-    ],
-    "raid_tempo_haste": [
-     2,
-     0.5,
-     0.13
-    ],
-    "raid_tempo_raider_guard": [
-     1,
-     0,
-     0.22
-    ],
-    "raid_tempo_guard": [
-     1,
-     0,
-     0.19
+     0.09
     ]
    },
    "use": 0,
@@ -273,7 +282,7 @@
    "all": [
     2,
     0,
-    0.11
+    0.14
    ],
    "human": [
     0,
@@ -283,32 +292,32 @@
    "ai": [
     2,
     0,
-    0.11
+    0.14
    ],
    "players": 0,
-   "perf": -0.3,
+   "perf": -0.4,
    "builds": {
     "raid_aggro_break": [
      1,
      0,
-     0.02
+     0.04
     ],
     "raid_aggro_ram": [
      1,
      0,
-     0.09
+     0.1
     ]
    },
    "use": 0,
    "was": null
   },
   {
-   "type": "秒針 アグロ",
+   "type": "急襲 テンポ",
    "tier": null,
    "all": [
-    1,
-    0,
-    0.08
+    5,
+    0.5,
+    0.67
    ],
    "human": [
     0,
@@ -316,52 +325,32 @@
     0
    ],
    "ai": [
-    1,
-    0,
-    0.08
-   ],
-   "players": 0,
-   "perf": -0.3,
-   "builds": {
-    "second_aggro_pendulum": [
-     1,
-     0,
-     0.08
-    ]
-   },
-   "use": 0,
-   "was": null
-  },
-  {
-   "type": "槍兵 ビート",
-   "tier": null,
-   "all": [
-    2,
-    0,
-    0.16
-   ],
-   "human": [
-    0,
-    0,
-    0
-   ],
-   "ai": [
-    2,
-    0,
-    0.16
+    5,
+    0.5,
+    0.67
    ],
    "players": 0,
    "perf": -0.5,
    "builds": {
-    "lancer_beat_ram": [
+    "raid_tempo_decoy": [
      1,
      0,
-     0.21
+     0.08
     ],
-    "lancer_beat_sentinel": [
+    "raid_tempo_haste": [
+     2,
+     0.5,
+     0.16
+    ],
+    "raid_tempo_raider_guard": [
      1,
      0,
-     -0.05
+     0.23
+    ],
+    "raid_tempo_guard": [
+     1,
+     0,
+     0.2
     ]
    },
    "use": 0,
@@ -373,7 +362,7 @@
    "all": [
     1,
     0,
-    0.14
+    0.16
    ],
    "human": [
     0,
@@ -383,7 +372,7 @@
    "ai": [
     1,
     0,
-    0.14
+    0.16
    ],
    "players": 0,
    "perf": -0.5,
@@ -391,14 +380,14 @@
     "prison_control_sentry": [
      1,
      0,
-     0.14
+     0.16
     ]
    },
    "use": 0,
    "was": null
   },
   {
-   "type": "籠城 バーン",
+   "type": "槍兵 ビート",
    "tier": null,
    "all": [
     2,
@@ -418,22 +407,27 @@
    "players": 0,
    "perf": -0.6,
    "builds": {
-    "siege_burn_mirea": [
-     2,
+    "lancer_beat_ram": [
+     1,
      0,
-     0.19
+     0.23
+    ],
+    "lancer_beat_sentinel": [
+     1,
+     0,
+     -0.04
     ]
    },
    "use": 0,
    "was": null
   },
   {
-   "type": "巨像 コントロール",
+   "type": "籠城 バーン",
    "tier": null,
    "all": [
     2,
     0,
-    0.25
+    0.22
    ],
    "human": [
     0,
@@ -443,15 +437,15 @@
    "ai": [
     2,
     0,
-    0.25
+    0.22
    ],
    "players": 0,
-   "perf": -0.8,
+   "perf": -0.7,
    "builds": {
-    "titan_control_cage": [
+    "siege_burn_mirea": [
      2,
      0,
-     0.25
+     0.22
     ]
    },
    "use": 0,

@@ -1,6 +1,6 @@
 {
- "version": 49,
- "at": 1795575983901,
+ "version": 50,
+ "at": 1795659584283,
  "decks": {
   "titan_control_cage~lo": {
    "v": 57,
@@ -261,7 +261,7 @@
    }
   },
   "charge_beat_seer~lo": {
-   "v": 20,
+   "v": 79,
    "cards": [
     "warden",
     "warden",
@@ -273,7 +273,7 @@
     "e_guard",
     "e_colossus",
     "e_colossus",
-    "e_slash",
+    "arrow",
     "e_slash",
     "e_reverse",
     "e_reverse",
@@ -283,34 +283,7 @@
     "x_mirea",
     "insight",
     "titan"
-   ],
-   "trial": {
-    "v": 79,
-    "cards": [
-     "warden",
-     "warden",
-     "e_blade",
-     "e_blade",
-     "x_seer",
-     "x_seer",
-     "e_guard",
-     "e_guard",
-     "e_colossus",
-     "e_colossus",
-     "arrow",
-     "e_slash",
-     "e_reverse",
-     "e_reverse",
-     "stop",
-     "rewind",
-     "rewind",
-     "x_mirea",
-     "insight",
-     "titan"
-    ],
-    "share": 0.5,
-    "since": 1794448239606
-   }
+   ]
   },
   "hunt_beat_oracle~lo": {
    "v": 60,
@@ -975,7 +948,7 @@
    ]
   },
   "charge_beat_heavy~lo": {
-   "v": 41,
+   "v": 78,
    "cards": [
     "warden",
     "warden",
@@ -993,38 +966,11 @@
     "e_slash",
     "e_pray",
     "e_pray",
-    "x_mirea",
+    "dragon",
     "rewind",
     "insight",
     "insight"
-   ],
-   "trial": {
-    "v": 78,
-    "cards": [
-     "warden",
-     "warden",
-     "e_blade",
-     "e_blade",
-     "pendulum",
-     "pendulum",
-     "e_guard",
-     "e_guard",
-     "e_colossus",
-     "e_colossus",
-     "heavy",
-     "titan",
-     "e_slash",
-     "e_slash",
-     "e_pray",
-     "e_pray",
-     "dragon",
-     "rewind",
-     "insight",
-     "insight"
-    ],
-    "share": 0.5,
-    "since": 1794447970592
-   }
+   ]
   },
   "lancer_beat_scribe~lo": {
    "v": 42,
@@ -1622,7 +1568,7 @@
    ]
   },
   "break_control_usurper~lo": {
-   "v": 1,
+   "v": 77,
    "cards": [
     "warden",
     "warden",
@@ -1639,39 +1585,12 @@
     "arrow",
     "arrow",
     "collapse",
-    "rewind",
+    "e_pray",
     "rewind",
     "insight",
     "insight",
     "dragon"
-   ],
-   "trial": {
-    "v": 77,
-    "cards": [
-     "warden",
-     "warden",
-     "x_sentry",
-     "x_sentry",
-     "oracle",
-     "breaker",
-     "x_usurper",
-     "x_usurper",
-     "heavy",
-     "heavy",
-     "e_break",
-     "e_break",
-     "arrow",
-     "arrow",
-     "collapse",
-     "e_pray",
-     "rewind",
-     "insight",
-     "insight",
-     "dragon"
-    ],
-    "share": 0.5,
-    "since": 1794447763575
-   }
+   ]
   }
  }
 }
