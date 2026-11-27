@@ -1,0 +1,269 @@
+{
+ "date": "2026-11-27",
+ "v": "0.23.1",
+ "games": {
+  "free-lv10": [
+   1,
+   0
+  ],
+  "rated": [
+   48,
+   39
+  ],
+  "free-lv5": [
+   2,
+   1
+  ],
+  "online": [
+   2,
+   1
+  ]
+ },
+ "impacts": [
+  {
+   "id": "bolt",
+   "used": 36,
+   "winUsed": 87.5,
+   "lift": 8.854166666666666,
+   "inDeck": 53
+  },
+  {
+   "id": "ghost",
+   "used": 31,
+   "winUsed": 69.35483870967742,
+   "lift": -8.870967741935484,
+   "inDeck": 52
+  },
+  {
+   "id": "x_usurper",
+   "used": 26,
+   "winUsed": 88.46153846153847,
+   "lift": 10.817307692307692,
+   "inDeck": 49
+  },
+  {
+   "id": "stop",
+   "used": 23,
+   "winUsed": 78.26086956521739,
+   "lift": -0.2717391304347826,
+   "inDeck": 50
+  },
+  {
+   "id": "e_reverse",
+   "used": 22,
+   "winUsed": 84.0909090909091,
+   "lift": 4.261363636363637,
+   "inDeck": 39
+  },
+  {
+   "id": "e_storm",
+   "used": 19,
+   "winUsed": 68.42105263157895,
+   "lift": -6.907894736842105,
+   "inDeck": 28
+  },
+  {
+   "id": "lancer",
+   "used": 19,
+   "winUsed": 78.94736842105263,
+   "lift": 2.6315789473684212,
+   "inDeck": 24
+  },
+  {
+   "id": "breaker",
+   "used": 18,
+   "winUsed": 63.888888888888886,
+   "lift": -12.152777777777779,
+   "inDeck": 50
+  },
+  {
+   "id": "warden",
+   "used": 17,
+   "winUsed": 73.52941176470588,
+   "lift": -1.1029411764705883,
+   "inDeck": 28
+  },
+  {
+   "id": "haste",
+   "used": 17,
+   "winUsed": 82.3529411764706,
+   "lift": 6.617647058823529,
+   "inDeck": 24
+  },
+  {
+   "id": "collapse",
+   "used": 16,
+   "winUsed": 71.875,
+   "lift": -3.515625,
+   "inDeck": 39
+  },
+  {
+   "id": "e_guard",
+   "used": 16,
+   "winUsed": 78.125,
+   "lift": 5.859375,
+   "inDeck": 45
+  },
+  {
+   "id": "e_verna",
+   "used": 15,
+   "winUsed": 83.33333333333333,
+   "lift": 4.166666666666667,
+   "inDeck": 27
+  },
+  {
+   "id": "arrow",
+   "used": 15,
+   "winUsed": 93.33333333333333,
+   "lift": 12.083333333333334,
+   "inDeck": 25
+  },
+  {
+   "id": "e_tuner",
+   "used": 15,
+   "winUsed": 73.33333333333333,
+   "lift": -1.6666666666666667,
+   "inDeck": 22
+  },
+  {
+   "id": "x_mirea",
+   "used": 14,
+   "winUsed": 75,
+   "lift": -4.017857142857143,
+   "inDeck": 44
+  },
+  {
+   "id": "e_pray",
+   "used": 13,
+   "winUsed": 69.23076923076923,
+   "lift": -5.769230769230769,
+   "inDeck": 33
+  },
+  {
+   "id": "e_eternal",
+   "used": 12,
+   "winUsed": 75,
+   "lift": -6.25,
+   "inDeck": 41
+  },
+  {
+   "id": "e_draw",
+   "used": 12,
+   "winUsed": 75,
+   "lift": 1.5625,
+   "inDeck": 22
+  },
+  {
+   "id": "e_atra",
+   "used": 8,
+   "winUsed": 62.5,
+   "lift": -14.84375,
+   "inDeck": 27
+  },
+  {
+   "id": "gear",
+   "used": 3,
+   "winUsed": 66.66666666666667,
+   "lift": -14.583333333333334,
+   "inDeck": 3
+  },
+  {
+   "id": "scout",
+   "used": 2,
+   "winUsed": 50,
+   "lift": -31.25,
+   "inDeck": 3
+  },
+  {
+   "id": "x_decoy",
+   "used": 1,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "rewind",
+   "used": 1,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "x_oblivion",
+   "used": 1,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "e_bellkeeper",
+   "used": 1,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "e_shot",
+   "used": 1,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "archer",
+   "used": 1,
+   "winUsed": 100,
+   "lift": 18.75,
+   "inDeck": 2
+  },
+  {
+   "id": "e_break",
+   "used": 0,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "pendulum",
+   "used": 0,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 3
+  },
+  {
+   "id": "oracle",
+   "used": 0,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "delayer",
+   "used": 0,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 3
+  },
+  {
+   "id": "heavy",
+   "used": 0,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "cage",
+   "used": 0,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 1
+  },
+  {
+   "id": "sentinel",
+   "used": 0,
+   "winUsed": 0,
+   "lift": 0,
+   "inDeck": 2
+  }
+ ]
+}
