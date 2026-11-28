@@ -1,6 +1,6 @@
 {
- "version": 51,
- "at": 1795745999713,
+ "version": 52,
+ "at": 1795831497251,
  "decks": {
   "titan_control_cage~lo": {
    "v": 57,
@@ -589,7 +589,34 @@
     "insight",
     "e_draw",
     "e_draw"
-   ]
+   ],
+   "trial": {
+    "v": 102,
+    "cards": [
+     "e_sprite",
+     "e_sprite",
+     "warden",
+     "warden",
+     "e_mage",
+     "e_mage",
+     "titan",
+     "bolt",
+     "bolt",
+     "e_eternal",
+     "e_shot",
+     "e_shot",
+     "arrow",
+     "arrow",
+     "e_reverse",
+     "e_reverse",
+     "insight",
+     "insight",
+     "e_draw",
+     "e_draw"
+    ],
+    "share": 0.5,
+    "since": 1795832102319
+   }
   },
   "second_aggro_lancer~lo": {
    "v": 71,
@@ -614,7 +641,34 @@
     "arrow",
     "arrow",
     "scribe"
-   ]
+   ],
+   "trial": {
+    "v": 103,
+    "cards": [
+     "scout",
+     "scout",
+     "archer",
+     "archer",
+     "e_page",
+     "e_page",
+     "gear",
+     "gear",
+     "lancer",
+     "lancer",
+     "e_raider",
+     "e_raider",
+     "breaker",
+     "haste",
+     "haste",
+     "bolt",
+     "bolt",
+     "e_shot",
+     "arrow",
+     "scribe"
+    ],
+    "share": 0.5,
+    "since": 1795832208567
+   }
   },
   "second_aggro_pendulum~lo": {
    "v": 51,
